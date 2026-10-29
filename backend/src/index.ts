@@ -11,7 +11,10 @@ try {
   process.exit(1);
 }
 
-const app = buildApp({ apiToken: config.apiToken });
+const app = buildApp({
+  apiToken: config.apiToken,
+  namespace: config.namespace,
+});
 registerGracefulShutdown(app);
 
 try {
