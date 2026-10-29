@@ -61,9 +61,9 @@ export function appsRoutesWithDeps(
         },
       },
       async (req, reply) => {
-        const { kc } = resolved.loadKubeConfig();
-        const api = kc.makeApiClient(k8s.AppsV1Api);
         try {
+          const { kc } = resolved.loadKubeConfig();
+          const api = kc.makeApiClient(k8s.AppsV1Api);
           return await resolved.listApps(api, resolved.namespace);
         } catch (err) {
           req.log.error({ err }, "list apps failed");
