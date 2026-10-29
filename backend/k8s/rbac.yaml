@@ -10,6 +10,7 @@ kind: ClusterRole
 metadata:
   name: pier-backend-cluster-health
 rules:
+  # TODO(#5): Remove "pods" from here — only cluster-wide node health should be readable.
   - apiGroups: [""]
     resources: ["nodes", "pods"]
     verbs: ["get", "list"]
