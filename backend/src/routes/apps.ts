@@ -2,10 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import * as k8s from "@kubernetes/client-node";
 import { loadConfig } from "../config.js";
 import { loadKubeConfig as defaultLoadKubeConfig } from "../k8s/client.js";
-import {
-  listApps as defaultListApps,
-  type App,
-} from "../k8s/apps.js";
+import { listApps as defaultListApps } from "../k8s/apps.js";
 
 type AppsRouteDeps = {
   loadKubeConfig: typeof defaultLoadKubeConfig;
@@ -43,7 +40,7 @@ export function appsRoutesWithDeps(
 
   return async (app) => {
     /** Pier-managed Deployments in PIER_NAMESPACE (label pier.app). */
-    app.get<{ Reply: App[] }>(
+    app.get(
       "/apps",
       {
         schema: {
@@ -51,6 +48,14 @@ export function appsRoutesWithDeps(
             200: {
               type: "array",
               items: appSchema,
+            },
+            503: {
+              type: "object",
+              properties: {
+                ok: { type: "boolean" },
+                error: { type: "string" },
+              },
+              required: ["ok", "error"],
             },
           },
         },
