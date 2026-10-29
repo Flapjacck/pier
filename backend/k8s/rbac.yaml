@@ -1,4 +1,4 @@
-# Read-only access for /health/cluster (nodes + version).
+# Read-only cluster access for /cluster/health and /cluster/pods.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -11,7 +11,7 @@ metadata:
   name: pier-backend-cluster-health
 rules:
   - apiGroups: [""]
-    resources: ["nodes"]
+    resources: ["nodes", "pods"]
     verbs: ["get", "list"]
   - nonResourceURLs: ["/version", "/healthz", "/livez", "/readyz"]
     verbs: ["get"]

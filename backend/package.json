@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
     "start": "tsx src/index.ts",
-    "start:prod": "node dist/index.js"
+    "start:prod": "node dist/index.js",
+    "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "tsup": {
     "entry": ["src/index.ts"],
@@ -16,8 +17,10 @@
     "sourcemap": true,
     "clean": true
   },
+  "packageManager": "pnpm@12.4.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=20",
+    "pnpm": ">=9"
   },
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",
