@@ -55,7 +55,7 @@ export async function listClusterPods(
 
     return { ok: true, mode, pods, total: pods.length };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, mode, error: message };
+    // Return the raw error for logging server-side; route will show generic message to client.
+    throw err;
   }
 }
