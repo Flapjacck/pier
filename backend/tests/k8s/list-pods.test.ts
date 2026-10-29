@@ -61,7 +61,7 @@ describe("list-pods", () => {
     assert.equal(result.pods?.[0]?.name, "busybox");
   });
 
-  it("listClusterPods surfaces API errors", async () => {
+  it("listClusterPods throws API errors (for routes to handle)", async () => {
     const kc = {
       makeApiClient: () => ({
         listPodForAllNamespaces: async () => {
@@ -70,8 +70,12 @@ describe("list-pods", () => {
       }),
     } as unknown as KubeConfig;
 
-    const result = await listClusterPods(kc, "in-cluster");
-    assert.equal(result.ok, false);
-    assert.match(result.error ?? "", /Forbidden/);
+    await assert.rejects(
+      () => listClusterPods(kc, "in-cluster"),
+      (err: Error) => {
+        assert.match(err.message, /Forbidden/);
+        return true;
+      },
+    );
   });
 });

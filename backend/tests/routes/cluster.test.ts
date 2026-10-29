@@ -27,22 +27,28 @@ describe("GET /cluster/health", () => {
     await app.close();
   });
 
-  it("returns 503 when the cluster check fails", async () => {
+  it("returns 503 with generic error when the cluster check fails", async () => {
     const app = Fastify({ logger: false });
     await app.register(
       clusterRoutesWithDeps({
         loadKubeConfig: () => ({ kc: {} as never, mode: "in-cluster" }),
-        getClusterHealth: async () => ({
-          ok: false,
-          mode: "in-cluster",
-          error: "Forbidden",
-        }),
+        getClusterHealth: async () => {
+          // Simulate an error from the Kubernetes API.
+          throw new Error("Forbidden: cannot access /version");
+        },
         listClusterPods: async () => ({ ok: true, mode: "in-cluster", pods: [], total: 0 }),
       }),
     );
 
     const res = await app.inject({ method: "GET", url: "/cluster/health" });
     assert.equal(res.statusCode, 503);
+    const body = res.json() as { ok: boolean; error: string };
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "cluster unreachable");
+    // Ensure the response does not contain the raw error message.
+    const responseText = res.body;
+    assert(!responseText.includes("Forbidden"));
+    assert(!responseText.includes("cannot access"));
     await app.close();
   });
 });
@@ -78,17 +84,16 @@ describe("GET /cluster/pods", () => {
     await app.close();
   });
 
-  it("returns 503 when Kubernetes returns an error", async () => {
+  it("returns 503 with generic error when Kubernetes call fails", async () => {
     const app = Fastify({ logger: false });
     await app.register(
       clusterRoutesWithDeps({
         loadKubeConfig: () => ({ kc: {} as never, mode: "in-cluster" }),
         getClusterHealth: async () => ({ ok: true, mode: "in-cluster", nodes: { total: 1, ready: 1 } }),
-        listClusterPods: async () => ({
-          ok: false,
-          mode: "in-cluster",
-          error: "Forbidden",
-        }),
+        listClusterPods: async () => {
+          // Simulate an error from the Kubernetes API.
+          throw new Error("Forbidden: cannot list pods");
+        },
       }),
     );
 
@@ -96,7 +101,11 @@ describe("GET /cluster/pods", () => {
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
-    assert.equal(body.error, "Forbidden");
+    assert.equal(body.error, "cluster unreachable");
+    // Ensure the response does not contain the raw error message.
+    const responseText = res.body;
+    assert(!responseText.includes("Forbidden"));
+    assert(!responseText.includes("cannot list pods"));
     await app.close();
   });
 });

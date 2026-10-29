@@ -33,27 +33,35 @@ export function clusterRoutesWithDeps(
 ): FastifyPluginAsync {
   return async (app) => {
     /** Kubernetes API reachability: version string + node readiness counts. */
-    app.get("/cluster/health", async (_req, reply) => {
+    app.get("/cluster/health", async (req, reply) => {
       const { kc, mode } = deps.loadKubeConfig();
-      const result = await deps.getClusterHealth(kc, mode);
-
-      if (!result.ok) {
-        return reply.status(503).send(result);
+      try {
+        const result = await deps.getClusterHealth(kc, mode);
+        return result;
+      } catch (err) {
+        req.log.error({ err }, "cluster call failed");
+        return reply.status(503).send({
+          ok: false,
+          mode: (deps.loadKubeConfig().mode),
+          error: "cluster unreachable",
+        });
       }
-
-      return result;
     });
 
     /** Snapshot of all pods (every namespace) from the Kubernetes API. */
-    app.get("/cluster/pods", async (_req, reply) => {
+    app.get("/cluster/pods", async (req, reply) => {
       const { kc, mode } = deps.loadKubeConfig();
-      const result = await deps.listClusterPods(kc, mode);
-
-      if (!result.ok) {
-        return reply.status(503).send(result);
+      try {
+        const result = await deps.listClusterPods(kc, mode);
+        return result;
+      } catch (err) {
+        req.log.error({ err }, "cluster call failed");
+        return reply.status(503).send({
+          ok: false,
+          mode,
+          error: "cluster unreachable",
+        });
       }
-
-      return result;
     });
   };
 }
