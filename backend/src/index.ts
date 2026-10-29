@@ -1,16 +1,18 @@
 import { buildApp } from "./app";
-import { config } from "./config";
+import { loadConfig } from "./config";
+import { registerGracefulShutdown } from "./shutdown";
+
+let config;
+try {
+  config = loadConfig();
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(message);
+  process.exit(1);
+}
 
 const app = buildApp();
-
-const shutdown = async (signal: string) => {
-  app.log.info({ signal }, "shutting down");
-  await app.close();
-  process.exit(0);
-};
-
-process.on("SIGINT", () => void shutdown("SIGINT"));
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
+registerGracefulShutdown(app);
 
 try {
   await app.listen({ port: config.port, host: config.host });
