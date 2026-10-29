@@ -9,6 +9,7 @@ Pier backend exposes a small read-only API over Fastify. Handlers live in this f
 | GET | `/health` | None | Answers "is the Node process up?" No cluster call — safe for k8s liveness probes. |
 | GET | `/cluster/health` | Bearer token | Answers "can this app talk to k3s?" Fetches API version and counts nodes that are Ready. |
 | GET | `/cluster/pods` | Bearer token | Answers "what is running?" Lists every pod in every namespace with name, phase, node, and ready count. |
+| GET | `/apps` | Bearer token | Lists Pier-managed apps (Deployments in `PIER_NAMESPACE` with label `pier.app`). Uses the namespaced Role in `k8s/rbac-apps.yaml`, not the cluster health ClusterRole. |
 
 **Success:** JSON with `ok: true` and useful fields.  
 **Auth failure:** HTTP **401** with `ok: false` and `error: "unauthorized"`.  
@@ -68,5 +69,6 @@ sequenceDiagram
 |------|--------|
 | `health.ts` | `/health` |
 | `cluster.ts` | `/cluster/health`, `/cluster/pods` |
+| `apps.ts` | `/apps` |
 
 Registered from `src/app.ts`.
