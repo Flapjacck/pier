@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pi-backend
+  name: pier-backend
   namespace: default
   labels:
-    app: pi-backend
+    app: pier-backend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pi-backend
+      app: pier-backend
   template:
     metadata:
       labels:
-        app: pi-backend
+        app: pier-backend
     spec:
-      serviceAccountName: pi-backend
+      serviceAccountName: pier-backend
       containers:
         - name: api
-          image: pi-backend:dev
+          image: pier-backend:dev
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -44,11 +44,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: pi-backend
+  name: pier-backend
   namespace: default
 spec:
   selector:
-    app: pi-backend
+    app: pier-backend
   ports:
     - port: 80
       targetPort: http

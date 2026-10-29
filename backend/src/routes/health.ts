@@ -5,7 +5,7 @@ import { getClusterHealth } from "../k8s/cluster-health";
 export const healthRoutes: FastifyPluginAsync = async (app) => {
   app.get("/health", async () => ({
     ok: true,
-    service: "pi-backend",
+    service: "pier-backend",
   }));
 
   app.get("/health/cluster", async (_req, reply) => {
