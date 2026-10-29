@@ -19,8 +19,41 @@ pnpm --dir backend dev # or: pnpm --dir backend start (tsx, no build step)
 ```bash
 pnpm build           # tsup → dist/
 docker build -t pier-backend:dev .
-kubectl apply -f k8s/rbac.yaml
-kubectl apply -f k8s/deployment.yaml
+```
+
+## Deploy manifests
+
+Apply manifests in this order:
+
+```bash
+# 1. Create pier-apps namespace
+kubectl apply -f backend/k8s/namespace.yaml
+
+# 2. Set up RBAC: cluster-wide health access + namespaced app management
+kubectl apply -f backend/k8s/rbac.yaml
+kubectl apply -f backend/k8s/rbac-apps.yaml
+
+# 3. Deploy the backend service and pod
+kubectl apply -f backend/k8s/deployment.yaml
+```
+
+### Verify RBAC
+
+After applying the namespace and RBAC, check that permissions are as expected:
+
+```bash
+SA=system:serviceaccount:default:pier-backend
+
+# Should all succeed:
+kubectl auth can-i create deployments -n pier-apps --as=$SA       # yes
+kubectl auth can-i patch deployments/scale -n pier-apps --as=$SA  # yes
+kubectl auth can-i get pods/log -n pier-apps --as=$SA             # yes
+kubectl auth can-i create ingresses -n pier-apps --as=$SA         # yes
+
+# Should all fail (403):
+kubectl auth can-i delete pods -n pier-apps --as=$SA              # no
+kubectl auth can-i create deployments -n default --as=$SA         # no
+kubectl auth can-i delete nodes --as=$SA                          # no
 ```
 
 ## Endpoints
