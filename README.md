@@ -6,4 +6,25 @@
   <strong>Apps dock here.</strong>
 </p>
 
-Pier is a lightweight k3s control plane. Self-hosted dashboard for deploying, monitoring, and managing containerised apps on your own Kubernetes cluster
+<p align="center">
+  <a href="https://k3s.io"><img src="https://img.shields.io/badge/k3s-v1.36.5-FFC61C?style=flat-square&logo=k3s&logoColor=black" alt="k3s v1.36.5"></a>
+  <a href="https://kubernetes.io"><img src="https://img.shields.io/badge/Kubernetes-1.36-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="Kubernetes 1.36"></a>
+  <a href="https://www.proxmox.com"><img src="https://img.shields.io/badge/Proxmox-VE-E57000?style=flat-square&logo=proxmox&logoColor=white" alt="Proxmox VE"></a>
+  <a href="https://ubuntu.com/server"><img src="https://img.shields.io/badge/Ubuntu%20Server-26.04-E95420?style=flat-square&logo=ubuntu&logoColor=white" alt="Ubuntu Server 26.04"></a>
+</p>
+
+<p align="center">
+  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.8"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-22-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js 22"></a>
+  <a href="https://fastify.dev"><img src="https://img.shields.io/badge/Fastify-5.12-000000?style=flat-square&logo=fastify&logoColor=white" alt="Fastify 5.12"></a>
+  <a href="https://github.com/kubernetes-client/javascript"><img src="https://img.shields.io/badge/%40kubernetes%2Fclient--node-1.4-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="@kubernetes/client-node 1.4"></a>
+  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19.3-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19.3"></a>
+  <a href="https://vite.dev"><img src="https://img.shields.io/badge/Vite-8.3-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite 8.3"></a>
+  <a href="https://tailwindcss.com"><img src="https://img.shields.io/badge/Tailwind%20CSS-4.3-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS 4.3"></a>
+</p>
+
+Pier is a lightweight control plane for k3s: a self-hosted dashboard for deploying, monitoring, and managing containerised apps on your own Kubernetes cluster.
+
+## Why I built it
+
+I wanted to actually learn Kubernetes, clusters, and how cloud platforms work under the hood, not just read about them. My home lab runs on Proxmox, and every time I wanted to test or deploy something I'd spin up yet another LXC container by hand. A cluster gives you all of that in one place (scheduling, restarts, networking, routing, scaling), so Pier is my way of building the "push an app, get a URL" experience on hardware I own.
