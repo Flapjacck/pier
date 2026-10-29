@@ -1,0 +1,53 @@
+# Namespaced RBAC for pier-apps: Role and RoleBinding for app management.
+# This is a namespace-scoped Role (not ClusterRole) for least-privilege access.
+# Only pier-backend (in namespace default) can manage apps in pier-apps.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pier-app-manager
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+rules:
+  # Deployments: full CRUD.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Deployment scaling.
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+  # Services: full CRUD.
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pods: read-only + logs.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Ingresses: full CRUD.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pier-app-manager
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pier-app-manager
+subjects:
+  - kind: ServiceAccount
+    name: pier-backend
+    namespace: default
