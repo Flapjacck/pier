@@ -28,6 +28,10 @@ export function readyColumn(pod: k8s.V1Pod): string {
   return `${readyCount}/${statuses.length}`;
 }
 
+function formatStartTime(value: Date | undefined): string | undefined {
+  return value?.toISOString();
+}
+
 export function podToSummary(pod: k8s.V1Pod): PodSummary {
   return {
     name: pod.metadata?.name ?? "",
@@ -35,7 +39,7 @@ export function podToSummary(pod: k8s.V1Pod): PodSummary {
     phase: pod.status?.phase ?? "Unknown",
     nodeName: pod.spec?.nodeName,
     ready: readyColumn(pod),
-    startedAt: pod.status?.startTime,
+    startedAt: formatStartTime(pod.status?.startTime),
   };
 }
 

@@ -8,7 +8,7 @@
     "build": "tsup",
     "start": "tsx src/index.ts",
     "start:prod": "node dist/index.js",
-    "test": "node --import tsx --test 'src/**/*.test.ts'"
+    "test": "node --import tsx --test 'tests/**/*.test.ts'"
   },
   "tsup": {
     "entry": ["src/index.ts"],

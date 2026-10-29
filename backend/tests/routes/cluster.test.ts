@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import Fastify from "fastify";
-import { clusterRoutesWithDeps } from "./cluster.js";
+import { clusterRoutesWithDeps } from "../../src/routes/cluster.js";
 
 describe("GET /cluster/health", () => {
   it("returns 200 when the cluster check passes", async () => {
