@@ -1,0 +1,33 @@
+/* Self-hosted fonts */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* Tailwind v4 core */
+@import "tailwindcss";
+
+/* Pier palette + semantic aliases → Tailwind utilities (bg-pier-fg, text-pier-muted, etc.) */
+@import "./tailwind.theme.css";
+
+/* Pier semantic token CSS variables (drives light/dark switching via data-theme) */
+@import "./tokens.css";
+
+/* Base resets */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--pier-bg);
+    color: var(--pier-fg);
+    font-family: var(--pier-font-sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, kbd, pre, samp { font-family: var(--pier-font-mono); }
+
+  :focus-visible {
+    outline: 2px solid var(--pier-focus);
+    outline-offset: 2px;
+  }
+}
