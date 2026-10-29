@@ -2,7 +2,7 @@
 
 TypeScript control-plane API for **pier** (apps dock here). Source lives in `src/**/*.ts`; `dist/` is compiled output for the Docker image only.
 
-Right now: HTTP liveness, cluster connectivity (`/cluster/health`), and pod inventory (`/cluster/pods`). Route docs: `src/routes/README.md`.
+Right now: HTTP liveness, cluster connectivity (`/cluster/health`), pod inventory (`/cluster/pods`), and Pier-managed apps (`/apps`). Route docs: `src/routes/README.md`.
 
 ## Auth
 
@@ -81,6 +81,43 @@ kubectl auth can-i delete nodes --as=$SA                          # no
 | GET | `/health` | None | Process is up (does not call the cluster). Always public. |
 | GET | `/cluster/health` | Bearer token | Calls k3s API: server version + node readiness. |
 | GET | `/cluster/pods` | Bearer token | Lists all pods (all namespaces) with phase and ready status. |
+| GET | `/apps` | Bearer token | Lists Deployments in `PIER_NAMESPACE` labelled `pier.app` (Pier-managed apps only). |
+
+### `GET /apps`
+
+Requires `Authorization: Bearer $PIER_API_TOKEN` (same as other protected routes).
+
+```bash
+curl -s -H "Authorization: Bearer $PIER_API_TOKEN" http://localhost:3000/apps
+```
+
+Example response:
+
+```json
+[
+  {
+    "name": "hello",
+    "image": "nginx:1.27",
+    "replicas": 2,
+    "ready": 2,
+    "status": "running",
+    "createdAt": "2026-10-29T15:00:00.000Z"
+  }
+]
+```
+
+An empty namespace returns `[]`. Cluster or RBAC failures return HTTP **503** with `{ "ok": false, "error": "cluster unreachable" }`.
+
+**Status values** (aligned with the frontend `StatusPill`):
+
+| `status` | Meaning |
+|----------|---------|
+| `running` | All replicas ready and the Deployment has finished its rollout (`ready === replicas`, `updatedReplicas === replicas`, observed generation caught up). |
+| `stopped` | `replicas === 0` (scaled down). |
+| `building` | Rollout in progress or pods not ready yet. |
+| `failed` | Progress deadline exceeded, or `Available=False` while `Progressing` is not `True`. |
+
+Unlabelled Deployments in the namespace are **not** listed (the API selects `labelSelector=pier.app`).
 
 ---
 
@@ -104,12 +141,16 @@ kubectl auth can-i delete nodes --as=$SA                          # no
 |------|---------|
 | `src/index.ts` | Entry: `loadConfig()`, builds Fastify app, listens on `HOST`/`PORT`. |
 | `src/shutdown.ts` | One-shot SIGINT/SIGTERM handler with a 10s force-exit if `app.close()` hangs. |
-| `src/app.ts` | Creates Fastify instance with logging; registers auth, health, and cluster route plugins. |
+| `src/app.ts` | Creates Fastify instance with logging; registers auth, health, cluster, and apps route plugins. |
 | `src/config.ts` | `loadConfig()`: validates `PORT` (1–65535), `HOST` (default 127.0.0.1), optional `PIER_API_TOKEN`, `KUBECONFIG`, `PIER_NAMESPACE` (default `pier-apps`). Refuses non-loopback `HOST` without a token. |
 | `src/plugins/auth.ts` | Bearer token authentication hook: requires `Authorization: Bearer <token>` on all routes except `/health`. Skips auth if token is unset (dev mode). |
 | `src/routes/README.md` | Route overview, diagrams, and RBAC notes. |
 | `src/routes/health.ts` | `GET /health` handler (always public, no auth required). |
 | `src/routes/cluster.ts` | `GET /cluster/health` and `GET /cluster/pods` handlers (require auth). Returns generic errors to clients; logs full errors server-side. |
+| `src/routes/apps.ts` | `GET /apps` — lists Pier-managed Deployments in `PIER_NAMESPACE`. |
+| `src/k8s/README.md` | Index of Kubernetes helper modules. |
+| `src/k8s/labels.ts` | Shared `pier.app` / managed-by label helpers. |
+| `src/k8s/apps.ts` | Deployment → app mapping, status derivation, `listApps()`. |
 | `src/k8s/list-pods.ts` | Maps Kubernetes Pod objects to API summaries. |
 | `src/k8s/client.ts` | Loads kube config: **in-cluster** when the pod SA token exists, else **kubeconfig** (`KUBECONFIG` / `~/.kube/config`). |
 | `src/k8s/cluster-health.ts` | Calls Kubernetes `Version` + `list Node`; returns version string and ready/total node counts. |
