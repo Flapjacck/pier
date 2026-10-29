@@ -6,13 +6,12 @@ Right now: HTTP liveness, cluster connectivity (`/cluster/health`), and pod inve
 
 ## Run
 
-**Beater (dev)** — uses `KUBECONFIG` like `kubectl`:
+**Beater (dev)** — settings load from `backend/.env` when present (Node `--env-file-if-exists` on `dev` / `start`). Use an **absolute** path for `KUBECONFIG` (`~` is not expanded in `.env` files). Without a `.env` file, the shell environment is used as today.
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # edit KUBECONFIG to your kubeconfig path
 pnpm install
-export KUBECONFIG=~/.kube/k3s-node.yaml
-pnpm dev             # or: pnpm start (tsx, no build step)
+pnpm --dir backend dev # or: pnpm --dir backend start (tsx, no build step)
 ```
 
 **Production image**
@@ -44,7 +43,7 @@ kubectl apply -f k8s/deployment.yaml
 | `pnpm-lock.yaml` | Locked dependency tree (auto-generated). |
 | `pnpm-workspace.yaml` | pnpm settings for this package (e.g. `allowBuilds`). |
 | `tsconfig.json` | TypeScript settings for `src/` (`strict`, no emit — typecheck only; tsup bundles). |
-| `.env.example` | Template for `PORT`, `HOST`, optional `KUBECONFIG` comment. Copy to `.env` locally. |
+| `.env.example` | Template for `PORT`, `HOST`, `PIER_NAMESPACE`, and `KUBECONFIG` (absolute path). Copy to `.env` locally. |
 | `Dockerfile` | Multi-stage image: `pnpm install`, `pnpm build`, run as non-root `node` on port 3000. |
 | `README.md` | This file. |
 
@@ -52,9 +51,10 @@ kubectl apply -f k8s/deployment.yaml
 
 | File | Purpose |
 |------|---------|
-| `src/index.ts` | Entry: builds Fastify app, listens on `HOST`/`PORT`, graceful shutdown on SIGINT/SIGTERM. |
+| `src/index.ts` | Entry: `loadConfig()`, builds Fastify app, listens on `HOST`/`PORT`. |
+| `src/shutdown.ts` | One-shot SIGINT/SIGTERM handler with a 10s force-exit if `app.close()` hangs. |
 | `src/app.ts` | Creates Fastify instance with logging; registers route plugins. |
-| `src/config.ts` | Reads `PORT` (default 3000) and `HOST` (default `0.0.0.0`) from the environment. |
+| `src/config.ts` | `loadConfig()`: validates `PORT` (1–65535), `HOST`, optional `KUBECONFIG`, `PIER_NAMESPACE` (default `pier-apps`). |
 | `src/routes/README.md` | Route overview, diagrams, and RBAC notes. |
 | `src/routes/health.ts` | `GET /health` handler. |
 | `src/routes/cluster.ts` | `GET /cluster/health` and `GET /cluster/pods` handlers. |
@@ -102,5 +102,5 @@ Without this file, in-cluster `/cluster/health` often returns **403 Forbidden**.
 
 | Where | How the API reaches k3s |
 |-------|-------------------------|
-| **Beater** | `export KUBECONFIG=~/.kube/k3s-node.yaml` → mode `kubeconfig` |
+| **Beater** | `KUBECONFIG` in `.env` or shell → mode `kubeconfig` |
 | **Pod on k3s** | ServiceAccount token → mode `in-cluster` (no kubeconfig file in the image) |
