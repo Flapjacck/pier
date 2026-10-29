@@ -28,3 +28,15 @@ Pier is a lightweight control plane for k3s: a self-hosted dashboard for deployi
 ## Why I built it
 
 I wanted to actually learn Kubernetes, clusters, and how cloud platforms work under the hood, not just read about them. My home lab runs on Proxmox, and every time I wanted to test or deploy something I'd spin up yet another LXC container by hand. A cluster gives you all of that in one place (scheduling, restarts, networking, routing, scaling), so Pier is my way of building the "push an app, get a URL" experience on hardware I own.
+
+## Development
+
+This repo uses [pnpm](https://pnpm.io) (not npm). From the repo root:
+
+```bash
+pnpm install          # installs frontend + backend workspace packages
+pnpm --dir backend dev
+pnpm --dir frontend dev
+```
+
+See `backend/README.md` for API/kubeconfig setup.

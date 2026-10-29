@@ -6,6 +6,13 @@
 **/k3s-node.yaml
 *.kubeconfig.yaml
 
+# npm lockfiles (this repo uses pnpm)
+package-lock.json
+**/package-lock.json
+
+# Dependencies (pnpm workspace installs at repo root too)
+node_modules/
+
 # Backend
 backend/node_modules/
 backend/dist/
