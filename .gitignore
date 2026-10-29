@@ -1,0 +1,12 @@
+# Local config (hostnames/IPs)
+.env
+
+# Never commit cluster credentials if copied into this repo
+.kube/
+**/k3s-node.yaml
+*.kubeconfig.yaml
+
+# Backend
+backend/node_modules/
+backend/dist/
+backend/.env
