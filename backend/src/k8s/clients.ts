@@ -1,7 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import type { Config } from "../config";
 import { loadKubeConfig } from "./client";
-import type { KubeConfigMode } from "./client";
+import type { KubeConfigLoader, KubeConfigMode } from "./client";
 
 /**
  * K8s API clients built once at startup.
@@ -27,7 +27,7 @@ export type K8sClientsResult =
  */
 export function createK8sClients(
   config: Pick<Config, "kubeconfig">,
-  load: (kubeconfigPath?: string) => { kc: k8s.KubeConfig; mode: KubeConfigMode } = loadKubeConfig,
+  load: KubeConfigLoader = loadKubeConfig,
 ): K8sClientsResult {
   try {
     // Load the kubeconfig once.
