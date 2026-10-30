@@ -36,8 +36,8 @@ pnpm dev               # http://127.0.0.1:3000
 | `build` | `tsup` | Bundle to `dist/`. |
 | `start:prod` | `node dist/index.js` | Run the build (used by the Docker image). Does not load `.env`. |
 | `test` | `node --import tsx --test 'tests/**/*.test.ts'` | Unit tests (`node:test`, no cluster needed). |
-
-Type-check with `pnpm exec tsc --noEmit` (covers `src/` and `tests/`).
+| `lint` | `eslint .` | Run ESLint on `src/` and `tests/`. |
+| `typecheck` | `tsc --noEmit` | Type-check `src/` and `tests/`. |
 
 ## API
 

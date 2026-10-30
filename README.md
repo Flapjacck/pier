@@ -57,4 +57,12 @@ pnpm --dir frontend typecheck # tsc -b
 pnpm --dir frontend build    # Vite
 ```
 
-See `backend/README.md` for API/kubeconfig setup and [CONTRIBUTING.md](./CONTRIBUTING.md) for commit conventions and branch protection rules.
+See [backend/README.md](./backend/README.md) for API/kubeconfig setup.
+
+### Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+- Commit conventions (conventional commits)
+- Feature branch naming and workflow
+- Code style and local checks
+- Branch protection rules
