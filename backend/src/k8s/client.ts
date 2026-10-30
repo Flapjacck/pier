@@ -13,15 +13,40 @@ export function isInCluster(): boolean {
   );
 }
 
-/** Prefer in-cluster credentials in a pod; on Beater use KUBECONFIG / ~/.kube/config. */
-export function loadKubeConfig(): { kc: k8s.KubeConfig; mode: KubeConfigMode } {
+/**
+ * Load and validate kubeconfig once, with clear error messages if it fails.
+ * Tries in order: in-cluster (if token/env mounted), then kubeconfig file (if path given),
+ * then default locations (~/.kube/config).
+ * Throws if the loaded config has no current context or cluster.
+ */
+export function loadKubeConfig(
+  kubeconfigPath?: string,
+): { kc: k8s.KubeConfig; mode: KubeConfigMode } {
   const kc = new k8s.KubeConfig();
 
   if (isInCluster()) {
     kc.loadFromCluster();
-    return { kc, mode: "in-cluster" };
+  } else if (kubeconfigPath) {
+    kc.loadFromFile(kubeconfigPath);
+  } else {
+    kc.loadFromDefault();
   }
 
-  kc.loadFromDefault();
-  return { kc, mode: "kubeconfig" };
+  // Validate that the loaded config has a current context and cluster.
+  const currentContext = kc.getCurrentContext();
+  if (!currentContext) {
+    throw new Error(
+      "kubeconfig: no current context found; check your KUBECONFIG or ~/.kube/config",
+    );
+  }
+
+  const cluster = kc.getCluster(currentContext);
+  if (!cluster) {
+    throw new Error(
+      `kubeconfig: cluster "${currentContext}" not found in config`,
+    );
+  }
+
+  const mode = isInCluster() ? "in-cluster" : "kubeconfig";
+  return { kc, mode };
 }
