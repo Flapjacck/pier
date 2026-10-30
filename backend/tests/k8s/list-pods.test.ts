@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { KubeConfig, V1Pod } from "@kubernetes/client-node";
+import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import {
   listClusterPods,
   podToSummary,
@@ -10,6 +10,11 @@ import {
 /** Minimal pod shapes for tests — full V1Pod is huge and not needed here. */
 function podFixture(partial: Record<string, unknown>): V1Pod {
   return partial as unknown as V1Pod;
+}
+
+/** Only listPodForAllNamespaces is called, so the fake implements just that. */
+function fakeCore(listPodForAllNamespaces: () => Promise<{ items: V1Pod[] }>): CoreV1Api {
+  return { listPodForAllNamespaces } as unknown as CoreV1Api;
 }
 
 describe("list-pods", () => {
@@ -49,25 +54,21 @@ describe("list-pods", () => {
       status: { phase: "Running", containerStatuses: [{ ready: true }] },
     });
 
-    const fakeCore = {
-      listPodForAllNamespaces: async () => ({ items: [fakePod] }),
-    };
+    const core = fakeCore(async () => ({ items: [fakePod] }));
 
-    const result = await listClusterPods(fakeCore as unknown as any, "kubeconfig");
+    const result = await listClusterPods(core, "kubeconfig");
     assert.equal(result.ok, true);
     assert.equal(result.total, 1);
     assert.equal(result.pods?.[0]?.name, "busybox");
   });
 
   it("listClusterPods throws API errors (for routes to handle)", async () => {
-    const fakeCore = {
-      listPodForAllNamespaces: async () => {
-        throw new Error("Forbidden");
-      },
-    };
+    const core = fakeCore(async () => {
+      throw new Error("Forbidden");
+    });
 
     await assert.rejects(
-      () => listClusterPods(fakeCore as unknown as any, "in-cluster"),
+      () => listClusterPods(core, "in-cluster"),
       (err: Error) => {
         assert.match(err.message, /Forbidden/);
         return true;
