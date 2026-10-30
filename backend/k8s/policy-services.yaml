@@ -1,0 +1,31 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: pier-apps-clusterip-only
+  labels:
+    app.kubernetes.io/managed-by: pier
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["services"]
+  validations:
+    - expression: "!has(object.spec.type) || object.spec.type == 'ClusterIP'"
+      message: "Services in pier-apps must be type ClusterIP"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: pier-apps-clusterip-only
+  labels:
+    app.kubernetes.io/managed-by: pier
+spec:
+  policyName: pier-apps-clusterip-only
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: pier-apps
