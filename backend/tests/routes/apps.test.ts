@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import Fastify from "fastify";
-import type { AppsV1Api } from "@kubernetes/client-node";
-import { setupAuth } from "../../src/plugins/auth.js";
-import { appsRoutesWithDeps } from "../../src/routes/apps.js";
+import { buildApp } from "../../src/app.js";
+import { createFakeClientsResult, createFailedClientsResult } from "../helpers/fake-clients.js";
+import { authHeader, testConfig } from "../helpers/test-config.js";
 
-const testToken = "test-token-secret";
 const sampleApps = [
   {
     name: "hello",
@@ -17,28 +15,15 @@ const sampleApps = [
   },
 ];
 
-function registerAppsRoute(
-  app: ReturnType<typeof Fastify>,
-  listApps: (
-    _api: AppsV1Api,
-    namespace: string,
-  ) => Promise<typeof sampleApps>,
-  namespace = "pier-apps",
-) {
-  return app.register(
-    appsRoutesWithDeps({
-      namespace,
-      loadKubeConfig: () => ({ kc: { makeApiClient: () => ({}) } as never, mode: "kubeconfig" }),
-      listApps,
-    }),
-  );
-}
-
 describe("GET /apps", () => {
   it("returns 401 without a bearer token when auth is configured", async () => {
-    const app = Fastify({ logger: false });
-    setupAuth(app, testToken);
-    await registerAppsRoute(app, async () => sampleApps);
+    const fakeApps = {
+      listNamespacedDeployment: async () => ({ items: [] }),
+    };
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+    });
 
     const res = await app.inject({ method: "GET", url: "/apps" });
     assert.equal(res.statusCode, 401);
@@ -46,14 +31,26 @@ describe("GET /apps", () => {
   });
 
   it("returns the app list with a valid token", async () => {
-    const app = Fastify({ logger: false });
-    setupAuth(app, testToken);
-    await registerAppsRoute(app, async () => sampleApps);
+    const fakeApps = {
+      listNamespacedDeployment: async () => ({
+        items: [
+          {
+            metadata: { name: "hello", labels: { "pier.app": "hello" } },
+            spec: { replicas: 1, template: { spec: { containers: [{ image: "nginx:1.27" }] } } },
+            status: { readyReplicas: 1, updatedReplicas: 1, observedGeneration: 1 },
+          },
+        ],
+      }),
+    };
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+    });
 
     const res = await app.inject({
       method: "GET",
       url: "/apps",
-      headers: { authorization: `Bearer ${testToken}` },
+      headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
     const body = res.json() as typeof sampleApps;
@@ -63,31 +60,54 @@ describe("GET /apps", () => {
   });
 
   it("returns an empty array when there are no apps", async () => {
-    const app = Fastify({ logger: false });
-    setupAuth(app, testToken);
-    await registerAppsRoute(app, async () => []);
+    const fakeApps = {
+      listNamespacedDeployment: async () => ({ items: [] }),
+    };
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+    });
 
     const res = await app.inject({
       method: "GET",
       url: "/apps",
-      headers: { authorization: `Bearer ${testToken}` },
+      headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
     assert.deepEqual(res.json(), []);
     await app.close();
   });
 
+  it("returns 503 when kubeconfig failed to load", async () => {
+    const app = buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult() });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/apps",
+      headers: authHeader,
+    });
+    assert.equal(res.statusCode, 503);
+    const body = res.json() as { ok: boolean; error: string };
+    assert.equal(body.ok, false);
+    assert.equal(body.error, "cluster unreachable");
+    await app.close();
+  });
+
   it("returns 503 with a generic body when listApps throws", async () => {
-    const app = Fastify({ logger: false });
-    setupAuth(app, testToken);
-    await registerAppsRoute(app, async () => {
-      throw new Error("Forbidden: cannot list deployments");
+    const fakeApps = {
+      listNamespacedDeployment: async () => {
+        throw new Error("Forbidden: cannot list deployments");
+      },
+    };
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     const res = await app.inject({
       method: "GET",
       url: "/apps",
-      headers: { authorization: `Bearer ${testToken}` },
+      headers: authHeader,
     });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
@@ -98,22 +118,22 @@ describe("GET /apps", () => {
   });
 
   it("passes the configured namespace to listApps", async () => {
-    const app = Fastify({ logger: false });
-    setupAuth(app, testToken);
     let seenNamespace: string | undefined;
-    await registerAppsRoute(
-      app,
-      async (_api, namespace) => {
+    const fakeApps = {
+      listNamespacedDeployment: async ({ namespace }: { namespace: string }) => {
         seenNamespace = namespace;
-        return [];
+        return { items: [] };
       },
-      "custom-ns",
-    );
+    };
+    const app = buildApp(testConfig({ namespace: "custom-ns" }), {
+      logger: false,
+      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+    });
 
     await app.inject({
       method: "GET",
       url: "/apps",
-      headers: { authorization: `Bearer ${testToken}` },
+      headers: authHeader,
     });
     assert.equal(seenNamespace, "custom-ns");
     await app.close();
