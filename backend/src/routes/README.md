@@ -72,3 +72,32 @@ sequenceDiagram
 | `apps.ts` | `/apps` |
 
 Registered from `src/app.ts`.
+
+---
+
+## `/apps` Deployment troubleshooting
+
+When a Deployment is rejected by **Pod Security** standards or the **ResourceQuota**, the pods never become ready, and the app status shows as `building` (rollout in progress) or `failed` (deadline exceeded).
+
+**To debug:**
+
+```bash
+# Check Deployment events and conditions (most recent first)
+kubectl get events -n pier-apps --sort-by=.lastTimestamp
+
+# Examine ReplicaSet status (usually the issue is in the pod template)
+kubectl describe rs -n pier-apps
+
+# Read the last pod's logs and events
+kubectl describe pod -n pier-apps | tail -50
+```
+
+**Common rejections:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `violates PodSecurity "baseline:latest": privileged` | Container has `securityContext.privileged: true` | Remove `privileged: true` or use `allowPrivilegeEscalation: false` |
+| `violates PodSecurity "baseline:latest": hostPath volumes` | Pod mounts `hostPath` | Use emptyDir, local, or named volumes instead |
+| `violates PodSecurity "baseline:latest": hostNetwork` | Pod has `hostNetwork: true` | Remove `hostNetwork: true` |
+| `failed to create Service: Services must be type ClusterIP` | Service type is NodePort, LoadBalancer, or ExternalName | Ensure `type: ClusterIP` in the Service spec |
+| `exceeded quota: requests.cpu, requests.memory` | Pod has no CPU/memory requests and LimitRange defaults weren't applied | Check LimitRange; container must exist for defaults to apply |
