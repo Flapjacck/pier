@@ -1,162 +1,166 @@
 # Kubernetes manifests
 
-This folder contains all manifests for deploying pier-backend and configuring the pier-apps namespace in k3s.
+Manifests for the `pier-backend` pod (namespace `default`) and the guard rails on `pier-apps`, the namespace where Pier-deployed apps run. The cluster is a single k3s node: 4 CPU, about 9.2Gi allocatable memory, Traefik ingress and ServiceLB.
+
+## Files
+
+| File | Objects |
+|------|---------|
+| [namespace.yaml](namespace.yaml) | Namespace `pier-apps`, with Pod Security labels: enforce `baseline`, warn and audit `restricted`, all at version `latest`. |
+| [rbac.yaml](rbac.yaml) | ServiceAccount `default/pier-backend`; ClusterRole and ClusterRoleBinding `pier-backend-cluster-health`. |
+| [rbac-apps.yaml](rbac-apps.yaml) | Role and RoleBinding `pier-app-manager` in `pier-apps`, bound to `default/pier-backend`. |
+| [quota.yaml](quota.yaml) | ResourceQuota `pier-apps-quota` and LimitRange `pier-apps-limits` in `pier-apps`. |
+| [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps`. |
+| [deployment.yaml](deployment.yaml) | Deployment and ClusterIP Service `pier-backend` in `default`. |
 
 ## Apply order
 
-Manifests must be applied in this order (enforced by `scripts/deploy-local.sh`):
+`../scripts/deploy-local.sh` applies the files in this order and then sets the image (see [backend README](../README.md#deploy-to-k3s)):
 
-1. **`namespace.yaml`** — creates `pier-apps` namespace with Pod Security Standard labels
-2. **`rbac.yaml`** — pier-backend ServiceAccount and cluster-wide permissions
-3. **`rbac-apps.yaml`** — pier-app-manager Role for managing apps in pier-apps
-4. **`quota.yaml`** — resource quotas and limit range for pier-apps (if present)
-5. **`policy-services.yaml`** — admission policy restricting Services to ClusterIP (if present)
-6. **`deployment.yaml`** — pier-backend Deployment and Service
+```bash
+kubectl apply -f backend/k8s/namespace.yaml
+kubectl apply -f backend/k8s/rbac.yaml
+kubectl apply -f backend/k8s/rbac-apps.yaml
+kubectl apply -f backend/k8s/quota.yaml
+kubectl apply -f backend/k8s/policy-services.yaml
+kubectl apply -f backend/k8s/deployment.yaml
+```
 
-Reason: Kubernetes objects may have dependencies (e.g., RoleBinding needs the Role to exist; Deployment needs ServiceAccount).
+The namespace has to exist before anything namespaced in `pier-apps` is applied. The ServiceAccount should exist before the Deployment.
 
-## File reference
+`deployment.yaml` carries the placeholder image `pier-backend:dev`, which has no matching image anywhere. Applying it by hand resets the live image and starts a rollout that fails with `ImagePullBackOff`. Follow it with `kubectl -n default set image deploy/pier-backend api=pier-backend:<tag>`, or use the script. [#19](https://github.com/Flapjacck/pier/issues/19) tracks fixing this.
 
-| File | What it does |
-|------|--------------|
-| `namespace.yaml` | Creates `pier-apps` namespace with Pod Security Standard enforcement (baseline) and warn/audit (restricted) labels. |
-| `rbac.yaml` | ServiceAccount `pier-backend` in `default` namespace; ClusterRole for cluster health and RBAC bindings. |
-| `rbac-apps.yaml` | Role `pier-app-manager` in `pier-apps` namespace; grants CRUD on Deployments, Services, Ingresses. |
-| `quota.yaml` | ResourceQuota and LimitRange for `pier-apps`: 2 CPU / 4Gi memory requests; 4 CPU / 6Gi limits; max 20 pods. LimitRange defaults: 50m/64Mi request, 500m/256Mi limit. |
-| `policy-services.yaml` | ValidatingAdmissionPolicy restricting Services to `type: ClusterIP` (blocks NodePort, LoadBalancer, ExternalName). |
-| `deployment.yaml` | pier-backend Deployment (`default` namespace) and Service. |
+## RBAC
 
-## Pod Security Standards (PSS)
+| Subject | Scope | Grants |
+|---------|-------|--------|
+| `pier-backend-cluster-health` (ClusterRole) | cluster | `get`/`list` on `nodes` and `pods`; `get` on `/version`, `/healthz`, `/livez`, `/readyz`. Dropping `pods` is a `TODO(#5)`. |
+| `pier-app-manager` (Role) | `pier-apps` | Full CRUD on `deployments`, `services` and `ingresses`; `get`/`update`/`patch` on `deployments/scale`; `get`/`list`/`watch` on `pods`; `get` on `pods/log`. |
 
-The `pier-apps` namespace enforces **baseline** Pod Security and warns/audits **restricted**.
+Check what it allows:
 
-### Baseline (enforced)
+```bash
+SA=system:serviceaccount:default:pier-backend
+kubectl auth can-i create deployments -n pier-apps --as=$SA       # yes
+kubectl auth can-i patch deployments/scale -n pier-apps --as=$SA  # yes
+kubectl auth can-i get pods/log -n pier-apps --as=$SA             # yes
+kubectl auth can-i create ingresses -n pier-apps --as=$SA         # yes
+kubectl auth can-i delete pods -n pier-apps --as=$SA              # no
+kubectl auth can-i create deployments -n default --as=$SA         # no
+kubectl auth can-i delete nodes --as=$SA                          # no
+```
 
-Baseline blocks:
-- `privileged: true` in containers
+## Pod Security (`pier-apps`)
+
+**Enforced: baseline.** Pods that need host access or extra privilege are rejected:
+- `privileged: true`
+- `hostNetwork`, `hostPID`, `hostIPC` or `hostPort`
 - `hostPath` volumes
-- `hostNetwork: true`
-- `hostPID: true`
-- `hostIPC: true`
-- Unapproved capability additions (e.g., `CAP_NET_RAW`)
-- `runAsUser: 0` (root)
-- SELinux type `spc_t`
+- Adding capabilities beyond the default set, e.g. `NET_RAW` or `SYS_ADMIN`
+- `seccompProfile: Unconfined`, custom SELinux types, non-default `procMount`, unsafe sysctls
 
-Rationale: baseline permits root images like `nginx:1.27` (common for web apps), but blocks host access that could compromise the cluster.
+Baseline still allows root containers, so images like `nginx:1.27` run unmodified.
 
-### Restricted (warn/audit)
-
-Restricted additionally requires:
-- `runAsNonRoot: true`
+**Warned and audited: restricted.** Violations are allowed but show up as `kubectl` warnings and audit annotations:
+- `runAsNonRoot: true`, and no `runAsUser: 0`
 - `allowPrivilegeEscalation: false`
-- `capabilities.drop: ["ALL"]`
-- `seccompProfile.type` must be "RuntimeDefault" or "Localhost"
-- `seLinuxOptions.level` restricted format
+- `capabilities.drop: ["ALL"]`; only `NET_BIND_SERVICE` may be added back
+- `seccompProfile.type: RuntimeDefault` or `Localhost`
+- Only restricted volume types (configMap, secret, emptyDir, projected, PVC, etc.)
 
-Future: once all app manifests are hardened, we will move the namespace label to `enforce: restricted`.
+The plan is to switch `enforce` to `restricted` once app manifests are hardened.
 
-## Resource quota and limits
+## Quota and limits (`pier-apps`)
 
-The quota reserves 2 CPU / 4Gi memory for pier-apps, leaving headroom for k3s system pods and pier-backend (which runs in `default` namespace and is not affected).
+The ResourceQuota is a ceiling on the namespace's total, not a reservation. Nothing is set aside for `pier-apps`. It stops apps from taking more than this share of the node. `pier-backend` and the k3s system pods run in other namespaces and aren't counted.
 
-Check usage:
+| ResourceQuota | Value | Why |
+|---------------|-------|-----|
+| `requests.cpu` / `limits.cpu` | 2 / 4 | Apps can request at most half the node's 4 CPU; their limits can add up to all 4. |
+| `requests.memory` / `limits.memory` | 4Gi / 6Gi | Leaves room on about 9.2Gi for k3s and the backend. |
+| `pods` | 20 | Stops runaway replica counts. |
+| `services` | 20 | |
+| `services.nodeports` | 0 | No node ports. The Service-type policy blocks these as well. |
+| `services.loadbalancers` | 0 | No ServiceLB. The Service-type policy blocks these as well. |
+| `persistentvolumeclaims` | 0 | No persistent storage yet. |
+
+Because `requests.*` and `limits.*` are in the quota, every container needs them. The LimitRange (type `Container`) fills them in when a container doesn't set them:
+
+| LimitRange | CPU | Memory |
+|------------|-----|--------|
+| `defaultRequest` | 50m | 64Mi |
+| `default` (limit) | 500m | 256Mi |
+| `max` per container | 2 | 2Gi |
+
 ```bash
 kubectl describe resourcequota pier-apps-quota -n pier-apps
 kubectl describe limitrange pier-apps-limits -n pier-apps
 ```
 
-| Quota | Value | Reason |
-|-------|-------|--------|
-| requests.cpu | 2 | Conservative share of 4-CPU node |
-| requests.memory | 4Gi | Headroom on ~9.2Gi allocatable |
-| limits.cpu | 4 | Allow burst; k3s system can still run |
-| limits.memory | 6Gi | Hard cap; prevents OOMKill cascades |
-| pods | 20 | Typical demo namespace; prevent runaway count |
-| services | 20 | One service per pod is typical |
-| services.nodeports | 0 | Blocked by admission policy; must be ClusterIP |
-| services.loadbalancers | 0 | Blocked by admission policy; must be ClusterIP |
-| persistentvolumeclaims | 0 | Not yet used; reserved for future apps |
+## Service type policy (`pier-apps`)
 
-LimitRange applies pod defaults when containers have no requests/limits specified:
-- **Default request**: 50m CPU, 64Mi memory (minimal working service)
-- **Default limit**: 500m CPU, 256Mi memory (typical production container)
-- **Max**: 2 CPU, 2Gi memory per container (enforced upper bound)
+`pier-apps-clusterip-only` (`failurePolicy: Fail`, action `Deny`) runs on every Service CREATE and UPDATE in `pier-apps`. It admits a Service only if `spec.type` is unset or `ClusterIP`.
 
-## Service type restriction
+| Type | Blocked by |
+|------|------------|
+| `NodePort` | the policy **and** the quota (`services.nodeports: 0`) |
+| `LoadBalancer` | the policy **and** the quota (`services.loadbalancers: 0`) |
+| `ExternalName` | the policy only |
 
-The `pier-apps` namespace policy restricts all Services to `type: ClusterIP`. This is enforced by ValidatingAdmissionPolicy `pier-apps-clusterip-only`.
+Why block them:
+- On k3s, a NodePort Service is opened on every node IP by kube-proxy.
+- A LoadBalancer Service is also published on the node IP by ServiceLB (`svclb-*` pods), which puts the app straight onto the LAN.
+- An ExternalName Service is a DNS alias, which can point cluster-internal names at arbitrary hosts.
 
-Why:
-- **k3s ServiceLB**: k3s automatically exposes LoadBalancer and NodePort Services on the host IP (127.0.0.1 in dev, node IP in production).
-- **Attack surface**: Unintended service exposure could allow external access to internal services.
-- **Simplicity**: ClusterIP is sufficient for inter-pod and port-forward testing.
+For external access, use an Ingress through Traefik (the Role can create Ingresses; `POST /apps` support is [#4](https://github.com/Flapjacck/pier/issues/4)). For testing, use `kubectl port-forward`.
 
-If an app needs external access, expose it via an Ingress (later work) or port-forward.
+## Writing manifests for `pier-apps`
 
-## Notes for manifest builders
+A Deployment that passes baseline and the quota without restricted warnings:
 
-When creating manifests for pier-apps:
+```yaml
+spec:
+  template:
+    spec:
+      automountServiceAccountToken: false   # apps don't call the Kubernetes API
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: example/app:1.0            # must run as a non-root user
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+```
 
-1. **Always set resource requests and limits** in the container spec. The LimitRange provides defaults, but explicit values are clearer and prevent surprises.
-   ```yaml
-   resources:
-     requests:
-       cpu: 50m
-       memory: 64Mi
-     limits:
-       cpu: 500m
-       memory: 256Mi
-   ```
+Pair it with a Service that leaves out `type` or sets `type: ClusterIP`. Check a manifest against admission before applying it:
 
-2. **Set security context for restricted compliance**:
-   ```yaml
-   securityContext:
-     runAsNonRoot: true
-     runAsUser: 1000
-     allowPrivilegeEscalation: false
-     capabilities:
-       drop: ["ALL"]
-     seccompProfile:
-       type: RuntimeDefault
-   ```
-
-3. **Service type must be ClusterIP** (explicitly or omitted, which defaults to ClusterIP):
-   ```yaml
-   spec:
-     type: ClusterIP
-     ports:
-       - port: 80
-         targetPort: 8080
-   ```
-
-4. **Disable ServiceAccountToken if the app doesn't need the cluster API**:
-   ```yaml
-   automountServiceAccountToken: false
-   ```
-
-5. **Test with `kubectl --dry-run=server`** before applying:
-   ```bash
-   kubectl apply -f my-app.yaml --dry-run=server
-   ```
-   This simulates the apply, running admission policies and validating the manifest.
-
-## Debugging rejected deployments
-
-If a Deployment is rejected by Pod Security or Quota, the pods never become Ready and the app status shows `building` (rollout stalled) or `failed` (deadline).
-
-Check:
 ```bash
-# Recent events (most recent first)
+kubectl apply --dry-run=server -f my-app.yaml
+```
+
+## Debugging rejected apps
+
+A Deployment is accepted even when its pods aren't. Pod Security and quota rejections show up as `FailedCreate` events on the ReplicaSet. No pods appear, and `/apps` reports the app as `building`. It becomes `failed` once the progress deadline passes. Services are rejected straight away, when they are created.
+
+```bash
 kubectl get events -n pier-apps --sort-by=.lastTimestamp
-
-# ReplicaSet status (where the pod template issues usually surface)
 kubectl describe rs -n pier-apps
-
-# Pod logs and events
 kubectl describe pod -n pier-apps
 ```
 
-Common errors:
-- **Pod Security baseline violation**: fix with `allowPrivilegeEscalation: false`, remove `hostPath`, etc.
-- **Quota exceeded**: check that the Deployment has resource requests/limits set.
-- **Service type rejected**: ensure Services have `type: ClusterIP` or omit the type field.
+| Message contains | Cause | Fix |
+|------------------|-------|-----|
+| `violates PodSecurity "baseline:latest": privileged` | `securityContext.privileged: true` | Remove it. If the app truly needs a privileged container, it can't run in `pier-apps`. |
+| `violates PodSecurity "baseline:latest": hostPath volumes` | A `hostPath` volume | Use `emptyDir` (PVCs are capped at 0 for now). |
+| `violates PodSecurity "baseline:latest": host namespaces` | `hostNetwork`, `hostPID` or `hostIPC` | Remove it. |
+| `violates PodSecurity "baseline:latest": non-default capabilities` | `capabilities.add` beyond the default set | Drop the extra capabilities. |
+| `exceeded quota: pier-apps-quota` | The namespace total would go over a quota line | Lower requests, limits or replicas, or remove other apps. |
+| `maximum cpu usage per Container` / `maximum memory usage per Container` | A container is over the LimitRange `max` | Keep each container at 2 CPU / 2Gi or below. |
+| `Services in pier-apps must be type ClusterIP` | Service type NodePort, LoadBalancer or ExternalName | Leave out `type` or use `ClusterIP`. |
