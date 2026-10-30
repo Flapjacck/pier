@@ -148,6 +148,8 @@ Apply manifests in this order using the deploy script (above) or manually:
 kubectl apply -f backend/k8s/namespace.yaml
 kubectl apply -f backend/k8s/rbac.yaml
 kubectl apply -f backend/k8s/rbac-apps.yaml
+kubectl apply -f backend/k8s/quota.yaml
+kubectl apply -f backend/k8s/policy-services.yaml
 kubectl apply -f backend/k8s/deployment.yaml
 ```
 
@@ -199,6 +201,51 @@ Namespace-scoped permissions for the `/apps` route (app management in `pier-apps
 
 2. **RoleBinding `pier-app-manager`**  
    Links the pod's ServiceAccount (from `default`) to the Role (in `pier-apps`).
+
+#### `k8s/quota.yaml`
+Resource quotas and limits for the `pier-apps` namespace (two resources):
+
+1. **ResourceQuota `pier-apps-quota`**  
+   Enforces hard limits on cluster resources to prevent apps from consuming all node capacity (shared with k3s system pods and pier-backend):
+   - **CPU**: 2 requests / 4 limits  
+   - **Memory**: 4Gi requests / 6Gi limits  
+   - **Pods**: max 20  
+   - **Services**: max 20 (NodePorts and LoadBalancers blocked by policy, not quota)  
+   - **PersistentVolumeClaims**: 0 (not yet used)  
+   
+   Check usage: `kubectl describe resourcequota pier-apps-quota -n pier-apps`
+
+2. **LimitRange `pier-apps-limits`**  
+   Container defaults and bounds (required because ResourceQuota rejects pods with no requests/limits):
+   - **Default request**: 50m CPU, 64Mi memory (conservative baseline for small services)  
+   - **Default limit**: 500m CPU, 256Mi memory (typical app container)  
+   - **Max**: 2 CPU, 2Gi memory (enforced upper bound)  
+   
+   Check limits: `kubectl describe limitrange pier-apps-limits -n pier-apps`
+
+#### `k8s/policy-services.yaml`
+Admission control policy restricting Services in `pier-apps` to ClusterIP type (two resources):
+
+1. **ValidatingAdmissionPolicy `pier-apps-clusterip-only`**  
+   Validates that all Service CREATE/UPDATE operations in the namespace have `spec.type: ClusterIP` or no type specified (defaults to ClusterIP). Blocks NodePort, LoadBalancer, and ExternalName (which the quota doesn't cover).
+
+2. **ValidatingAdmissionPolicyBinding `pier-apps-clusterip-only`**  
+   Binds the policy to the `pier-apps` namespace. Violations are denied.
+   
+   Why: k3s ServiceLB exposes LoadBalancer and NodePort Services on the k3s node host IP. Restricting to ClusterIP keeps app traffic inside the cluster and prevents accidental exposure.
+
+#### `k8s/Pod Security`
+The `pier-apps` namespace is labelled with Pod Security Standard (PSS) levels:
+
+- **enforce: baseline** — blocks privileged, hostPath, hostNetwork, hostPID, and unapproved capability add. Required because root images like `nginx:1.27` cannot run under "restricted".
+- **warn/audit: restricted** — stricter rules flagged and logged but not enforced. Best practice for app images; we'll move enforce to "restricted" once app manifests are hardened.
+
+To comply, app pods should set (especially for restricted):
+- `securityContext.runAsNonRoot: true`  
+- `securityContext.allowPrivilegeEscalation: false`  
+- `securityContext.capabilities.drop: ["ALL"]`  
+- `securityContext.seccompProfile.type: RuntimeDefault`  
+- `automountServiceAccountToken: false` (if the app doesn't need the cluster API)
 
 #### `k8s/deployment.yaml`
 Two resources:
