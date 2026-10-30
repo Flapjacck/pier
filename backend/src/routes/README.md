@@ -11,8 +11,8 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 ## Common behaviour
 
 - **Auth** (`../plugins/auth.ts`): every route except `/health` needs `Authorization: Bearer $PIER_API_TOKEN` when a token is configured. A wrong, missing or non-Bearer header returns `401 { "ok": false, "error": "unauthorized" }`. With no token, auth is skipped, which `config.ts` only allows on a loopback `HOST`.
-- **Cluster errors**: kubeconfig, RBAC or API failures thrown inside the handler return `503` with `"error": "cluster unreachable"`. The full error is logged (`req.log.error`). In `cluster.ts`, `loadKubeConfig()` runs before the `try`, so if the kubeconfig itself fails to load, those routes return Fastify's default `500` instead ([#10](https://github.com/Flapjacck/pier/issues/10)).
-- **Credentials**: each request calls `loadKubeConfig()`. Inside a pod it uses the ServiceAccount token; outside, `KUBECONFIG` or `~/.kube/config`. The response's `mode` field is `in-cluster` or `kubeconfig`.
+- **Cluster clients**: K8s clients are built once at startup by `createK8sClients()` (in `../app.ts`). If kubeconfig fails to load, a warning is logged and all cluster/app routes return `503` with `"error": "cluster unreachable"`. The full error is never sent to the client; it goes to the server log only. This prevents per-request loading failures and ensures consistent error handling.
+- **Credentials**: `loadKubeConfig()` is called once at startup. Inside a pod it uses the ServiceAccount token (`in-cluster`); outside, `KUBECONFIG` (if set) or `~/.kube/config` (`kubeconfig`). Routes receive the mode from shared clients, so the response's `mode` field is always consistent for the lifetime of the app. A change to `KUBECONFIG` requires a restart.
 
 ## `GET /health`
 

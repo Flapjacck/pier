@@ -23,7 +23,7 @@ pnpm dev               # http://127.0.0.1:3000
 | `HOST` | `127.0.0.1` | server | Any non-loopback host (anything other than `127.*`, `::1`, `localhost`) requires `PIER_API_TOKEN`, or startup fails. |
 | `PIER_API_TOKEN` | unset | server | Bearer token for every route except `/health`. Generate with `openssl rand -hex 32`. |
 | `PIER_NAMESPACE` | `pier-apps` | server | Namespace `/apps` reads from. |
-| `KUBECONFIG` | `~/.kube/config` | server (outside a pod) | Read by `@kubernetes/client-node`. Use an absolute path; `~` is not expanded in `.env`. Ignored in-cluster. |
+| `KUBECONFIG` | `~/.kube/config` | server (outside a pod, at startup) | Read once at startup via `loadKubeConfig()`. Use an absolute path; `~` is not expanded in `.env`. Ignored in-cluster. Changes require a server restart. |
 | `K3S_HOST` | none | `deploy-local.sh` | k3s node address for the SSH image import. |
 | `K3S_SSH_USER` | none | `deploy-local.sh` | SSH user on the k3s node (needs passwordless `sudo k3s ctr`). |
 
@@ -61,12 +61,14 @@ Response shapes, status rules and diagrams: [src/routes/README.md](src/routes/RE
 
 ### Cluster credentials
 
-`src/k8s/client.ts` picks the mode per request:
+`src/k8s/client.ts` determines the mode once at startup and `src/k8s/clients.ts` loads all API clients:
 
 | Where | Mode | Credentials |
 |-------|------|-------------|
 | Pod on k3s | `in-cluster` | ServiceAccount token. Used when `KUBERNETES_SERVICE_HOST` is set and `/var/run/secrets/kubernetes.io/serviceaccount/token` exists. |
-| Beater / local | `kubeconfig` | `KUBECONFIG`, else `~/.kube/config`. |
+| Dev / local | `kubeconfig` | `KUBECONFIG` (if set), else `~/.kube/config`. |
+
+If the kubeconfig fails to load (bad file, missing context, unreachable cluster), the app starts with a warning logged, and all cluster/app routes return `503` with the generic error `"cluster unreachable"`. This allows for graceful degradation and clear error messages to clients without leaking internal details.
 
 ## Deploy to k3s
 
@@ -122,14 +124,16 @@ Manifests, RBAC, Pod Security, quota and the Service-type policy: [k8s/README.md
 
 | Path | Purpose |
 |------|---------|
-| `src/index.ts` | Entry point: `loadConfig()` (exits 1 on error), `buildApp()`, graceful shutdown, `listen`. |
-| `src/app.ts` | Fastify instance (info logging, auth header redacted). Registers auth and the route plugins. |
+| `src/index.ts` | Entry point: `loadConfig()` (exits 1 on error), `buildApp(config)`, graceful shutdown, `listen`. |
+| `src/app.ts` | Fastify instance (info logging, auth header redacted). Builds K8s clients once via `createK8sClients()`. Registers auth and route plugins, passing shared clients. |
 | `src/config.ts` | `loadConfig()`: env parsing and the "no token on a non-loopback host" check. |
 | `src/shutdown.ts` | One-shot SIGINT/SIGTERM handler. Forces exit after 10s if `app.close()` hangs. |
 | `src/plugins/auth.ts` | Bearer token `onRequest` hook (SHA-256 + `timingSafeEqual`). Skips `/health`. |
 | `src/routes/` | HTTP handlers. See [src/routes/README.md](src/routes/README.md). |
 | `src/k8s/` | Kubernetes client and mapping helpers. See [src/k8s/README.md](src/k8s/README.md). |
 | `tests/` | `node:test` suites mirroring `src/` (config, auth, routes, k8s mappers). Routes are tested with injected fakes. |
+| `tests/helpers/` | Test utilities: `fake-clients.ts` for creating mock `K8sClients` and `K8sClientsResult`. |
+| `tests/fixtures/` | Test data: `kubeconfig.yaml` (valid but fake kubeconfig for testing). |
 | `k8s/` | Manifests. See [k8s/README.md](k8s/README.md). |
 | `scripts/deploy-local.sh` | Build, import and roll out to k3s (above). |
 | `Dockerfile` | Two-stage `node:22-alpine` build, pinned by digest. Stage 1 runs `pnpm install --frozen-lockfile`, `build` and `prune --prod`. Stage 2 runs `node dist/index.js` as `node` (uid 1000) on port 3000. |
