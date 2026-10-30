@@ -1,39 +1,28 @@
 # HTTP routes
 
-Pier backend exposes a small read-only API over Fastify. Handlers live in this folder; Kubernetes calls sit in `src/k8s/`.
+Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live in [`../k8s/`](../k8s/README.md). `cluster.ts` and `apps.ts` export `*RoutesWithDeps()` factories so tests can inject fakes.
 
-## Routes (plain English)
+| File | Routes |
+|------|--------|
+| `health.ts` | `GET /health` |
+| `cluster.ts` | `GET /cluster/health`, `GET /cluster/pods` |
+| `apps.ts` | `GET /apps` |
 
-| Method | Path | Auth | What it does |
-|--------|------|------|----------------|
-| GET | `/health` | None | Answers "is the Node process up?" No cluster call — safe for k8s liveness probes. |
-| GET | `/cluster/health` | Bearer token | Answers "can this app talk to k3s?" Fetches API version and counts nodes that are Ready. |
-| GET | `/cluster/pods` | Bearer token | Answers "what is running?" Lists every pod in every namespace with name, phase, node, and ready count. |
-| GET | `/apps` | Bearer token | Lists Pier-managed apps (Deployments in `PIER_NAMESPACE` with label `pier.app`). Uses the namespaced Role in `k8s/rbac-apps.yaml`, not the cluster health ClusterRole. |
+## Common behaviour
 
-**Success:** JSON with `ok: true` and useful fields.  
-**Auth failure:** HTTP **401** with `ok: false` and `error: "unauthorized"`.  
-**Cluster errors** (bad creds, RBAC, API down): HTTP **503** with `ok: false` and a generic `error: "cluster unreachable"` message. Full error details are logged server-side.
+- **Auth** (`../plugins/auth.ts`): every route except `/health` needs `Authorization: Bearer $PIER_API_TOKEN` when a token is configured. A wrong, missing or non-Bearer header returns `401 { "ok": false, "error": "unauthorized" }`. With no token, auth is skipped, which `config.ts` only allows on a loopback `HOST`.
+- **Cluster errors**: kubeconfig, RBAC or API failures thrown inside the handler return `503` with `"error": "cluster unreachable"`. The full error is logged (`req.log.error`). In `cluster.ts`, `loadKubeConfig()` runs before the `try`, so if the kubeconfig itself fails to load, those routes return Fastify's default `500` instead ([#10](https://github.com/Flapjacck/pier/issues/10)).
+- **Credentials**: each request calls `loadKubeConfig()`. Inside a pod it uses the ServiceAccount token; outside, `KUBECONFIG` or `~/.kube/config`. The response's `mode` field is `in-cluster` or `kubeconfig`.
 
-**API credentials:** Bearer token set via `PIER_API_TOKEN` env var (see main `README.md`).  
-**Kubernetes credentials:** In a pod, the ServiceAccount token is used. Locally, set `KUBECONFIG` (same as `kubectl`).
+## `GET /health`
 
----
+No auth, no cluster call. Used by the liveness and readiness probes.
 
-## `/health`
-
-```mermaid
-sequenceDiagram
-  participant Client
-  participant Pier as pier-backend
-
-  Client->>Pier: GET /health
-  Pier-->>Client: 200 { ok, service }
+```json
+{ "ok": true, "service": "pier-backend" }
 ```
 
----
-
-## `/cluster/health` and `/cluster/pods`
+## `GET /cluster/health` and `GET /cluster/pods`
 
 ```mermaid
 sequenceDiagram
@@ -41,63 +30,63 @@ sequenceDiagram
   participant Pier as pier-backend
   participant K8s as Kubernetes API
 
-  Client->>Pier: GET /cluster/health (+ Authorization: Bearer $TOKEN)
-  alt in-cluster or kubeconfig
-    Pier->>K8s: GET /version
-    Pier->>K8s: LIST nodes
-    Pier-->>Client: 200 { ok, version, nodes }
-  else API or RBAC failure
-    Pier-->>Client: 503 { ok: false, error: "cluster unreachable" }
-  end
-
-  Client->>Pier: GET /cluster/pods (+ Authorization: Bearer $TOKEN)
+  Client->>Pier: GET /cluster/health (Bearer)
+  Pier->>K8s: GET /version
+  Pier->>K8s: LIST nodes
   alt success
-    Pier->>K8s: LIST pods (all namespaces)
-    Pier-->>Client: 200 { ok, pods[], total }
-  else failure
-    Pier-->>Client: 503 { ok: false, error: "cluster unreachable" }
+    Pier-->>Client: 200 { ok, mode, version, nodes }
+  else error
+    Pier-->>Client: 503 { ok: false, mode, error }
+  end
+
+  Client->>Pier: GET /cluster/pods (Bearer)
+  Pier->>K8s: LIST pods (all namespaces)
+  alt success
+    Pier-->>Client: 200 { ok, mode, pods[], total }
+  else error
+    Pier-->>Client: 503 { ok: false, mode, error }
   end
 ```
 
-**RBAC (in-cluster):** ServiceAccount needs `list` on **nodes** and **pods** — see `k8s/rbac.yaml`.
+`/cluster/health` returns `200` whenever the API answers. `ok` is `false` if there are no nodes or any node isn't `Ready`.
 
----
-
-## Files
-
-| File | Routes |
-|------|--------|
-| `health.ts` | `/health` |
-| `cluster.ts` | `/cluster/health`, `/cluster/pods` |
-| `apps.ts` | `/apps` |
-
-Registered from `src/app.ts`.
-
----
-
-## `/apps` Deployment troubleshooting
-
-When a Deployment is rejected by **Pod Security** standards or the **ResourceQuota**, the pods never become ready, and the app status shows as `building` (rollout in progress) or `failed` (deadline exceeded).
-
-**To debug:**
-
-```bash
-# Check Deployment events and conditions (most recent first)
-kubectl get events -n pier-apps --sort-by=.lastTimestamp
-
-# Examine ReplicaSet status (usually the issue is in the pod template)
-kubectl describe rs -n pier-apps
-
-# Read the last pod's logs and events
-kubectl describe pod -n pier-apps | tail -50
+```json
+{ "ok": true, "mode": "in-cluster", "version": "v1.36.5+k3s1", "nodes": { "total": 1, "ready": 1 } }
 ```
 
-**Common rejections:**
+Each entry in `/cluster/pods`'s `pods[]` looks like this (`nodeName` and `startedAt` are omitted when unset):
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `violates PodSecurity "baseline:latest": privileged` | Container has `securityContext.privileged: true` | Remove `privileged: true` or use `allowPrivilegeEscalation: false` |
-| `violates PodSecurity "baseline:latest": hostPath volumes` | Pod mounts `hostPath` | Use emptyDir, local, or named volumes instead |
-| `violates PodSecurity "baseline:latest": hostNetwork` | Pod has `hostNetwork: true` | Remove `hostNetwork: true` |
-| `failed to create Service: Services must be type ClusterIP` | Service type is NodePort, LoadBalancer, or ExternalName | Ensure `type: ClusterIP` in the Service spec |
-| `exceeded quota: requests.cpu, requests.memory` | Pod has no CPU/memory requests and LimitRange defaults weren't applied | Check LimitRange; container must exist for defaults to apply |
+```json
+{ "name": "coredns-7cfb7bc9c7-abcde", "namespace": "kube-system", "phase": "Running", "nodeName": "k3s-node", "ready": "1/1", "startedAt": "2026-10-29T15:00:00.000Z" }
+```
+
+RBAC: the ClusterRole `pier-backend-cluster-health` in [`../../k8s/rbac.yaml`](../../k8s/rbac.yaml).
+
+## `GET /apps`
+
+Lists Deployments in `PIER_NAMESPACE` (default `pier-apps`) that have the `pier.app` label. Unlabelled Deployments are skipped. The result is a bare JSON array sorted by name, and `[]` when there are none. Fastify validates it against the response schema in `apps.ts`.
+
+```json
+[
+  { "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 2, "status": "running", "createdAt": "2026-10-29T15:00:00.000Z" }
+]
+```
+
+- `name` comes from the `pier.app` label value, falling back to `metadata.name`.
+- `image` is the first container's image.
+- `replicas` is `spec.replicas` (default 1), and `ready` is `status.readyReplicas` (default 0).
+
+`status` (`deriveStatus` in `../k8s/apps.ts`) is decided by the first rule that matches, in this order:
+
+| `status` | Rule |
+|----------|------|
+| `failed` | `Progressing` reason is `ProgressDeadlineExceeded`, or `Available=False` while `Progressing` isn't `True` |
+| `stopped` | `replicas` is 0 |
+| `running` | `readyReplicas` and `updatedReplicas` both equal `replicas`, and `observedGeneration` ≥ `generation` |
+| `building` | anything else (rollout in progress, pods not ready) |
+
+The 503 body is `{ "ok": false, "error": "cluster unreachable" }`, without `mode`.
+
+RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac-apps.yaml), not the cluster ClusterRole.
+
+If an app stays `building` or turns `failed` because Pod Security or the quota rejected its pods, see [Debugging rejected apps](../../k8s/README.md#debugging-rejected-apps).
