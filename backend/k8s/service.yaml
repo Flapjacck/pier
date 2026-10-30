@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pier-backend
+  namespace: default
+  labels:
+    app: pier-backend
+    app.kubernetes.io/part-of: pier
+    app.kubernetes.io/managed-by: pier
+spec:
+  selector:
+    app: pier-backend
+  ports:
+    - port: 80
+      targetPort: http
