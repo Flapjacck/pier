@@ -1,146 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import Fastify from "fastify";
-import { setupAuth } from "../../src/plugins/auth.js";
-import { clusterRoutesWithDeps } from "../../src/routes/cluster.js";
+import { buildApp } from "../../src/app.js";
 import { createFakeClientsResult } from "../helpers/fake-clients.js";
+import { TEST_TOKEN, testConfig } from "../helpers/test-config.js";
 
-describe("setupAuth", () => {
-  describe("with apiToken configured", () => {
-    const testToken = "test-token-secret";
+const UNAUTHORIZED = { ok: false, error: "unauthorized" };
 
-    it("rejects requests without Authorization header", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-      const fakeCore = {
-        listPodForAllNamespaces: async () => ({ items: [] }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/pods",
-      });
-      assert.equal(res.statusCode, 401);
-      const body = res.json() as { ok: boolean; error: string };
-      assert.deepEqual(body, { ok: false, error: "unauthorized" });
-      await app.close();
-    });
-
-    it("rejects requests with wrong bearer token", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-      const fakeCore = {
-        listPodForAllNamespaces: async () => ({ items: [] }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/pods",
-        headers: {
-          authorization: "Bearer wrong-token",
-        },
-      });
-      assert.equal(res.statusCode, 401);
-      const body = res.json() as { ok: boolean; error: string };
-      assert.deepEqual(body, { ok: false, error: "unauthorized" });
-      await app.close();
-    });
-
-    it("rejects requests with Basic auth scheme", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-      const fakeCore = {
-        listPodForAllNamespaces: async () => ({ items: [] }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/pods",
-        headers: {
-          authorization: "Basic dXNlcjpwYXNz",
-        },
-      });
-      assert.equal(res.statusCode, 401);
-      const body = res.json() as { ok: boolean; error: string };
-      assert.deepEqual(body, { ok: false, error: "unauthorized" });
-      await app.close();
-    });
-
-    it("rejects malformed authorization header", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-      const fakeCore = {
-        listPodForAllNamespaces: async () => ({ items: [] }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/pods",
-        headers: {
-          authorization: "NotBearerToken",
-        },
-      });
-      assert.equal(res.statusCode, 401);
-      const body = res.json() as { ok: boolean; error: string };
-      assert.deepEqual(body, { ok: false, error: "unauthorized" });
-      await app.close();
-    });
-
-    it("accepts correct bearer token on /cluster/health", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-      const fakeCore = {
+/** Full app with healthy fake k8s clients, so any 401 comes from setupAuth alone. */
+function appWithToken(apiToken: string | undefined) {
+  return buildApp(testConfig({ apiToken }), {
+    logger: false,
+    k8s: createFakeClientsResult({
+      core: {
         listNode: async () => ({
           items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
         }),
-      };
-      const fakeVersion = {
-        getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/health",
-        headers: {
-          authorization: `Bearer ${testToken}`,
-        },
-      });
-      assert.equal(res.statusCode, 200);
-      const body = res.json() as { ok: boolean; version: string };
-      assert.equal(body.ok, true);
-      assert.equal(body.version, "v1.30.0+k3s1");
-      await app.close();
-    });
-
-    it("accepts correct bearer token on /cluster/pods", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-      const fakeCore = {
         listPodForAllNamespaces: async () => ({
           items: [
             {
@@ -149,125 +23,83 @@ describe("setupAuth", () => {
             },
           ],
         }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never }),
-        }),
-      );
+      } as never,
+      version: { getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }) } as never,
+    }),
+  });
+}
 
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/pods",
-        headers: {
-          authorization: `Bearer ${testToken}`,
-        },
+async function get(apiToken: string | undefined, url: string, authorization?: string) {
+  const app = appWithToken(apiToken);
+  const res = await app.inject({
+    method: "GET",
+    url,
+    headers: authorization === undefined ? {} : { authorization },
+  });
+  await app.close();
+  return res;
+}
+
+describe("setupAuth", () => {
+  describe("with apiToken configured", () => {
+    const rejected: Array<[name: string, authorization: string | undefined]> = [
+      ["without Authorization header", undefined],
+      ["with wrong bearer token", "Bearer wrong-token"],
+      ["with Basic auth scheme", "Basic dXNlcjpwYXNz"],
+      ["with malformed authorization header", "NotBearerToken"],
+    ];
+    for (const [name, authorization] of rejected) {
+      it(`rejects requests ${name}`, async () => {
+        const res = await get(TEST_TOKEN, "/cluster/pods", authorization);
+        assert.equal(res.statusCode, 401);
+        assert.deepEqual(res.json(), UNAUTHORIZED);
       });
+    }
+
+    it("accepts correct bearer token on /cluster/health", async () => {
+      const res = await get(TEST_TOKEN, "/cluster/health", `Bearer ${TEST_TOKEN}`);
+      assert.equal(res.statusCode, 200);
+      const body = res.json() as { ok: boolean; version: string };
+      assert.equal(body.ok, true);
+      assert.equal(body.version, "v1.30.0+k3s1");
+    });
+
+    it("accepts correct bearer token on /cluster/pods", async () => {
+      const res = await get(TEST_TOKEN, "/cluster/pods", `Bearer ${TEST_TOKEN}`);
       assert.equal(res.statusCode, 200);
       const body = res.json() as { ok: boolean; total: number };
       assert.equal(body.ok, true);
       assert.equal(body.total, 1);
-      await app.close();
     });
 
     it("allows /health without authorization", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, testToken);
-
-      app.get("/health", async () => ({
-        ok: true,
-        service: "pier-backend",
-      }));
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/health",
-      });
+      const res = await get(TEST_TOKEN, "/health");
       assert.equal(res.statusCode, 200);
-      const body = res.json() as { ok: boolean; service: string };
-      assert.equal(body.ok, true);
-      assert.equal(body.service, "pier-backend");
-      await app.close();
+      assert.deepEqual(res.json(), { ok: true, service: "pier-backend" });
     });
   });
 
   describe("without apiToken (dev mode on loopback)", () => {
     it("allows /cluster/health without token", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, undefined);
-      const fakeCore = {
-        listNode: async () => ({
-          items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
-        }),
-      };
-      const fakeVersion = {
-        getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/health",
-      });
+      const res = await get(undefined, "/cluster/health");
       assert.equal(res.statusCode, 200);
       const body = res.json() as { ok: boolean; version: string };
       assert.equal(body.ok, true);
       assert.equal(body.version, "v1.30.0+k3s1");
-      await app.close();
     });
 
     it("allows /cluster/pods without token", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, undefined);
-      const fakeCore = {
-        listPodForAllNamespaces: async () => ({
-          items: [
-            {
-              metadata: { name: "demo", namespace: "default" },
-              status: { phase: "Running", containerStatuses: [{ ready: true }] },
-            },
-          ],
-        }),
-      };
-      await app.register(
-        clusterRoutesWithDeps({
-          k8s: createFakeClientsResult({ core: fakeCore as never }),
-        }),
-      );
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/cluster/pods",
-      });
+      const res = await get(undefined, "/cluster/pods");
       assert.equal(res.statusCode, 200);
       const body = res.json() as { ok: boolean; total: number };
       assert.equal(body.ok, true);
       assert.equal(body.total, 1);
-      await app.close();
     });
 
     it("allows /health without token", async () => {
-      const app = Fastify({ logger: false });
-      setupAuth(app, undefined);
-
-      app.get("/health", async () => ({
-        ok: true,
-        service: "pier-backend",
-      }));
-
-      const res = await app.inject({
-        method: "GET",
-        url: "/health",
-      });
+      const res = await get(undefined, "/health");
       assert.equal(res.statusCode, 200);
-      const body = res.json() as { ok: boolean; service: string };
-      assert.equal(body.ok, true);
-      assert.equal(body.service, "pier-backend");
-      await app.close();
+      assert.deepEqual(res.json(), { ok: true, service: "pier-backend" });
     });
   });
 });

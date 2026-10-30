@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import Fastify from "fastify";
-import { clusterRoutesWithDeps } from "../../src/routes/cluster.js";
+import { buildApp } from "../../src/app.js";
 import {
   createFakeClientsResult,
   createFailedClientsResult,
 } from "../helpers/fake-clients.js";
+import { authHeader, testConfig } from "../helpers/test-config.js";
 
 describe("GET /cluster/health", () => {
   it("returns 200 when the cluster check passes", async () => {
-    const app = Fastify({ logger: false });
     const fakeCore = {
       listNode: async () => ({
         items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
@@ -19,13 +18,12 @@ describe("GET /cluster/health", () => {
       getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
     };
 
-    await app.register(
-      clusterRoutesWithDeps({
-        k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
-      }),
-    );
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
+    });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/health" });
+    const res = await app.inject({ method: "GET", url: "/cluster/health", headers: authHeader });
     assert.equal(res.statusCode, 200);
     const body = res.json() as { ok: boolean; version: string };
     assert.equal(body.ok, true);
@@ -34,14 +32,12 @@ describe("GET /cluster/health", () => {
   });
 
   it("returns 503 when kubeconfig failed to load", async () => {
-    const app = Fastify({ logger: false });
-    await app.register(
-      clusterRoutesWithDeps({
-        k8s: createFailedClientsResult("cannot read kubeconfig"),
-      }),
-    );
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFailedClientsResult("cannot read kubeconfig"),
+    });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/health" });
+    const res = await app.inject({ method: "GET", url: "/cluster/health", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
@@ -53,7 +49,6 @@ describe("GET /cluster/health", () => {
   });
 
   it("returns 503 with generic error when the cluster check fails", async () => {
-    const app = Fastify({ logger: false });
     const fakeCore = {
       listNode: async () => {
         throw new Error("Forbidden: cannot access nodes");
@@ -63,13 +58,16 @@ describe("GET /cluster/health", () => {
       getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
     };
 
-    await app.register(
-      clusterRoutesWithDeps({
-        k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never, mode: "in-cluster" }),
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({
+        core: fakeCore as never,
+        version: fakeVersion as never,
+        mode: "in-cluster",
       }),
-    );
+    });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/health" });
+    const res = await app.inject({ method: "GET", url: "/cluster/health", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
@@ -84,7 +82,6 @@ describe("GET /cluster/health", () => {
 
 describe("GET /cluster/pods", () => {
   it("returns 200 with pod list on success", async () => {
-    const app = Fastify({ logger: false });
     const fakeCore = {
       listPodForAllNamespaces: async () => ({
         items: [
@@ -96,13 +93,12 @@ describe("GET /cluster/pods", () => {
       }),
     };
 
-    await app.register(
-      clusterRoutesWithDeps({
-        k8s: createFakeClientsResult({ core: fakeCore as never }),
-      }),
-    );
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ core: fakeCore as never }),
+    });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/pods" });
+    const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 200);
     const body = res.json() as { ok: boolean; total: number };
     assert.equal(body.ok, true);
@@ -111,14 +107,9 @@ describe("GET /cluster/pods", () => {
   });
 
   it("returns 503 when kubeconfig failed to load", async () => {
-    const app = Fastify({ logger: false });
-    await app.register(
-      clusterRoutesWithDeps({
-        k8s: createFailedClientsResult(),
-      }),
-    );
+    const app = buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult() });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/pods" });
+    const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
@@ -127,20 +118,18 @@ describe("GET /cluster/pods", () => {
   });
 
   it("returns 503 with generic error when Kubernetes call fails", async () => {
-    const app = Fastify({ logger: false });
     const fakeCore = {
       listPodForAllNamespaces: async () => {
         throw new Error("Forbidden: cannot list pods");
       },
     };
 
-    await app.register(
-      clusterRoutesWithDeps({
-        k8s: createFakeClientsResult({ core: fakeCore as never, mode: "in-cluster" }),
-      }),
-    );
+    const app = buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({ core: fakeCore as never, mode: "in-cluster" }),
+    });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/pods" });
+    const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
