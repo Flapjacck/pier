@@ -7,6 +7,7 @@ metadata:
     app: pier-backend
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       app: pier-backend
@@ -16,8 +17,19 @@ spec:
         app: pier-backend
     spec:
       serviceAccountName: pier-backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: api
+          # Image tag is overridden by deploy-local.sh with kubectl set image.
           image: pier-backend:dev
           imagePullPolicy: IfNotPresent
           ports:
@@ -28,6 +40,29 @@ spec:
               value: "3000"
             - name: HOST
               value: "0.0.0.0"
+            - name: PIER_NAMESPACE
+              value: "pier-apps"
+            - name: PIER_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pier-backend-secrets
+                  key: PIER_API_TOKEN
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /health
