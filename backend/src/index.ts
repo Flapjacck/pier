@@ -14,6 +14,8 @@ try {
 const app = buildApp(config);
 registerGracefulShutdown(app);
 
+const x: number = "no"; // deliberate type error
+
 try {
   await app.listen({ port: config.port, host: config.host });
 } catch (err) {
