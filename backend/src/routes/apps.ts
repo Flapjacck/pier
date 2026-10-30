@@ -1,12 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
-import * as k8s from "@kubernetes/client-node";
-import { loadConfig } from "../config.js";
-import { loadKubeConfig as defaultLoadKubeConfig } from "../k8s/client.js";
-import { listApps as defaultListApps } from "../k8s/apps.js";
+import { listApps } from "../k8s/apps.js";
+import type { K8sClientsResult } from "../k8s/clients.js";
 
 type AppsRouteDeps = {
-  loadKubeConfig: typeof defaultLoadKubeConfig;
-  listApps: typeof defaultListApps;
+  k8s: K8sClientsResult;
   namespace: string;
 };
 
@@ -27,17 +24,7 @@ const appSchema = {
 } as const;
 
 /** Factory keeps GET /apps testable without a live cluster. */
-export function appsRoutesWithDeps(
-  deps: Partial<AppsRouteDeps> & Pick<AppsRouteDeps, "namespace"> = {
-    namespace: loadConfig().namespace,
-  },
-): FastifyPluginAsync {
-  const resolved: AppsRouteDeps = {
-    loadKubeConfig: deps.loadKubeConfig ?? defaultLoadKubeConfig,
-    listApps: deps.listApps ?? defaultListApps,
-    namespace: deps.namespace,
-  };
-
+export function appsRoutesWithDeps(deps: AppsRouteDeps): FastifyPluginAsync {
   return async (app) => {
     /** Pier-managed Deployments in PIER_NAMESPACE (label pier.app). */
     app.get(
@@ -61,10 +48,15 @@ export function appsRoutesWithDeps(
         },
       },
       async (req, reply) => {
+        if (!deps.k8s.ok) {
+          return reply.status(503).send({
+            ok: false,
+            error: "cluster unreachable",
+          });
+        }
+
         try {
-          const { kc } = resolved.loadKubeConfig();
-          const api = kc.makeApiClient(k8s.AppsV1Api);
-          return await resolved.listApps(api, resolved.namespace);
+          return await listApps(deps.k8s.clients.apps, deps.namespace);
         } catch (err) {
           req.log.error({ err }, "list apps failed");
           return reply.status(503).send({
@@ -76,5 +68,3 @@ export function appsRoutesWithDeps(
     );
   };
 }
-
-export const appsRoutes = appsRoutesWithDeps();
