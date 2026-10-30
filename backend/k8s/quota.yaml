@@ -9,18 +9,19 @@ metadata:
 spec:
   hard:
     # CPU and memory: limited by single k3s node (4 CPU, ~9.2Gi allocatable).
-    # This quota reserves 2 CPU / 4Gi for pier-apps, leaving headroom for k3s system pods and pier-backend.
+    # This quota caps pier-apps at 2 CPU / 4Gi of requests (nothing is reserved), leaving headroom for k3s system pods and pier-backend.
     requests.cpu: "2"
     requests.memory: 4Gi
     limits.cpu: "4"
     limits.memory: 6Gi
     # Pod count: reasonable limit for a small demo; prevents runaway deployments.
     pods: "20"
-    # Service counts: restrict network exposure (no LoadBalancers or NodePorts in k3s ServiceLB model).
+    # Service counts: no NodePorts (kube-proxy opens them on the node IP) or LoadBalancers (ServiceLB);
+    # policy-services.yaml also rejects both, plus ExternalName.
     services: "20"
     services.nodeports: "0"
     services.loadbalancers: "0"
-    # PersistentVolumeClaims: not yet used; reserved for future apps needing persistent storage.
+    # PersistentVolumeClaims: not allowed yet; raise this when apps need persistent storage.
     persistentvolumeclaims: "0"
 ---
 apiVersion: v1
