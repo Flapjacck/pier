@@ -3,36 +3,45 @@ import * as k8s from "@kubernetes/client-node";
 
 export type KubeConfigMode = "in-cluster" | "kubeconfig";
 
+export type LoadedKubeConfig = { kc: k8s.KubeConfig; mode: KubeConfigMode };
+
+/** Signature createK8sClients() and buildApp() accept, so tests can inject a fake loader. */
+export type KubeConfigLoader = (kubeconfigPath?: string) => LoadedKubeConfig;
+
 const SA_TOKEN = "/var/run/secrets/kubernetes.io/serviceaccount/token";
 
-/** True when running as a pod with the standard ServiceAccount volume mounted. */
-export function isInCluster(): boolean {
+/**
+ * True when running as a pod with the standard ServiceAccount volume mounted.
+ * `pathPrefix` lets tests point at a fake ServiceAccount volume in a temp dir.
+ */
+export function isInCluster(pathPrefix = ""): boolean {
   return (
     Boolean(process.env.KUBERNETES_SERVICE_HOST) &&
-    fs.existsSync(SA_TOKEN)
+    fs.existsSync(`${pathPrefix}${SA_TOKEN}`)
   );
 }
 
 /**
- * Load and validate kubeconfig once, with clear error messages if it fails.
- * Tries in order: in-cluster (if token/env mounted), then kubeconfig file (if path given),
- * then default locations (~/.kube/config).
- * Throws if the loaded config has no current context or cluster.
+ * Load and validate the kubeconfig. Called once at startup by createK8sClients().
+ * Order: in-cluster ServiceAccount, then the given file (config.kubeconfig),
+ * then loadFromDefault() (KUBECONFIG env or ~/.kube/config).
+ * Throws if there is no current context or it points at a missing cluster.
  */
 export function loadKubeConfig(
   kubeconfigPath?: string,
-): { kc: k8s.KubeConfig; mode: KubeConfigMode } {
+  serviceAccountPathPrefix = "",
+): LoadedKubeConfig {
   const kc = new k8s.KubeConfig();
+  const inCluster = isInCluster(serviceAccountPathPrefix);
 
-  if (isInCluster()) {
-    kc.loadFromCluster();
+  if (inCluster) {
+    kc.loadFromCluster(serviceAccountPathPrefix);
   } else if (kubeconfigPath) {
     kc.loadFromFile(kubeconfigPath);
   } else {
     kc.loadFromDefault();
   }
 
-  // Validate that the loaded config has a current context and cluster.
   const currentContext = kc.getCurrentContext();
   if (!currentContext) {
     throw new Error(
@@ -40,13 +49,13 @@ export function loadKubeConfig(
     );
   }
 
-  const cluster = kc.getCluster(currentContext);
-  if (!cluster) {
+  // Resolve the cluster through the context: context and cluster names often differ
+  // (in-cluster they are "inClusterContext" and "inCluster").
+  if (!kc.getCurrentCluster()) {
     throw new Error(
-      `kubeconfig: cluster "${currentContext}" not found in config`,
+      `kubeconfig: context "${currentContext}" has no cluster; check the context's cluster entry`,
     );
   }
 
-  const mode = isInCluster() ? "in-cluster" : "kubeconfig";
-  return { kc, mode };
+  return { kc, mode: inCluster ? "in-cluster" : "kubeconfig" };
 }
