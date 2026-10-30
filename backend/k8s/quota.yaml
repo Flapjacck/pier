@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: pier-apps-quota
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  hard:
+    # CPU and memory: limited by single k3s node (4 CPU, ~9.2Gi allocatable).
+    # This quota reserves 2 CPU / 4Gi for pier-apps, leaving headroom for k3s system pods and pier-backend.
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 6Gi
+    # Pod count: reasonable limit for a small demo; prevents runaway deployments.
+    pods: "20"
+    # Service counts: restrict network exposure (no LoadBalancers or NodePorts in k3s ServiceLB model).
+    services: "20"
+    services.nodeports: "0"
+    services.loadbalancers: "0"
+    # PersistentVolumeClaims: not yet used; reserved for future apps needing persistent storage.
+    persistentvolumeclaims: "0"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: pier-apps-limits
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  limits:
+    # Container defaults: applied when a pod has no requests or limits.
+    # This solves the "request not specified" rejection from ResourceQuota.
+    # - defaultRequest: conservative baseline for small services (nginx, redis, etc.)
+    # - default: realistic limits for typical app containers
+    # - max: enforced upper bound to prevent resource hogging
+    - type: Container
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi
+      default:
+        cpu: 500m
+        memory: 256Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
