@@ -68,7 +68,10 @@ Response shapes, status rules and diagrams: [src/routes/README.md](src/routes/RE
 | Pod on k3s | `in-cluster` | ServiceAccount token. Used when `KUBERNETES_SERVICE_HOST` is set and `/var/run/secrets/kubernetes.io/serviceaccount/token` exists. |
 | Dev / local | `kubeconfig` | `KUBECONFIG` (if set), else `~/.kube/config`. |
 
-If the kubeconfig fails to load (bad file, missing context, unreachable cluster), the app starts with a warning logged, and all cluster/app routes return `503` with the generic error `"cluster unreachable"`. This allows for graceful degradation and clear error messages to clients without leaking internal details.
+The kubeconfig is loaded once at startup. Loading only reads files and makes no network call.
+
+- If it fails to load (missing or unparsable file, no current context, context without a cluster), the server still starts. It logs a one-line warning (`cluster unreachable at startup: ...`) and every cluster and app route returns `503 { ok: false, error: "cluster unreachable" }`. `/health` stays `200`.
+- If it loads but the API server can't be reached, startup succeeds silently. Each cluster or app request then fails and returns the same `503`, with the full error in the server log.
 
 ## Deploy to k3s
 
@@ -132,7 +135,7 @@ Manifests, RBAC, Pod Security, quota and the Service-type policy: [k8s/README.md
 | `src/routes/` | HTTP handlers. See [src/routes/README.md](src/routes/README.md). |
 | `src/k8s/` | Kubernetes client and mapping helpers. See [src/k8s/README.md](src/k8s/README.md). |
 | `tests/` | `node:test` suites mirroring `src/` (config, auth, routes, k8s mappers). Routes are tested with injected fakes. |
-| `tests/helpers/` | Test utilities: `fake-clients.ts` for creating mock `K8sClients` and `K8sClientsResult`. |
+| `tests/helpers/` | `fake-clients.ts` (fake `K8sClientsResult` for `buildApp(config, { k8s })`), `fake-kubeconfig-loader.ts` (counting loader for `buildApp(config, { loadKubeConfig })`), `test-config.ts` (`testConfig()` and `authHeader`). |
 | `tests/fixtures/` | Test data: `kubeconfig.yaml` (valid but fake kubeconfig for testing). |
 | `k8s/` | Manifests. See [k8s/README.md](k8s/README.md). |
 | `scripts/deploy-local.sh` | Build, import and roll out to k3s (above). |
