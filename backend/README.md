@@ -30,28 +30,124 @@ pnpm install
 pnpm --dir backend dev # or: pnpm --dir backend start (tsx, no build step)
 ```
 
-**Production image**
+## Deploy to k3s
+
+Run the pier-backend pod in the k3s cluster using its ServiceAccount instead of a kubeconfig on Beater. The deployment script automates the build, import, and rollout.
+
+### Prerequisites
+
+- **Docker**: installed on Beater and able to build images.
+- **SSH access**: to k3s node with `ssh-agent` loaded. Verify:
+  ```bash
+  eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519
+  ssh spen@10.0.0.87 'sudo -n k3s ctr version'  # should print OK
+  ```
+- **`.env` file**: copy `backend/.env.example` to `backend/.env` and fill in the cluster details:
+  ```bash
+  cp backend/.env.example backend/.env
+  # Edit backend/.env:
+  #   K3S_HOST=10.0.0.87
+  #   K3S_SSH_USER=spen
+  #   PIER_API_TOKEN=<generated token>
+  ```
+- **`kubectl` access**: configured with `KUBECONFIG=/home/spencer/.kube/k3s-node.yaml`.
+
+### Deploy script
 
 ```bash
-pnpm build           # tsup → dist/
-docker build -t pier-backend:dev .
+# Build image, import into k3s, apply manifests, and roll out.
+# TAG defaults to git short SHA with -dirty suffix if tree has changes.
+./backend/scripts/deploy-local.sh
+
+# Or specify a custom tag:
+./backend/scripts/deploy-local.sh v1.0
 ```
 
-**In the cluster** — `HOST` is set to `0.0.0.0` (see `k8s/deployment.yaml:29-30`). The API requires `PIER_API_TOKEN` to be injected as an environment variable or secret; see issue #7. For now, testing in the cluster assumes a placeholder token.
+The script:
 
-## Deploy manifests
+1. **Builds** the Docker image (`docker build -t pier-backend:$TAG backend`)
+2. **Imports** the image into k3s containerd via SSH (`docker save | ssh ... k3s ctr images import`)
+3. **Applies** manifests in order:
+   - `backend/k8s/namespace.yaml` — creates `pier-apps` namespace
+   - `backend/k8s/rbac.yaml` — ServiceAccount and ClusterRole for cluster health access
+   - `backend/k8s/rbac-apps.yaml` — Role in `pier-apps` for app management
+   - `backend/k8s/quota.yaml` (if present) — resource quotas
+   - `backend/k8s/policy-services.yaml` (if present) — network policies
+   - `backend/k8s/deployment.yaml` — Deployment, Service, and security context
+4. **Creates or updates** the `pier-backend-secrets` Secret with `PIER_API_TOKEN` (never echoed to stdout)
+5. **Rolls out** the new image with `kubectl set image` and waits for readiness
 
-Apply manifests in this order:
+On failure, the script prints helpful debugging commands:
+```bash
+kubectl -n default describe pod -l app=pier-backend
+kubectl -n default logs -l app=pier-backend
+```
+
+### Image versioning
+
+The default tag is the git short SHA. Add `-dirty` if the tree has uncommitted changes. This ensures each rollout is immutable and traceable:
 
 ```bash
-# 1. Create pier-apps namespace
-kubectl apply -f backend/k8s/namespace.yaml
+# Clean tree → e.g., pier-backend:a1b2c3d
+# Uncommitted changes → pier-backend:a1b2c3d-dirty
+```
 
-# 2. Set up RBAC: cluster-wide health access + namespaced app management
+The Deployment's `image` field is a placeholder (`pier-backend:dev`); `deploy-local.sh` overrides it with the real tag via `kubectl set image`.
+
+### Pod configuration
+
+- **Security context**: runs as non-root (`node`, uid 1000), read-only root filesystem (`/tmp` is writable), no privilege escalation, all capabilities dropped, runtime default seccomp policy.
+- **Resources**: 
+  - Requests: `50m` CPU, `96Mi` memory
+  - Limits: `500m` CPU, `256Mi` memory
+- **PIER_API_TOKEN**: injected from a Secret (not in the manifest or image).
+- **ServiceAccount**: `pier-backend` with ClusterRole for `/cluster/health` and Role in `pier-apps` for `/apps`.
+
+### Test from Beater
+
+Port-forward to the pod and verify connectivity and auth:
+
+```bash
+# Terminal 1: start port-forward
+kubectl -n default port-forward svc/pier-backend 3000:80
+
+# Terminal 2: set the token and test
+export PIER_API_TOKEN=<your-token>
+
+# No auth required
+curl -s http://localhost:3000/health
+
+# Auth required; these should work:
+curl -s -H "Authorization: Bearer $PIER_API_TOKEN" http://localhost:3000/cluster/health
+curl -s -H "Authorization: Bearer $PIER_API_TOKEN" http://localhost:3000/apps
+
+# Should fail (401)
+curl -s http://localhost:3000/apps
+```
+
+### Troubleshooting
+
+**Pod not ready:**
+```bash
+kubectl -n default describe pod -l app=pier-backend
+kubectl -n default logs -l app=pier-backend
+```
+
+**Rollback to previous image:**
+```bash
+kubectl -n default rollout undo deploy/pier-backend
+```
+
+**Re-run the deployment script:** it is idempotent. Same tag and image will be a no-op after the rollout succeeds.
+
+## Manifests
+
+Apply manifests in this order using the deploy script (above) or manually:
+
+```bash
+kubectl apply -f backend/k8s/namespace.yaml
 kubectl apply -f backend/k8s/rbac.yaml
 kubectl apply -f backend/k8s/rbac-apps.yaml
-
-# 3. Deploy the backend service and pod
 kubectl apply -f backend/k8s/deployment.yaml
 ```
 
@@ -73,6 +169,68 @@ kubectl auth can-i delete pods -n pier-apps --as=$SA              # no
 kubectl auth can-i create deployments -n default --as=$SA         # no
 kubectl auth can-i delete nodes --as=$SA                          # no
 ```
+
+### Manifest reference
+
+#### `k8s/namespace.yaml`
+Creates the `pier-apps` namespace where Pier-managed apps run.
+
+#### `k8s/rbac.yaml`
+Three resources:
+
+1. **ServiceAccount `pier-backend`** (namespace `default`)  
+   Pod identity. Kubernetes automatically mounts a token at `/var/run/secrets/kubernetes.io/serviceaccount/token`, which `src/k8s/client.ts` uses to authenticate in-cluster API calls.
+
+2. **ClusterRole `pier-backend-cluster-health`**  
+   Least-privilege cluster-wide permissions for the `/cluster/health` and `/cluster/pods` routes:
+   - `get`, `list` on **nodes** and **pods** (all namespaces)
+   - `get` on **`/version`**, **`/healthz`**, **`/livez`**, **`/readyz`** (API discovery/health)
+
+3. **ClusterRoleBinding `pier-backend-cluster-health`**  
+   Links the ServiceAccount to the ClusterRole.
+
+Without this file, in-cluster `/cluster/health` returns **403 Forbidden**.
+
+#### `k8s/rbac-apps.yaml`
+Namespace-scoped permissions for the `/apps` route (app management in `pier-apps`):
+
+1. **Role `pier-app-manager`** (namespace `pier-apps`)  
+   Full CRUD on Deployments, Services, and Ingresses; read-only on Pods and their logs.
+
+2. **RoleBinding `pier-app-manager`**  
+   Links the pod's ServiceAccount (from `default`) to the Role (in `pier-apps`).
+
+#### `k8s/deployment.yaml`
+Two resources:
+
+1. **Deployment `pier-backend`** (namespace `default`)
+   - One replica of the `pier-backend` container.
+   - `serviceAccountName: pier-backend` — uses the ServiceAccount from `rbac.yaml`.
+   - **Image**: `pier-backend:dev` (placeholder; overridden by `deploy-local.sh`). `imagePullPolicy: IfNotPresent` (local image, not pulled).
+   - **Env**:
+     - `PORT=3000`, `HOST=0.0.0.0` — listens on all interfaces inside the pod.
+     - `PIER_NAMESPACE=pier-apps` — namespace for app queries.
+     - `PIER_API_TOKEN` — from a Secret (never in the manifest or image).
+   - **Resources**: requests 50m CPU / 96Mi memory; limits 500m CPU / 256Mi memory. Prevents resource-hogging.
+   - **Security context** (pod level):
+     - `runAsNonRoot: true`, `runAsUser: 1000` — non-root `node` user.
+     - `runAsGroup: 1000`, `fsGroup: 1000` — process and file system group.
+     - `seccompProfile: { type: RuntimeDefault }` — standard seccomp rules.
+   - **Security context** (container level):
+     - `allowPrivilegeEscalation: false` — prevents `sudo` or privilege gain.
+     - `readOnlyRootFilesystem: true` — filesystem is read-only except `/tmp`.
+     - `capabilities: { drop: ["ALL"] }` — all Linux capabilities removed.
+   - **Volume `tmp`** (emptyDir): mounted at `/tmp` for app temp files (read-only root requires this).
+   - **Probes**:
+     - **readinessProbe**: `GET /health` every 10s (initial delay 3s) — Kubernetes considers the pod ready when it passes.
+     - **livenessProbe**: `GET /health` every 20s (initial delay 5s) — restarts the pod if it fails.
+   - **`revisionHistoryLimit: 3`**: keeps only the last 3 rollout revisions for faster rollback.
+
+2. **Service `pier-backend`** (namespace `default`)
+   - Type: ClusterIP (default).
+   - Port 80 → pod port 3000 (http).
+   - Selector: `app: pier-backend`.
+   - Use `kubectl port-forward svc/pier-backend 3000:80` from Beater to test, or set up an Ingress with Traefik (later).
 
 ## Endpoints
 
@@ -121,7 +279,7 @@ Unlabelled Deployments in the namespace are **not** listed (the API selects `lab
 
 ---
 
-## Every file in `backend/`
+## File structure
 
 ### Root
 
@@ -131,8 +289,9 @@ Unlabelled Deployments in the namespace are **not** listed (the API selects `lab
 | `pnpm-lock.yaml` | Locked dependency tree (auto-generated). |
 | `pnpm-workspace.yaml` | pnpm settings for this package (e.g. `allowBuilds`). |
 | `tsconfig.json` | TypeScript settings for `src/` (`strict`, no emit — typecheck only; tsup bundles). |
-| `.env.example` | Template for `PORT` (3000), `HOST` (127.0.0.1), `PIER_API_TOKEN` (leave empty for dev on loopback), `PIER_NAMESPACE` (pier-apps), and `KUBECONFIG` (absolute path). Copy to `.env` locally. |
-| `Dockerfile` | Multi-stage image: `pnpm install`, `pnpm build`, run as non-root `node` on port 3000. |
+| `.env.example` | Template for `PORT` (3000), `HOST` (127.0.0.1), `PIER_API_TOKEN`, `PIER_NAMESPACE` (pier-apps), `KUBECONFIG` (absolute path). For deploy: `K3S_HOST` and `K3S_SSH_USER`. Copy to `.env` locally. |
+| `.dockerignore` | Excludes `node_modules`, `dist`, `.env*`, `tests`, `k8s`, `scripts`, `*.md`, `.git` from the Docker build context. Keeps images small and excludes secrets. |
+| `Dockerfile` | Two-stage build: install + build in stage 1, copy artifacts + pruned deps in stage 2. Runs as non-root `node` (uid 1000) on port 3000. Base image pinned by digest for reproducibility. |
 | `README.md` | This file. |
 
 ### `src/` — application (TypeScript)
@@ -159,41 +318,21 @@ Unlabelled Deployments in the namespace are **not** listed (the API selects `lab
 
 Generated by `pnpm build`. Do not edit. Used by `pnpm start:prod` and the Docker image.
 
-### `k8s/` — manifests for running **on** the cluster
+### `k8s/` — manifests
 
-Apply with `kubectl apply -f k8s/`. Order: RBAC first, then Deployment (which includes a Service).
+See [Manifests](#manifests) above for details. Order matters: apply in sequence namespace → rbac → rbac-apps → (quota/policy if present) → deployment.
 
-#### `k8s/rbac.yaml` (three resources)
+### `scripts/` — utilities
 
-1. **ServiceAccount `pier-backend`** (namespace `default`)  
-   Identity for the pod. Kubernetes mounts a token at `/var/run/secrets/kubernetes.io/serviceaccount/` so the app can call the API in-cluster.
-
-2. **ClusterRole `pier-backend-cluster-health`**  
-   Least-privilege permissions for cluster read routes:
-   - `get`, `list` on **nodes** and **pods**
-   - `get` on **`/version`**, **`/healthz`**, **`/livez`**, **`/readyz`** (API discovery/health)
-
-3. **ClusterRoleBinding `pier-backend-cluster-health`**  
-   Links the ServiceAccount to that ClusterRole cluster-wide.
-
-Without this file, in-cluster `/cluster/health` often returns **403 Forbidden**.
-
-#### `k8s/deployment.yaml` (two resources)
-
-1. **Deployment `pier-backend`**  
-   - One replica of the API container (`image: pier-backend:dev` — build/tag locally or change to your registry).
-   - Uses `serviceAccountName: pier-backend`.
-   - Env: `PORT=3000`, `HOST=0.0.0.0`.
-   - **readinessProbe** / **livenessProbe** hit `GET /health` on port 3000 so Kubernetes knows when the pod is ready or should restart.
-
-2. **Service `pier-backend`**  
-   ClusterIP on port **80** → pod port **3000**. Use `kubectl port-forward svc/pier-backend 3000:80` or an Ingress later for Traefik.
-
----
+| File | Purpose |
+|------|---------|
+| `scripts/deploy-local.sh` | Build, import image to k3s, apply manifests, roll out. See [Deploy to k3s](#deploy-to-k3s). |
 
 ## Local vs in-cluster
 
 | Where | How the API reaches k3s |
 |-------|-------------------------|
 | **Beater** | `KUBECONFIG` in `.env` or shell → mode `kubeconfig` |
-| **Pod on k3s** | ServiceAccount token → mode `in-cluster` (no kubeconfig file in the image) |
+| **Pod on k3s** | ServiceAccount token (`/var/run/secrets/kubernetes.io/serviceaccount/token`) → mode `in-cluster` |
+
+The app detects in-cluster mode in `src/k8s/client.ts`: if the token file and `KUBERNETES_SERVICE_HOST` env var are present, it loads the ServiceAccount credentials. Otherwise, it falls back to the `KUBECONFIG` file (on Beater).
