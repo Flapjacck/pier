@@ -7,15 +7,13 @@ import { StatCard } from "../components/ui/StatCard";
 import { Button } from "../components/ui/Button";
 import { PierIcon } from "../components/icons/PierIcon";
 
-interface Props extends PierTheme {}
-
 const TDKey =
   "py-2.5 text-[11.5px] font-semibold tracking-wide uppercase text-pier-muted w-36 pr-4 align-top border-b border-pier-border";
 const TDVal =
   "py-2.5 text-sm text-pier-fg border-b border-pier-border";
 
 /** App detail — navigated to by clicking a row in AppsTable. */
-export function AppDetailPage({ theme, toggle }: Props) {
+export function AppDetailPage({ theme, toggle }: PierTheme) {
   const { name } = useParams<{ name: string }>();
   const app = name ? MOCK_APP_DETAILS[name] : undefined;
 

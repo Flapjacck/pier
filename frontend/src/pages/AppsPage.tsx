@@ -6,13 +6,11 @@ import { Button } from "../components/ui/Button";
 import { PierIcon } from "../components/icons/PierIcon";
 import { MOCK_APPS } from "../data/mockApps";
 
-interface Props extends PierTheme {}
-
 /**
  * Apps list — landing view after login.
  * Content floats as a card over the slats pattern background.
  */
-export function AppsPage({ theme, toggle }: Props) {
+export function AppsPage({ theme, toggle }: PierTheme) {
   return (
     <MainLayout theme={theme} toggle={toggle}>
       {/* Card floating over pattern */}

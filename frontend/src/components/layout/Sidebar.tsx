@@ -21,13 +21,11 @@ const navActive =
 const navInactive =
   "text-pier-muted font-normal hover:bg-pier-surface-2 hover:text-pier-fg";
 
-interface Props extends PierTheme {}
-
 /**
  * Fixed-width left sidebar: Pier P+ier logo, nav links, theme toggle.
  * Disabled nav items (Nodes, Logs, Settings) are dimmed placeholders.
  */
-export function Sidebar({ theme, toggle }: Props) {
+export function Sidebar({ theme, toggle }: PierTheme) {
   return (
     <aside
       className="w-[220px] shrink-0 flex flex-col min-h-svh
