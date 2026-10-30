@@ -5,3 +5,13 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: pier
     app.kubernetes.io/part-of: pier
+    # Pod Security Standard enforcement:
+    # - enforce: baseline (required for root images like nginx:1.27; blocks privileged, hostPath, hostNetwork, hostPID, added caps)
+    # - warn/audit: restricted (best practice; flagged but not blocked until we hardened all app manifests)
+    # Future: move enforce to "restricted" once all apps are hardened
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
