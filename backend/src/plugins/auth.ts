@@ -37,7 +37,7 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
   });
 
   // Register onRequest hook that runs before all handlers.
-  app.addHook("onRequest", async (req, _reply) => {
+  app.addHook("onRequest", async (req) => {
     // /health is always public (k8s probes).
     if (req.url === "/health") {
       return;

@@ -4,17 +4,6 @@ import { buildApp } from "../../src/app.js";
 import { createFakeClientsResult, createFailedClientsResult } from "../helpers/fake-clients.js";
 import { authHeader, testConfig } from "../helpers/test-config.js";
 
-const sampleApps = [
-  {
-    name: "hello",
-    image: "nginx:1.27",
-    replicas: 1,
-    ready: 1,
-    status: "running" as const,
-    createdAt: "2026-10-29T15:00:00.000Z",
-  },
-];
-
 describe("GET /apps", () => {
   it("returns 401 without a bearer token when auth is configured", async () => {
     const fakeApps = {
@@ -53,7 +42,7 @@ describe("GET /apps", () => {
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
-    const body = res.json() as typeof sampleApps;
+    const body = res.json() as Array<{ name: string }>;
     assert.equal(body.length, 1);
     assert.equal(body[0]?.name, "hello");
     await app.close();

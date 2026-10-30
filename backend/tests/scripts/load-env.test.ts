@@ -14,7 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendDir = path.resolve(__dirname, "../..");
 
-test("load-env.sh: basic parsing", (t) => {
+test("load-env.sh: basic parsing", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -45,7 +45,7 @@ test("load-env.sh: basic parsing", (t) => {
   }
 });
 
-test("load-env.sh: quoted value with spaces", (t) => {
+test("load-env.sh: quoted value with spaces", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -76,7 +76,7 @@ test("load-env.sh: quoted value with spaces", (t) => {
   }
 });
 
-test("load-env.sh: apostrophe in unquoted value", (t) => {
+test("load-env.sh: apostrophe in unquoted value", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -107,7 +107,7 @@ test("load-env.sh: apostrophe in unquoted value", (t) => {
   }
 });
 
-test("load-env.sh: single-quoted value", (t) => {
+test("load-env.sh: single-quoted value", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -138,7 +138,7 @@ test("load-env.sh: single-quoted value", (t) => {
   }
 });
 
-test("load-env.sh: backslash preserved", (t) => {
+test("load-env.sh: backslash preserved", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -169,7 +169,7 @@ test("load-env.sh: backslash preserved", (t) => {
   }
 });
 
-test("load-env.sh: inline comment stripped", (t) => {
+test("load-env.sh: inline comment stripped", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -200,7 +200,7 @@ test("load-env.sh: inline comment stripped", (t) => {
   }
 });
 
-test("load-env.sh: hash inside quotes not stripped", (t) => {
+test("load-env.sh: hash inside quotes not stripped", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -231,7 +231,7 @@ test("load-env.sh: hash inside quotes not stripped", (t) => {
   }
 });
 
-test("load-env.sh: skips blank lines and comments", (t) => {
+test("load-env.sh: skips blank lines and comments", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -274,7 +274,7 @@ I=value2
   }
 });
 
-test("load-env.sh: rejects invalid keys", (t) => {
+test("load-env.sh: rejects invalid keys", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -304,7 +304,7 @@ test("load-env.sh: rejects invalid keys", (t) => {
   }
 });
 
-test("load-env.sh: respects existing env vars", (t) => {
+test("load-env.sh: respects existing env vars", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
@@ -336,7 +336,7 @@ test("load-env.sh: respects existing env vars", (t) => {
   }
 });
 
-test("load-env.sh: handles export prefix", (t) => {
+test("load-env.sh: handles export prefix", (_t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
 
   try {
