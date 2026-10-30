@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import Fastify from "fastify";
 import { setupAuth } from "../../src/plugins/auth.js";
 import { clusterRoutesWithDeps } from "../../src/routes/cluster.js";
+import { createFakeClientsResult } from "../helpers/fake-clients.js";
 
 describe("setupAuth", () => {
   describe("with apiToken configured", () => {
@@ -11,15 +12,12 @@ describe("setupAuth", () => {
     it("rejects requests without Authorization header", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, testToken);
+      const fakeCore = {
+        listPodForAllNamespaces: async () => ({ items: [] }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.0.0",
-          }),
-          listClusterPods: async () => ({ ok: true, mode: "kubeconfig", pods: [], total: 0 }),
+          k8s: createFakeClientsResult({ core: fakeCore as never }),
         }),
       );
 
@@ -36,15 +34,12 @@ describe("setupAuth", () => {
     it("rejects requests with wrong bearer token", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, testToken);
+      const fakeCore = {
+        listPodForAllNamespaces: async () => ({ items: [] }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.0.0",
-          }),
-          listClusterPods: async () => ({ ok: true, mode: "kubeconfig", pods: [], total: 0 }),
+          k8s: createFakeClientsResult({ core: fakeCore as never }),
         }),
       );
 
@@ -64,15 +59,12 @@ describe("setupAuth", () => {
     it("rejects requests with Basic auth scheme", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, testToken);
+      const fakeCore = {
+        listPodForAllNamespaces: async () => ({ items: [] }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.0.0",
-          }),
-          listClusterPods: async () => ({ ok: true, mode: "kubeconfig", pods: [], total: 0 }),
+          k8s: createFakeClientsResult({ core: fakeCore as never }),
         }),
       );
 
@@ -92,15 +84,12 @@ describe("setupAuth", () => {
     it("rejects malformed authorization header", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, testToken);
+      const fakeCore = {
+        listPodForAllNamespaces: async () => ({ items: [] }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.0.0",
-          }),
-          listClusterPods: async () => ({ ok: true, mode: "kubeconfig", pods: [], total: 0 }),
+          k8s: createFakeClientsResult({ core: fakeCore as never }),
         }),
       );
 
@@ -120,16 +109,17 @@ describe("setupAuth", () => {
     it("accepts correct bearer token on /cluster/health", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, testToken);
+      const fakeCore = {
+        listNode: async () => ({
+          items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
+        }),
+      };
+      const fakeVersion = {
+        getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.30.0+k3s1",
-            nodes: { total: 1, ready: 1 },
-          }),
-          listClusterPods: async () => ({ ok: true, mode: "kubeconfig", pods: [], total: 0 }),
+          k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
         }),
       );
 
@@ -150,28 +140,19 @@ describe("setupAuth", () => {
     it("accepts correct bearer token on /cluster/pods", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, testToken);
+      const fakeCore = {
+        listPodForAllNamespaces: async () => ({
+          items: [
+            {
+              metadata: { name: "demo", namespace: "default" },
+              status: { phase: "Running", containerStatuses: [{ ready: true }] },
+            },
+          ],
+        }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.30.0+k3s1",
-            nodes: { total: 1, ready: 1 },
-          }),
-          listClusterPods: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            pods: [
-              {
-                name: "demo",
-                namespace: "default",
-                phase: "Running",
-                ready: "1/1",
-              },
-            ],
-            total: 1,
-          }),
+          k8s: createFakeClientsResult({ core: fakeCore as never }),
         }),
       );
 
@@ -214,16 +195,17 @@ describe("setupAuth", () => {
     it("allows /cluster/health without token", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, undefined);
+      const fakeCore = {
+        listNode: async () => ({
+          items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
+        }),
+      };
+      const fakeVersion = {
+        getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.30.0+k3s1",
-            nodes: { total: 1, ready: 1 },
-          }),
-          listClusterPods: async () => ({ ok: true, mode: "kubeconfig", pods: [], total: 0 }),
+          k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
         }),
       );
 
@@ -241,28 +223,19 @@ describe("setupAuth", () => {
     it("allows /cluster/pods without token", async () => {
       const app = Fastify({ logger: false });
       setupAuth(app, undefined);
+      const fakeCore = {
+        listPodForAllNamespaces: async () => ({
+          items: [
+            {
+              metadata: { name: "demo", namespace: "default" },
+              status: { phase: "Running", containerStatuses: [{ ready: true }] },
+            },
+          ],
+        }),
+      };
       await app.register(
         clusterRoutesWithDeps({
-          loadKubeConfig: () => ({ kc: {} as never, mode: "kubeconfig" }),
-          getClusterHealth: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            version: "v1.30.0+k3s1",
-            nodes: { total: 1, ready: 1 },
-          }),
-          listClusterPods: async () => ({
-            ok: true,
-            mode: "kubeconfig",
-            pods: [
-              {
-                name: "demo",
-                namespace: "default",
-                phase: "Running",
-                ready: "1/1",
-              },
-            ],
-            total: 1,
-          }),
+          k8s: createFakeClientsResult({ core: fakeCore as never }),
         }),
       );
 

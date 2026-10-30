@@ -49,29 +49,25 @@ describe("list-pods", () => {
       status: { phase: "Running", containerStatuses: [{ ready: true }] },
     });
 
-    const kc = {
-      makeApiClient: () => ({
-        listPodForAllNamespaces: async () => ({ items: [fakePod] }),
-      }),
-    } as unknown as KubeConfig;
+    const fakeCore = {
+      listPodForAllNamespaces: async () => ({ items: [fakePod] }),
+    };
 
-    const result = await listClusterPods(kc, "kubeconfig");
+    const result = await listClusterPods(fakeCore as unknown as any, "kubeconfig");
     assert.equal(result.ok, true);
     assert.equal(result.total, 1);
     assert.equal(result.pods?.[0]?.name, "busybox");
   });
 
   it("listClusterPods throws API errors (for routes to handle)", async () => {
-    const kc = {
-      makeApiClient: () => ({
-        listPodForAllNamespaces: async () => {
-          throw new Error("Forbidden");
-        },
-      }),
-    } as unknown as KubeConfig;
+    const fakeCore = {
+      listPodForAllNamespaces: async () => {
+        throw new Error("Forbidden");
+      },
+    };
 
     await assert.rejects(
-      () => listClusterPods(kc, "in-cluster"),
+      () => listClusterPods(fakeCore as unknown as any, "in-cluster"),
       (err: Error) => {
         assert.match(err.message, /Forbidden/);
         return true;
