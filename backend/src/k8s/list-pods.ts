@@ -45,17 +45,11 @@ export function podToSummary(pod: k8s.V1Pod): PodSummary {
 
 /** Lists every pod in the cluster (all namespaces). Requires list pods RBAC in-cluster. */
 export async function listClusterPods(
-  kc: k8s.KubeConfig,
+  core: k8s.CoreV1Api,
   mode: KubeConfigMode,
 ): Promise<ClusterPodsResult> {
-  try {
-    const core = kc.makeApiClient(k8s.CoreV1Api);
-    const list = await core.listPodForAllNamespaces();
-    const pods = (list.items ?? []).map(podToSummary);
+  const list = await core.listPodForAllNamespaces();
+  const pods = (list.items ?? []).map(podToSummary);
 
-    return { ok: true, mode, pods, total: pods.length };
-  } catch (err) {
-    // Return the raw error for logging server-side; route will show generic message to client.
-    throw err;
-  }
+  return { ok: true, mode, pods, total: pods.length };
 }

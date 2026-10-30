@@ -23,23 +23,17 @@ function countReadyNodes(items: k8s.V1Node[]): { total: number; ready: number } 
 
 /** Lightweight check: API /version plus node readiness (needs list nodes RBAC in-cluster). */
 export async function getClusterHealth(
-  kc: k8s.KubeConfig,
+  core: k8s.CoreV1Api,
+  version: k8s.VersionApi,
   mode: KubeConfigMode,
 ): Promise<ClusterHealth> {
-  try {
-    const versionApi = kc.makeApiClient(k8s.VersionApi);
-    const versionInfo = await versionApi.getCode();
-    const version = versionInfo.gitVersion;
+  const versionInfo = await version.getCode();
+  const versionStr = versionInfo.gitVersion;
 
-    const core = kc.makeApiClient(k8s.CoreV1Api);
-    const nodeList = await core.listNode();
-    const nodes = countReadyNodes(nodeList.items ?? []);
+  const nodeList = await core.listNode();
+  const nodes = countReadyNodes(nodeList.items ?? []);
 
-    const ok = nodes.total > 0 && nodes.ready === nodes.total;
+  const ok = nodes.total > 0 && nodes.ready === nodes.total;
 
-    return { ok, mode, version, nodes };
-  } catch (err) {
-    // Return the raw error for logging server-side; route will show generic message to client.
-    throw err;
-  }
+  return { ok, mode, version: versionStr, nodes };
 }

@@ -89,15 +89,15 @@ export function deploymentToApp(d: V1Deployment): App {
 
 /** List Pier-managed apps in a namespace (label pier.app must be present). */
 export async function listApps(
-  api: AppsV1Api,
+  apps: AppsV1Api,
   namespace: string,
 ): Promise<App[]> {
-  const response = await api.listNamespacedDeployment({
+  const response = await apps.listNamespacedDeployment({
     namespace,
     labelSelector: appSelector(),
   });
 
-  const apps = (response.items ?? []).map(deploymentToApp);
-  apps.sort((a, b) => a.name.localeCompare(b.name));
-  return apps;
+  const appList = (response.items ?? []).map(deploymentToApp);
+  appList.sort((a, b) => a.name.localeCompare(b.name));
+  return appList;
 }
