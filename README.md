@@ -31,12 +31,30 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 
 ## Development
 
-This repo uses [pnpm](https://pnpm.io) (not npm). From the repo root:
+[![CI](https://github.com/Flapjacck/pier/actions/workflows/ci.yml/badge.svg)](https://github.com/Flapjacck/pier/actions/workflows/ci.yml)
+
+This repo uses [pnpm](https://pnpm.io) (not npm). Backend and frontend are separate pnpm packages:
 
 ```bash
-pnpm install          # installs frontend + backend workspace packages
-pnpm --dir backend dev
-pnpm --dir frontend dev
+pnpm --dir backend install    # installs backend dependencies
+pnpm --dir frontend install   # installs frontend dependencies
+pnpm --dir backend dev        # http://127.0.0.1:3000
+pnpm --dir frontend dev       # http://127.0.0.1:5173
 ```
 
-See `backend/README.md` for API/kubeconfig setup.
+### Local checks
+
+Before pushing, run the linter, type-checker, and (backend) tests:
+
+```bash
+pnpm --dir backend lint      # ESLint
+pnpm --dir backend typecheck # tsc --noEmit
+pnpm --dir backend test      # node:test
+pnpm --dir backend build     # tsup
+
+pnpm --dir frontend lint     # ESLint
+pnpm --dir frontend typecheck # tsc -b
+pnpm --dir frontend build    # Vite
+```
+
+See `backend/README.md` for API/kubeconfig setup and [CONTRIBUTING.md](./CONTRIBUTING.md) for commit conventions and branch protection rules.
