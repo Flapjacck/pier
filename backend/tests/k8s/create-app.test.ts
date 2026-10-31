@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { V1Deployment } from "@kubernetes/client-node";
 import { createApp, AppExistsError, HostInUseError } from "../../src/k8s/create-app.js";
-import type { CreateAppInput } from "../../src/k8s/manifests.js";
+import type { CreateAppInput } from "../../src/k8s/manifests/index.js";
 import { FakeApiError } from "../helpers/fake-clients.js";
 
 const baseInput: CreateAppInput = {
