@@ -41,9 +41,21 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
       errObj.statusCode === 400 &&
       (errObj.validation || errObj.ajv)
     ) {
+      // Extract and clean validation message from the first error.
+      let details: string | undefined;
+      if (errObj.validation && Array.isArray(errObj.validation)) {
+        const firstError = errObj.validation[0];
+        if (firstError && typeof firstError === "object") {
+          const msg = (firstError as Record<string, unknown>).message;
+          if (typeof msg === "string") {
+            details = msg;
+          }
+        }
+      }
       return reply.status(400).send({
         ok: false,
         error: "invalid request",
+        ...(details && { details }),
       });
     }
     throw err;
