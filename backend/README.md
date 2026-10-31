@@ -49,6 +49,9 @@ pnpm dev               # http://127.0.0.1:3000
 | GET | `/cluster/pods` | bearer | Every pod in every namespace. |
 | GET | `/apps` | bearer | Deployments in `PIER_NAMESPACE` labelled `pier.app`. |
 | POST | `/apps` | bearer | Create Deployment, Service, and optional Ingress. Accepts JSON: `{ name, image, port, replicas?, host?, env? }`. Returns `201` with App; `400` for validation; `409` if name or host exists; `503` if cluster unreachable. |
+| PATCH | `/apps/:name/scale` | bearer | Scale an app to 0–10 replicas. Accepts JSON: `{ replicas }`. Returns `200` with App; `404` if app unknown or terminating; `400`/`503` on error. |
+| POST | `/apps/:name/restart` | bearer | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt }`; `404` if app unknown; `400`/`503` on error. |
+| DELETE | `/apps/:name` | bearer | Delete an app (Deployment, Service, Ingress). No body. Returns `204` empty (idempotent); `404` if app unknown or already gone; `400`/`503` on error. |
 
 ```bash
 curl -H "Authorization: Bearer $PIER_API_TOKEN" http://127.0.0.1:3000/apps
