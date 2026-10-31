@@ -53,7 +53,7 @@ export function buildApp(config: Config, opts: BuildAppOptions = {}) {
   // Setup auth hooks on the root app before registering routes.
   setupAuth(app, config.apiToken);
   app.register(healthRoutes);
-  app.register(clusterRoutesWithDeps({ k8s: k8sResult }));
+  app.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
   app.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain }));
 
   return app;

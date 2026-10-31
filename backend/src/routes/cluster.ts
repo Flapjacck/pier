@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getClusterHealth } from "../k8s/cluster-health";
-import { listClusterPods } from "../k8s/list-pods";
+import { listNamespacedPods } from "../k8s/list-pods";
 import type { K8sClientsResult } from "../k8s/clients";
 
 type ClusterRouteDeps = {
   k8s: K8sClientsResult;
+  namespace: string;
 };
 
 /** Factory keeps the HTTP handler testable without a live cluster. */
@@ -35,7 +36,7 @@ export function clusterRoutesWithDeps(deps: ClusterRouteDeps): FastifyPluginAsyn
       }
     });
 
-    /** Snapshot of all pods (every namespace) from the Kubernetes API. */
+    /** Snapshot of pods in the configured namespace. */
     app.get("/cluster/pods", async (req, reply) => {
       if (!deps.k8s.ok) {
         return reply.status(503).send({
@@ -45,9 +46,10 @@ export function clusterRoutesWithDeps(deps: ClusterRouteDeps): FastifyPluginAsyn
       }
 
       try {
-        const result = await listClusterPods(
+        const result = await listNamespacedPods(
           deps.k8s.clients.core,
           deps.k8s.clients.mode,
+          deps.namespace,
         );
         return result;
       } catch (err) {
