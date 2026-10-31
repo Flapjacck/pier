@@ -11,6 +11,7 @@ import {
   MEMORY_LIMIT,
   EPHEMERAL_STORAGE_REQUEST,
   EPHEMERAL_STORAGE_LIMIT,
+  PROGRESS_DEADLINE_SECONDS,
 } from "../../src/k8s/manifests.js";
 
 const baseInput: CreateAppInput = {
@@ -211,5 +212,11 @@ describe("buildIngress", () => {
   it("omits owner reference when no uid provided", () => {
     const ing = buildIngress({ ...baseInput, host: "hello.example.com" });
     assert(!ing.metadata?.ownerReferences || ing.metadata.ownerReferences.length === 0);
+  });
+
+  it("sets progressDeadlineSeconds to 120 for rapid failure detection", () => {
+    const dep = buildDeployment(baseInput);
+    assert.equal(dep.spec?.progressDeadlineSeconds, PROGRESS_DEADLINE_SECONDS);
+    assert.equal(PROGRESS_DEADLINE_SECONDS, 120);
   });
 });

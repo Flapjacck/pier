@@ -81,16 +81,20 @@ describe("GET /cluster/health", () => {
 });
 
 describe("GET /cluster/pods", () => {
-  it("returns 200 with pod list on success", async () => {
+  it("returns 200 with pod list on success (namespaced)", async () => {
+    let capturedNamespace: string | undefined;
     const fakeCore = {
-      listPodForAllNamespaces: async () => ({
-        items: [
-          {
-            metadata: { name: "demo", namespace: "default" },
-            status: { phase: "Running", containerStatuses: [{ ready: true }] },
-          },
-        ],
-      }),
+      listNamespacedPod: async (params: { namespace: string }) => {
+        capturedNamespace = params.namespace;
+        return {
+          items: [
+            {
+              metadata: { name: "demo", namespace: "pier-apps" },
+              status: { phase: "Running", containerStatuses: [{ ready: true }] },
+            },
+          ],
+        };
+      },
     };
 
     const app = buildApp(testConfig(), {
@@ -100,6 +104,7 @@ describe("GET /cluster/pods", () => {
 
     const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 200);
+    assert.equal(capturedNamespace, "pier-apps");
     const body = res.json() as { ok: boolean; total: number };
     assert.equal(body.ok, true);
     assert.equal(body.total, 1);
@@ -119,7 +124,7 @@ describe("GET /cluster/pods", () => {
 
   it("returns 503 with generic error when Kubernetes call fails", async () => {
     const fakeCore = {
-      listPodForAllNamespaces: async () => {
+      listNamespacedPod: async () => {
         throw new Error("Forbidden: cannot list pods");
       },
     };

@@ -15,10 +15,10 @@ function appWithToken(apiToken: string | undefined) {
         listNode: async () => ({
           items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
         }),
-        listPodForAllNamespaces: async () => ({
+        listNamespacedPod: async () => ({
           items: [
             {
-              metadata: { name: "demo", namespace: "default" },
+              metadata: { name: "demo", namespace: "pier-apps" },
               status: { phase: "Running", containerStatuses: [{ ready: true }] },
             },
           ],

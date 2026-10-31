@@ -22,7 +22,7 @@ describe("buildApp k8s clients", () => {
     const loader = countingLoader({
       core: {
         listNode: async () => ({ items: [] }),
-        listPodForAllNamespaces: async () => ({ items: [] }),
+        listNamespacedPod: async () => ({ items: [] }),
       } as never,
       version: { getCode: async () => ({ gitVersion: "v1.36.5+k3s1" }) } as never,
       apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,

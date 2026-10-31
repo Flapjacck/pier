@@ -53,3 +53,15 @@ export async function listClusterPods(
 
   return { ok: true, mode, pods, total: pods.length };
 }
+
+/** Lists pods in a specific namespace. Used for scoped access (e.g. pier-apps). */
+export async function listNamespacedPods(
+  core: k8s.CoreV1Api,
+  mode: KubeConfigMode,
+  namespace: string,
+): Promise<ClusterPodsResult> {
+  const list = await core.listNamespacedPod({ namespace });
+  const pods = (list.items ?? []).map(podToSummary);
+
+  return { ok: true, mode, pods, total: pods.length };
+}

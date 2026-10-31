@@ -14,6 +14,7 @@ export function createFakeClients(
     version: {} as k8s.VersionApi,
     apps: {} as k8s.AppsV1Api,
     networking: {} as k8s.NetworkingV1Api,
+    log: {} as k8s.Log,
     ...overrides,
   };
 }

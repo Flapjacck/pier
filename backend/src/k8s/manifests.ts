@@ -41,6 +41,9 @@ export const MEMORY_LIMIT = "256Mi";
 export const EPHEMERAL_STORAGE_REQUEST = "64Mi";
 export const EPHEMERAL_STORAGE_LIMIT = "1Gi";
 
+// Rollout deadline: 120 seconds to cap time-to-failure for immediately-exiting apps.
+export const PROGRESS_DEADLINE_SECONDS = 120;
+
 /**
  * Build a Deployment manifest with all required security and resource settings.
  * Pod Security baseline enforced in pier-apps.
@@ -129,6 +132,7 @@ export function buildDeployment(input: CreateAppInput): V1Deployment {
       },
     },
     template: templateSpec,
+    progressDeadlineSeconds: PROGRESS_DEADLINE_SECONDS,
   };
 
   const metadata: V1ObjectMeta = {

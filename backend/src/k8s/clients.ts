@@ -13,6 +13,7 @@ export type K8sClients = {
   version: k8s.VersionApi;
   apps: k8s.AppsV1Api;
   networking: k8s.NetworkingV1Api;
+  log: k8s.Log;
 };
 
 /** Result of building clients once: either they loaded or an error occurred. */
@@ -33,15 +34,16 @@ export function createK8sClients(
     // Load the kubeconfig once.
     const { kc, mode } = load(config.kubeconfig);
 
-    // Build all four API clients from the loaded config.
+    // Build all API clients from the loaded config.
     const core = kc.makeApiClient(k8s.CoreV1Api);
     const version = kc.makeApiClient(k8s.VersionApi);
     const apps = kc.makeApiClient(k8s.AppsV1Api);
     const networking = kc.makeApiClient(k8s.NetworkingV1Api);
+    const log = new k8s.Log(kc);
 
     return {
       ok: true,
-      clients: { mode, core, version, apps, networking },
+      clients: { mode, core, version, apps, networking, log },
     };
   } catch (err) {
     // Return the error without throwing so the app can start and reply 503.

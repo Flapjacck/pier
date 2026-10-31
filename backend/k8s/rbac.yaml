@@ -1,4 +1,4 @@
-# Read-only cluster access for /cluster/health and /cluster/pods.
+# Read-only cluster access for /cluster/health.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -10,9 +10,9 @@ kind: ClusterRole
 metadata:
   name: pier-backend-cluster-health
 rules:
-  # TODO(#5): Remove "pods" from here — only cluster-wide node health should be readable.
+  # Node health only; pod access is scoped to pier-apps via Role in rbac-apps.yaml.
   - apiGroups: [""]
-    resources: ["nodes", "pods"]
+    resources: ["nodes"]
     verbs: ["get", "list"]
   - nonResourceURLs: ["/version", "/healthz", "/livez", "/readyz"]
     verbs: ["get"]
