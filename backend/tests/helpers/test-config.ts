@@ -10,6 +10,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     apiToken: TEST_TOKEN,
     kubeconfig: undefined,
     namespace: "pier-apps",
+    ingressDomain: "example.com",
     ...overrides,
   };
 }

@@ -54,7 +54,7 @@ export function buildApp(config: Config, opts: BuildAppOptions = {}) {
   setupAuth(app, config.apiToken);
   app.register(healthRoutes);
   app.register(clusterRoutesWithDeps({ k8s: k8sResult }));
-  app.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
+  app.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain }));
 
   return app;
 }
