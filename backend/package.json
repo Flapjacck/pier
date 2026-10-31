@@ -13,8 +13,12 @@
     "typecheck": "tsc --noEmit"
   },
   "tsup": {
-    "entry": ["src/index.ts"],
-    "format": ["esm"],
+    "entry": [
+      "src/index.ts"
+    ],
+    "format": [
+      "esm"
+    ],
     "target": "node20",
     "sourcemap": true,
     "clean": true
@@ -25,6 +29,7 @@
     "pnpm": ">=9"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.5",
     "@kubernetes/client-node": "^1.4.0",
     "fastify": "^5.6.0"
   },
