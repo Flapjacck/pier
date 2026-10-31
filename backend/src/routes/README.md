@@ -250,6 +250,128 @@ curl -H "Authorization: Bearer $TOKEN" http://pier-backend:3000/apps
 # Response: 200 [ { name: "api", ... }, { name: "web", ... } ]
 ```
 
+## `GET /apps/:name/logs`
+
+Stream logs from a running pod's container. Supports both plain-text (follow=false, default) and Server-Sent Events (SSE) streaming (follow=true).
+
+### Query Parameters
+
+| Parameter | Type | Default | Range/Format | Description |
+|-----------|------|---------|--------------|-------------|
+| `pod` | string | (first pod) | DNS-1123 subdomain, ≤253 chars | Pod name to stream from. If omitted, defaults to the first pod. |
+| `tail` | integer | 200 | 1–5000 | Number of lines to stream from the end of the log. |
+| `follow` | boolean | false | true/false | Stream new lines as they arrive (SSE) or just the historical tail (plain text). |
+
+### Response
+
+**200 (success) with follow=false**: Plain text (one line per log line). Content-Type: `text/plain; charset=utf-8`.
+
+```
+2026-10-31T15:00:00Z [INFO] App started
+2026-10-31T15:00:01Z [INFO] Listening on port 8080
+```
+
+**200 (success) with follow=true**: Server-Sent Events stream. Content-Type: `text/event-stream; charset=utf-8`.
+
+Headers also include:
+- `cache-control: no-cache` (prevent caching)
+- `connection: keep-alive` (keep socket open)
+- `x-accel-buffering: no` (disable proxy buffering)
+
+Frame format (one per event):
+
+```
+data: <log line>\n
+\n
+```
+
+Special frames:
+
+- **Ping**: `: ping\n\n` — sent every 15 seconds to keep the connection alive.
+- **End**: `event: end\ndata: \n\n` — sent when upstream log stream ends normally (no more logs).
+- **Error**: `event: error\ndata: upstream error\n\n` — sent if the Kubernetes log stream fails.
+
+**400 (validation error)**: One of the query parameters failed validation.
+
+```json
+{ "ok": false, "error": "invalid request" }
+```
+
+Reasons: `tail` < 1 or > 5000, `tail` non-integer, `pod` has invalid DNS-1123 characters or > 253 chars, invalid app name.
+
+**401 (unauthorized)**: missing or wrong bearer token.
+
+**404 (not found)**:
+
+```json
+{ "ok": false, "error": "app not found" }
+```
+
+or
+
+```json
+{ "ok": false, "error": "no pods" }
+```
+
+or
+
+```json
+{ "ok": false, "error": "pod not found" }
+```
+
+**503 (cluster unreachable)**: Kubernetes API unreachable or request failed.
+
+### SSE Client Behavior
+
+Client should reconnect with exponential backoff if the connection closes. The `EventSource` API (browser) or a compatible library handles this automatically.
+
+```javascript
+const eventSource = new EventSource("/apps/myapp/logs?follow=true");
+
+eventSource.addEventListener("message", (e) => {
+  console.log(e.data); // log line
+});
+
+eventSource.addEventListener("end", () => {
+  console.log("Stream ended");
+  eventSource.close();
+});
+
+eventSource.addEventListener("error", () => {
+  console.error("Upstream error, EventSource will auto-reconnect");
+  // Browser's EventSource auto-reconnects with exponential backoff
+});
+```
+
+### Disconnect Behavior
+
+When a client disconnects (closes the socket), the backend immediately aborts the upstream Kubernetes log stream to free resources. No cleanup delay.
+
+### Examples
+
+**Fetch historical logs (plain text, non-blocking):**
+
+```bash
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io:3000/apps/myapp/logs?tail=100"
+```
+
+**Stream logs in real-time (SSE):**
+
+```bash
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io:3000/apps/myapp/logs?follow=true&tail=50"
+```
+
+Note: `-N` disables buffering; remove it to enable buffering (not recommended for logs).
+
+**Stream from a specific pod:**
+
+```bash
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io:3000/apps/myapp/logs?pod=myapp-xyz-abc&follow=true"
+```
+
 ## `PATCH /apps/:name/scale`
 
 Scale an app to a specific number of replicas (0–10).
