@@ -4,6 +4,9 @@ import { getAppsRoutesWithDeps } from "./apps/get.js";
 import { postAppsRoutesWithDeps } from "./apps/post.js";
 import { getAppPodsRoutesWithDeps } from "./apps/pods.js";
 import { getAppLogsRoutesWithDeps } from "./apps/logs.js";
+import { scaleAppRoutesWithDeps } from "./apps/scale.js";
+import { restartAppRoutesWithDeps } from "./apps/restart.js";
+import { deleteAppRoutesWithDeps } from "./apps/delete.js";
 
 export type AppsRouteDeps = {
   k8s: K8sClientsResult;
@@ -20,5 +23,9 @@ export function appsRoutesWithDeps(deps: AppsRouteDeps): FastifyPluginAsync {
     // Register app pod and log routes
     await app.register(getAppPodsRoutesWithDeps(deps));
     await app.register(getAppLogsRoutesWithDeps(deps));
+    // Register app action routes (scale, restart, delete)
+    await app.register(scaleAppRoutesWithDeps(deps));
+    await app.register(restartAppRoutesWithDeps(deps));
+    await app.register(deleteAppRoutesWithDeps(deps));
   };
 }
