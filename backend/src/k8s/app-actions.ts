@@ -104,7 +104,7 @@ export async function restartApp(
   if (existing.spec?.template?.metadata?.annotations) {
     // Annotations exist; just add/replace the restartedAt one.
     patches.push({
-      op: "replace",
+      op: "add",
       path: "/spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt",
       value: restartedAt,
     });
