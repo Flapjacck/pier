@@ -59,6 +59,8 @@ pnpm --dir frontend build    # Vite
 
 See [backend/README.md](./backend/README.md) for API/kubeconfig setup and [frontend/README.md](./frontend/README.md) for the dashboard stack, tokens, and assets.
 
+**Design context:** [PRODUCT.md](./PRODUCT.md) and [DESIGN.md](./DESIGN.md) at the repo root are the durable product and design references for frontend work (including `impeccable` and issues #43–#47). Read them before changing UI.
+
 ### Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for:

@@ -2,6 +2,10 @@
 
 React 19 + Vite 8 + Tailwind CSS v4 dashboard for the Pier control plane. Mock app data lives in `src/data/mockApps.ts` until the API list/detail endpoints are wired.
 
+## Design context
+
+Before changing layout, tokens, or components, read the repo-root **[PRODUCT.md](../PRODUCT.md)** (who Pier is for, MVP scope, constraints) and **[DESIGN.md](../DESIGN.md)** (Operate-mode dashboard system, tokens, components, asset map). Future frontend issues (#43–#47) treat those files as the single source of truth; update `DESIGN.md` when you add or change a shared component pattern.
+
 ## Scripts
 
 From the repo root (uses the frontend pnpm package):
