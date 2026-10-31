@@ -1,7 +1,13 @@
+import { cn } from "../../lib/cn";
+import {
+  resolvePierIconId,
+  type PierIconName,
+} from "./pierIconNames";
+
 interface Props {
-  /** Icon name from the pier sprite, e.g. "deploy", "app", "logs" */
-  name: string;
-  /** Use the solid (filled) variant */
+  /** Icon name from the pier sprite, e.g. "deploy" or "deploy-solid" */
+  name: PierIconName;
+  /** Use the solid (filled) variant; ignored when name already ends with -solid */
   solid?: boolean;
   size?: number;
   /** Accessible label — set for icon-only usage */
@@ -15,8 +21,15 @@ interface Props {
  *
  * See BRAND.md §8b for the full icon list and usage guidelines.
  */
-export function PierIcon({ name, solid = false, size = 20, label, className }: Props) {
-  const id = `pier-${name}${solid ? "-solid" : ""}`;
+export function PierIcon({
+  name,
+  solid = false,
+  size = 20,
+  label,
+  className,
+}: Props) {
+  const resolved = resolvePierIconId(name, solid);
+  const id = `pier-${resolved.base}${resolved.solid ? "-solid" : ""}`;
   return (
     <svg
       width={size}
@@ -24,8 +37,7 @@ export function PierIcon({ name, solid = false, size = 20, label, className }: P
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      className={className}
-      style={{ display: "block", flexShrink: 0 }}
+      className={cn("block shrink-0", className)}
     >
       <use href={`/icons/sprite.svg#${id}`} />
     </svg>
