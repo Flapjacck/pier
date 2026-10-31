@@ -211,6 +211,21 @@ If `host` is provided:
 - If `PIER_INGRESS_DOMAIN` is not configured (empty or unset), `host` is rejected with 400.
 - **TLS:** Assumes Traefik is configured for TLS termination on ingress hosts. Traefik routes must have TLS enabled; HTTP-only will expose traffic in plaintext. See [#27](https://github.com/Flapjacck/pier/issues/27) for TLS enforcement.
 
+### Network isolation
+
+Apps deployed via POST /apps run in the `pier-apps` namespace, which is protected by **NetworkPolicies** that enforce network segmentation:
+
+- **Incoming:** Apps can only receive traffic from Traefik (ingress controller in `kube-system`). Other apps cannot reach each other; internal communication requires going through Traefik (HTTP/HTTPS ingress).
+- **Outgoing:** Apps can reach DNS for name resolution (kube-dns in `kube-system`) and public internet (`0.0.0.0/0`), but NOT private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), or shared address space (`100.64.0.0/10`). This blocks access to other apps, pier-backend, and the home LAN.
+
+**Troubleshooting:** If an app attempts to reach a cluster service (e.g., pier-backend), another app, or a private LAN address and the connection times out, this is by design. Check the NetworkPolicy rules:
+
+```bash
+kubectl describe netpol -n pier-apps
+```
+
+To allow app-to-app communication on a private network, add an optional NetworkPolicy (see [`../../k8s/networkpolicies.yaml`](../../k8s/networkpolicies.yaml) for an example).
+
 ### Example flow
 
 ```bash
