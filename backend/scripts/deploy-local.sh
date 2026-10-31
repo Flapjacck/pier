@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Load environment for K3S_HOST, K3S_SSH_USER, PIER_API_TOKEN.
+# Load environment for K3S_HOST, K3S_SSH_USER, PIER_API_TOKEN, PIER_INGRESS_DOMAIN.
 if [[ -f "$BACKEND_DIR/.env" ]]; then
   load_env_file "$BACKEND_DIR/.env" || {
     echo "Error: .env file has invalid syntax."
@@ -51,6 +51,15 @@ fi
 if [[ -z "${PIER_API_TOKEN:-}" ]]; then
   echo "Error: PIER_API_TOKEN not set. Set it in backend/.env or as an environment variable."
   exit 1
+fi
+
+# Optional: validate PIER_INGRESS_DOMAIN if set (DNS name labels only, lowercase, digits, hyphens).
+# This check ensures the substitution in the deployment template is safe.
+if [[ -n "${PIER_INGRESS_DOMAIN:-}" ]]; then
+  if ! [[ "$PIER_INGRESS_DOMAIN" =~ ^[a-z0-9.-]*$ ]]; then
+    echo "Error: PIER_INGRESS_DOMAIN \"$PIER_INGRESS_DOMAIN\" contains invalid characters. Use lowercase letters, digits, dots, and hyphens only."
+    exit 1
+  fi
 fi
 
 # Verify kubectl can reach the cluster.
@@ -115,6 +124,7 @@ TOKEN_SHA256=$(printf '%s' "$PIER_API_TOKEN" | sha256sum | cut -d' ' -f1)
 echo "==> Rendering and applying deployment"
 sed -e "s|__IMAGE__|pier-backend:$TAG|" \
     -e "s|__TOKEN_SHA256__|$TOKEN_SHA256|" \
+    -e "s|__INGRESS_DOMAIN__|${PIER_INGRESS_DOMAIN:-}|" \
     "$BACKEND_DIR/k8s/deployment.yaml.tmpl" | \
   kubectl apply $APPLY_OPTS -f -
 

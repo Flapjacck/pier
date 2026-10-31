@@ -15,7 +15,7 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 
 ## Apply order
 
-`../scripts/deploy-local.sh` applies the files in this order and then sets the image (see [backend README](../README.md#deploy-to-k3s)):
+`../scripts/deploy-local.sh` applies the files in this order, renders `deployment.yaml.tmpl` substituting `__IMAGE__`, `__TOKEN_SHA256__`, and `__INGRESS_DOMAIN__` (from `PIER_INGRESS_DOMAIN` env var), and applies the result (see [backend README](../README.md#deploy-to-k3s)):
 
 ```bash
 kubectl apply -f backend/k8s/namespace.yaml

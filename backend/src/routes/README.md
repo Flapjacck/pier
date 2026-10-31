@@ -6,7 +6,7 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 |------|--------|
 | `health.ts` | `GET /health` |
 | `cluster.ts` | `GET /cluster/health`, `GET /cluster/pods` |
-| `apps.ts` | `GET /apps` |
+| `apps.ts` | `GET /apps`, `POST /apps` |
 
 ## Common behaviour
 
@@ -119,3 +119,116 @@ The 503 body is `{ "ok": false, "error": "cluster unreachable" }`, without `mode
 RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac-apps.yaml), not the cluster ClusterRole.
 
 If an app stays `building` or turns `failed` because Pod Security or the quota rejected its pods, see [Debugging rejected apps](../../k8s/README.md#debugging-rejected-apps).
+
+## `POST /apps`
+
+Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orchestrates creation in order, with pre-checks for conflicts and rollback on failure.
+
+### Request
+
+```json
+{
+  "name": "hello",
+  "image": "nginx:1.27",
+  "port": 80,
+  "replicas": 2,
+  "host": "hello.example.com",
+  "env": { "DEBUG": "1", "LOG_LEVEL": "info" }
+}
+```
+
+- `name` **(required)**: DNS-1035 name (DNS name with leading letter). Pattern: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (1–63 chars).
+- `image` **(required)**: Container image (1–255 chars, no whitespace). Example: `nginx:1.27`, `gcr.io/my-project/app:v1.0.0`.
+- `port` **(required)**: Container port (integer 1–65535).
+- `replicas`: Desired replicas (integer 0–10, default 1). Scale to 0 to pause an app.
+- `host`: Ingress hostname for the app (must end with `.` + `PIER_INGRESS_DOMAIN`, e.g. `hello.10.0.0.87.nip.io`). Only created if provided. Requires `PIER_INGRESS_DOMAIN` to be configured.
+- `env`: Environment variables as key-value pairs (up to 50 keys). Keys must match `^[A-Za-z_][A-Za-z0-9_]*$`; values are strings ≤4096 chars. Variables are sorted by key in the Pod spec.
+
+### Response
+
+**201 (success)**: the created App (same shape as `GET /apps`):
+```json
+{ "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 0, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z" }
+```
+
+**400 (validation error)**:
+```json
+{ "ok": false, "error": "invalid request", "details": "name must start with a letter..." }
+```
+Reasons: malformed `name` (leading digit, uppercase, trailing hyphen), `port` out of range, `replicas` > 10, bad `env` key, missing required fields, extra properties, `host` mismatch with `PIER_INGRESS_DOMAIN`, or `host` set when `PIER_INGRESS_DOMAIN` is unconfigured.
+
+**401 (unauthorized)**: (same as GET /apps)
+
+**409 (conflict)**:
+```json
+{ "ok": false, "error": "app already exists" }
+```
+or
+```json
+{ "ok": false, "error": "host already in use" }
+```
+Reasons: Deployment with that name already exists in `PIER_NAMESPACE`; or Ingress host is already claimed by another app. Both are checked before creation begins.
+
+**503 (cluster unreachable)**: (same as GET /apps) — full error logged server-side, never sent to client.
+
+### Manifest builders and creation
+
+The creation process is orchestrated by `src/k8s/create-app.ts`:
+
+1. **Pre-checks** (fail fast, no partial state):
+   - `readNamespacedDeployment` → if found, throw `AppExistsError` (404 is fine).
+   - if `host` provided, `listNamespacedIngress` with `app.kubernetes.io/managed-by=pier` label; scan all rules for matching hosts → if found, throw `HostInUseError`.
+
+2. **Creation in order** (atomic from the client's perspective; Kubernetes may still have transient errors):
+   - `createNamespacedDeployment` with labels, security settings, resources (see [`src/k8s/manifests.ts`](../k8s/README.md)).
+   - `createNamespacedService` (ClusterIP) with owner reference pointing to the Deployment.
+   - `createNamespacedIngress` if host provided, with owner reference pointing to the Deployment.
+
+3. **Rollback on any creation failure** (best effort, logged, doesn't mask original error):
+   - If Service or Ingress fails, delete created resources in reverse order (Ingress → Service → Deployment).
+   - Each delete attempt is logged if it fails; the original error is re-thrown.
+   - A 409 from the API during create is wrapped in `AppExistsError` (race with another POST request).
+
+### Pod Security and resources
+
+Apps created by POST /apps run in `pier-apps` namespace, which enforces **Pod Security baseline** with **restricted** on warning. The Deployment spec includes:
+- **Pod Security Context**: `seccompProfile.type: RuntimeDefault`, `automountServiceAccountToken: false`.
+- **Container Security Context**: `allowPrivilegeEscalation: false`, `capabilities: drop: ["ALL"]`.
+- **Resources**: requests `cpu: 50m, memory: 64Mi, ephemeral-storage: 64Mi`; limits `cpu: 500m, memory: 256Mi, ephemeral-storage: 1Gi`.
+- **Readiness probe**: TCP socket on the container port, `initialDelaySeconds: 2, periodSeconds: 5` (waits 2s before first check; rechecks every 5s).
+- **Labels**: `pier.app: <name>` (app identity), `app.kubernetes.io/managed-by: pier` (owner tracking for garbage collection).
+
+RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac-apps.yaml) grants `create`, `get`, `list`, `delete` on `deployments`, `services`, and `ingresses` in `pier-apps`.
+
+### Host rules
+
+If `host` is provided:
+- Must be lowercase, valid DNS name, ≤253 chars total.
+- Must end with `.` + `PIER_INGRESS_DOMAIN` (e.g. if domain is `example.com`, host must be `hello.example.com`, not `helloexample.com` or `example.com`).
+- Cannot equal `PIER_INGRESS_DOMAIN` itself.
+- Ingress is created with `ingressClassName: traefik`, one rule `host: <host>` → path `/` (Prefix) → Service port 80.
+- If `PIER_INGRESS_DOMAIN` is not configured (empty or unset), `host` is rejected with 400.
+
+### Example flow
+
+```bash
+TOKEN=<token>
+# Create an app without ingress (internal-only).
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"api","image":"myimage:v1","port":8080,"replicas":2}' \
+  http://pier-backend:3000/apps
+# Response: 201 { name: "api", ..., status: "building" }
+
+# Wait for it to stabilize.
+sleep 5
+
+# Create with ingress (publicly routable via Traefik).
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"web","image":"nginx:latest","port":80,"host":"web.example.com","env":{"WORKER_PROCESSES":"2"}}' \
+  http://pier-backend:3000/apps
+# Response: 201 { name: "web", ..., status: "building" }
+
+# List all apps.
+curl -H "Authorization: Bearer $TOKEN" http://pier-backend:3000/apps
+# Response: 200 [ { name: "api", ... }, { name: "web", ... } ]
+```
