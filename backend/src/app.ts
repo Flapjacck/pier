@@ -36,7 +36,14 @@ export function buildApp(config: Config, opts: BuildAppOptions = {}) {
     redact: ["req.headers.authorization"],
   };
 
-  const app = Fastify({ logger });
+  const app = Fastify({
+    logger,
+    ajv: {
+      customOptions: {
+        removeAdditional: false, // Reject unknown keys instead of silently stripping them
+      },
+    },
+  });
 
   // Build or use provided K8s clients once.
   const k8sResult =
