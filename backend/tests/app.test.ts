@@ -26,6 +26,7 @@ describe("buildApp k8s clients", () => {
       } as never,
       version: { getCode: async () => ({ gitVersion: "v1.36.5+k3s1" }) } as never,
       apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
+      networking: { listNamespacedIngress: async () => ({ items: [] }) } as never,
     });
     const app = await buildApp(testConfig(), { logger: false, loadKubeConfig: loader.load });
 
