@@ -85,4 +85,75 @@ describe("loadConfig", () => {
     assert.equal(config.host, "localhost");
     assert.equal(config.apiToken, undefined);
   });
+
+  it("defaults ingressDomain to undefined", () => {
+    const config = loadConfig({});
+    assert.equal(config.ingressDomain, undefined);
+  });
+
+  it("treats empty PIER_INGRESS_DOMAIN as undefined", () => {
+    const config = loadConfig({ PIER_INGRESS_DOMAIN: "  " });
+    assert.equal(config.ingressDomain, undefined);
+  });
+
+  it("lowercases and trims a valid ingress domain", () => {
+    const config = loadConfig({ PIER_INGRESS_DOMAIN: "  EXAMPLE.COM  " });
+    assert.equal(config.ingressDomain, "example.com");
+  });
+
+  it("accepts a valid ingress domain with nip.io suffix", () => {
+    const config = loadConfig({ PIER_INGRESS_DOMAIN: "10.0.0.87.nip.io" });
+    assert.equal(config.ingressDomain, "10.0.0.87.nip.io");
+  });
+
+  it("rejects ingress domain with only one label", () => {
+    assert.throws(
+      () => loadConfig({ PIER_INGRESS_DOMAIN: "localhost" }),
+      (err: Error) => {
+        assert.match(err.message, /at least 2 labels/);
+        return true;
+      },
+    );
+  });
+
+  it("rejects ingress domain exceeding 253 characters", () => {
+    const longLabel = "a".repeat(250);
+    assert.throws(
+      () => loadConfig({ PIER_INGRESS_DOMAIN: `${longLabel}.com` }),
+      (err: Error) => {
+        assert.match(err.message, /≤253 characters/);
+        return true;
+      },
+    );
+  });
+
+  it("rejects ingress domain label starting with a hyphen", () => {
+    assert.throws(
+      () => loadConfig({ PIER_INGRESS_DOMAIN: "-invalid.com" }),
+      (err: Error) => {
+        assert.match(err.message, /must start with a letter or digit/);
+        return true;
+      },
+    );
+  });
+
+  it("rejects ingress domain label ending with a hyphen", () => {
+    assert.throws(
+      () => loadConfig({ PIER_INGRESS_DOMAIN: "invalid-.com" }),
+      (err: Error) => {
+        assert.match(err.message, /end with a letter or digit/);
+        return true;
+      },
+    );
+  });
+
+  it("accepts uppercase letters (auto-lowercased)", () => {
+    const config = loadConfig({ PIER_INGRESS_DOMAIN: "Example.COM" });
+    assert.equal(config.ingressDomain, "example.com");
+  });
+
+  it("accepts domain with hyphens in labels", () => {
+    const config = loadConfig({ PIER_INGRESS_DOMAIN: "my-app-domain.example.com" });
+    assert.equal(config.ingressDomain, "my-app-domain.example.com");
+  });
 });
