@@ -18,7 +18,7 @@ const fakeDeployment: V1Deployment = {
     selector: { matchLabels: { "pier.app": "hello" } },
     template: {
       spec: {
-        containers: [{ name: "app", image: "nginx:1.27" }],
+        containers: [{ name: "app", image: "nginx:1.27", ports: [{ name: "http", containerPort: 8080 }] }],
       },
     },
   },
@@ -86,9 +86,66 @@ describe("POST /api/apps", () => {
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
     assert.equal(res.statusCode, 201);
-    const body = res.json() as { name: string; image: string };
+    const body = res.json() as { name: string; image: string; port?: number; host?: string; url?: string };
     assert.equal(body.name, "hello");
     assert.equal(body.image, "nginx:1.27");
+    assert.equal(body.port, 8080);
+    assert.equal("host" in body, false);
+    assert.equal("url" in body, false);
+    await app.close();
+  });
+
+  it("returns 201 with port, host and url when host is provided", async () => {
+    const fakeDeploymentWithIngress: V1Deployment = {
+      ...fakeDeployment,
+      spec: {
+        ...fakeDeployment.spec!,
+      },
+    };
+
+    const fakeClients = {
+      apps: {
+        readNamespacedDeployment: async () => {
+          throw new FakeApiError(404);
+        },
+        createNamespacedDeployment: async () => fakeDeploymentWithIngress,
+        deleteNamespacedDeployment: async () => {
+          /* noop */
+        },
+      },
+      core: {
+        createNamespacedService: async () => ({}),
+        deleteNamespacedService: async () => {
+          /* noop */
+        },
+      },
+      networking: {
+        listNamespacedIngress: async () => ({ items: [] }),
+        createNamespacedIngress: async () => ({}),
+        deleteNamespacedIngress: async () => {
+          /* noop */
+        },
+      },
+    };
+
+    const app = await buildApp(testConfig({ ingressDomain: "example.com" }), {
+      logger: false,
+      k8s: createFakeClientsResult({ apps: fakeClients.apps as never, core: fakeClients.core as never, networking: fakeClients.networking as never }),
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/apps",
+      headers: authHeader,
+      payload: { name: "hello", image: "nginx:1.27", port: 80, host: "hello.example.com" },
+    });
+    assert.equal(res.statusCode, 201);
+    const body = res.json() as { name: string; image: string; port?: number; host?: string; url?: string };
+    assert.equal(body.name, "hello");
+    assert.equal(body.image, "nginx:1.27");
+    assert.equal(body.port, 8080);
+    assert.equal(body.host, "hello.example.com");
+    assert.equal(body.url, "http://hello.example.com");
     await app.close();
   });
 

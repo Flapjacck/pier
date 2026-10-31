@@ -1,17 +1,23 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { AppsV1Api, NetworkingV1Api } from "@kubernetes/client-node";
 import { buildApp } from "../../src/app.js";
 import { createFakeClientsResult, createFailedClientsResult } from "../helpers/fake-clients.js";
 import { authHeader, testConfig } from "../helpers/test-config.js";
 
 describe("GET /api/apps", () => {
   it("returns 401 without a bearer token when auth is configured", async () => {
-    const fakeApps = {
-      listNamespacedDeployment: async () => ({ items: [] }),
+    const fakeClients = {
+      apps: {
+        listNamespacedDeployment: async () => ({ items: [] }),
+      } as unknown as AppsV1Api,
+      networking: {
+        listNamespacedIngress: async () => ({ items: [] }),
+      } as unknown as NetworkingV1Api,
     };
     const app = await buildApp(testConfig(), {
       logger: false,
-      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+      k8s: createFakeClientsResult(fakeClients as never),
     });
 
     const res = await app.inject({ method: "GET", url: "/api/apps" });
@@ -20,20 +26,35 @@ describe("GET /api/apps", () => {
   });
 
   it("returns the app list with a valid token", async () => {
-    const fakeApps = {
-      listNamespacedDeployment: async () => ({
-        items: [
-          {
-            metadata: { name: "hello", labels: { "pier.app": "hello" } },
-            spec: { replicas: 1, template: { spec: { containers: [{ image: "nginx:1.27" }] } } },
-            status: { readyReplicas: 1, updatedReplicas: 1, observedGeneration: 1 },
-          },
-        ],
-      }),
+    const fakeClients = {
+      apps: {
+        listNamespacedDeployment: async () => ({
+          items: [
+            {
+              metadata: { name: "hello", labels: { "pier.app": "hello" } },
+              spec: {
+                replicas: 1,
+                template: { spec: { containers: [{ image: "nginx:1.27", ports: [{ name: "http", containerPort: 8080 }] }] } },
+              },
+              status: { readyReplicas: 1, updatedReplicas: 1, observedGeneration: 1 },
+            },
+          ],
+        }),
+      } as unknown as AppsV1Api,
+      networking: {
+        listNamespacedIngress: async () => ({
+          items: [
+            {
+              metadata: { name: "hello", labels: { "pier.app": "hello" } },
+              spec: { rules: [{ host: "hello.192.0.2.10.nip.io" }] },
+            },
+          ],
+        }),
+      } as unknown as NetworkingV1Api,
     };
     const app = await buildApp(testConfig(), {
       logger: false,
-      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+      k8s: createFakeClientsResult(fakeClients as never),
     });
 
     const res = await app.inject({
@@ -42,19 +63,27 @@ describe("GET /api/apps", () => {
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
-    const body = res.json() as Array<{ name: string }>;
+    const body = res.json() as Array<{ name: string; port?: number; host?: string; url?: string }>;
     assert.equal(body.length, 1);
     assert.equal(body[0]?.name, "hello");
+    assert.equal(body[0]?.port, 8080);
+    assert.equal(body[0]?.host, "hello.192.0.2.10.nip.io");
+    assert.equal(body[0]?.url, "http://hello.192.0.2.10.nip.io");
     await app.close();
   });
 
   it("returns an empty array when there are no apps", async () => {
-    const fakeApps = {
-      listNamespacedDeployment: async () => ({ items: [] }),
+    const fakeClients = {
+      apps: {
+        listNamespacedDeployment: async () => ({ items: [] }),
+      } as unknown as AppsV1Api,
+      networking: {
+        listNamespacedIngress: async () => ({ items: [] }),
+      } as unknown as NetworkingV1Api,
     };
     const app = await buildApp(testConfig(), {
       logger: false,
-      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+      k8s: createFakeClientsResult(fakeClients as never),
     });
 
     const res = await app.inject({
@@ -83,14 +112,19 @@ describe("GET /api/apps", () => {
   });
 
   it("returns 503 with a generic body when listApps throws", async () => {
-    const fakeApps = {
-      listNamespacedDeployment: async () => {
-        throw new Error("Forbidden: cannot list deployments");
-      },
+    const fakeClients = {
+      apps: {
+        listNamespacedDeployment: async () => {
+          throw new Error("Forbidden: cannot list deployments");
+        },
+      } as unknown as AppsV1Api,
+      networking: {
+        listNamespacedIngress: async () => ({ items: [] }),
+      } as unknown as NetworkingV1Api,
     };
     const app = await buildApp(testConfig(), {
       logger: false,
-      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+      k8s: createFakeClientsResult(fakeClients as never),
     });
 
     const res = await app.inject({
@@ -107,16 +141,25 @@ describe("GET /api/apps", () => {
   });
 
   it("passes the configured namespace to listApps", async () => {
-    let seenNamespace: string | undefined;
-    const fakeApps = {
-      listNamespacedDeployment: async ({ namespace }: { namespace: string }) => {
-        seenNamespace = namespace;
-        return { items: [] };
-      },
+    let seenDeployNamespace: string | undefined;
+    let seenIngressNamespace: string | undefined;
+    const fakeClients = {
+      apps: {
+        listNamespacedDeployment: async ({ namespace }: { namespace: string }) => {
+          seenDeployNamespace = namespace;
+          return { items: [] };
+        },
+      } as unknown as AppsV1Api,
+      networking: {
+        listNamespacedIngress: async ({ namespace }: { namespace: string }) => {
+          seenIngressNamespace = namespace;
+          return { items: [] };
+        },
+      } as unknown as NetworkingV1Api,
     };
     const app = await buildApp(testConfig({ namespace: "custom-ns" }), {
       logger: false,
-      k8s: createFakeClientsResult({ apps: fakeApps as never }),
+      k8s: createFakeClientsResult(fakeClients as never),
     });
 
     await app.inject({
@@ -124,7 +167,8 @@ describe("GET /api/apps", () => {
       url: "/api/apps",
       headers: authHeader,
     });
-    assert.equal(seenNamespace, "custom-ns");
+    assert.equal(seenDeployNamespace, "custom-ns");
+    assert.equal(seenIngressNamespace, "custom-ns");
     await app.close();
   });
 });

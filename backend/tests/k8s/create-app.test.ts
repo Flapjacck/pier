@@ -29,7 +29,7 @@ describe("createApp", () => {
         selector: { matchLabels: { "pier.app": "hello" } },
         template: {
           spec: {
-            containers: [{ name: "app", image: "nginx:1.27" }],
+            containers: [{ name: "app", image: "nginx:1.27", ports: [{ name: "http", containerPort: 8080 }] }],
           },
         },
       },
@@ -90,7 +90,7 @@ describe("createApp", () => {
         selector: { matchLabels: { "pier.app": "hello" } },
         template: {
           spec: {
-            containers: [{ name: "app", image: "nginx:1.27" }],
+            containers: [{ name: "app", image: "nginx:1.27", ports: [{ name: "http", containerPort: 8080 }] }],
           },
         },
       },
@@ -125,11 +125,14 @@ describe("createApp", () => {
       },
     } as never;
 
-    await createApp(clients, "pier-apps", {
+    const app = await createApp(clients, "pier-apps", {
       ...baseInput,
       host: "hello.example.com",
     });
     assert.equal(ingressCreated, true);
+    assert.equal(app.port, 8080);
+    assert.equal(app.host, "hello.example.com");
+    assert.equal(app.url, "http://hello.example.com");
   });
 
   it("throws AppExistsError when deployment already exists", async () => {
@@ -329,7 +332,7 @@ describe("createApp", () => {
         selector: { matchLabels: { "pier.app": "hello" } },
         template: {
           spec: {
-            containers: [{ name: "app", image: "nginx:1.27" }],
+            containers: [{ name: "app", image: "nginx:1.27", ports: [{ name: "http", containerPort: 8080 }] }],
           },
         },
       },
@@ -366,8 +369,12 @@ describe("createApp", () => {
       },
     } as never;
 
-    await createApp(clients, "pier-apps", baseInput);
+    const app = await createApp(clients, "pier-apps", baseInput);
     // ingress list should not be called when no host.
     assert.equal(ingressChecked, false);
+    // But the app should still have port from the deployment.
+    assert.equal(app.port, 8080);
+    assert.equal("host" in app, false);
+    assert.equal("url" in app, false);
   });
 });

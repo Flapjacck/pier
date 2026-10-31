@@ -125,8 +125,8 @@ export async function createApp(
       created.push({ type: "ingress", name: input.name });
     }
 
-    // Success: convert Deployment to App.
-    return deploymentToApp(depResponse);
+    // Success: convert Deployment to App, including host if provided.
+    return deploymentToApp(depResponse, input.host);
   } catch (err) {
     // Rollback: delete created objects in reverse order.
     for (let i = created.length - 1; i >= 0; i--) {

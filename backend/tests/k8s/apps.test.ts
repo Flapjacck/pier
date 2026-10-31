@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AppsV1Api, V1Deployment } from "@kubernetes/client-node";
+import type { AppsV1Api, NetworkingV1Api, V1Deployment } from "@kubernetes/client-node";
 import {
   deploymentToApp,
   deriveStatus,
@@ -145,11 +145,57 @@ describe("deploymentToApp", () => {
     const app = deploymentToApp(baseDeploy());
     assert.equal(app.createdAt, "2026-10-29T15:00:00.000Z");
   });
+
+  it("extracts port from http named port, omits host/url when no host provided", () => {
+    const d = baseDeploy({
+      spec: {
+        replicas: 1,
+        template: {
+          spec: {
+            containers: [
+              {
+                image: "nginx:1.27",
+                ports: [{ name: "http", containerPort: 8080 }],
+              },
+            ],
+          },
+        },
+      },
+    });
+    const app = deploymentToApp(d);
+    assert.equal(app.port, 8080);
+    assert.equal("host" in app, false);
+    assert.equal("url" in app, false);
+  });
+
+  it("includes host and url when host is provided", () => {
+    const d = baseDeploy({
+      spec: {
+        replicas: 1,
+        template: {
+          spec: {
+            containers: [
+              {
+                image: "nginx:1.27",
+                ports: [{ name: "http", containerPort: 8080 }],
+              },
+            ],
+          },
+        },
+      },
+    });
+    const app = deploymentToApp(d, "hello.192.0.2.10.nip.io");
+    assert.equal(app.port, 8080);
+    assert.equal(app.host, "hello.192.0.2.10.nip.io");
+    assert.equal(app.url, "http://hello.192.0.2.10.nip.io");
+  });
 });
 
 describe("listApps", () => {
   it("passes pier.app labelSelector and sorts by name", async () => {
-    let capturedSelector: string | undefined;
+    let capturedDeploySelector: string | undefined;
+    let capturedIngressSelector: string | undefined;
+    let ingressCallCount = 0;
     const zebra = baseDeploy({
       metadata: { name: "z", labels: { [APP_LABEL]: "zebra" } },
     });
@@ -157,19 +203,34 @@ describe("listApps", () => {
       metadata: { name: "a", labels: { [APP_LABEL]: "alpha" } },
     });
 
-    const api = {
-      listNamespacedDeployment: async (params: {
-        namespace: string;
-        labelSelector?: string;
-      }) => {
-        capturedSelector = params.labelSelector;
-        assert.equal(params.namespace, "pier-apps");
-        return { items: [zebra, alpha] };
-      },
-    } as unknown as AppsV1Api;
+    const fakeApis = {
+      apps: {
+        listNamespacedDeployment: async (params: {
+          namespace: string;
+          labelSelector?: string;
+        }) => {
+          capturedDeploySelector = params.labelSelector;
+          assert.equal(params.namespace, "pier-apps");
+          return { items: [zebra, alpha] };
+        },
+      } as unknown as AppsV1Api,
+      networking: {
+        listNamespacedIngress: async (params: {
+          namespace: string;
+          labelSelector?: string;
+        }) => {
+          ingressCallCount++;
+          capturedIngressSelector = params.labelSelector;
+          assert.equal(params.namespace, "pier-apps");
+          return { items: [] };
+        },
+      } as unknown as NetworkingV1Api,
+    };
 
-    const apps = await listApps(api, "pier-apps");
-    assert.equal(capturedSelector, "pier.app");
+    const apps = await listApps(fakeApis, "pier-apps");
+    assert.equal(capturedDeploySelector, "pier.app");
+    assert.equal(capturedIngressSelector, "app.kubernetes.io/managed-by=pier");
+    assert.equal(ingressCallCount, 1);
     assert.deepEqual(
       apps.map((a) => a.name),
       ["alpha", "zebra"],
