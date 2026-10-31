@@ -76,7 +76,7 @@ export async function createApp(
 
       for (const ingress of response.items ?? []) {
         for (const rule of ingress.spec?.rules ?? []) {
-          if (rule.host === input.host) {
+          if (rule.host?.toLowerCase() === input.host?.toLowerCase()) {
             throw new HostInUseError(`host "${input.host}" is already in use`);
           }
         }
