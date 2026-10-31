@@ -1,5 +1,6 @@
 import type { AppsV1Api, CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import { appSelector } from "./labels.js";
+import { apiStatusCode } from "./api-errors.js";
 
 /** One app pod with waiting and termination reason information. */
 export type AppPod = {
@@ -27,11 +28,8 @@ export async function appExists(
     await apps.readNamespacedDeployment({ namespace, name });
     return true;
   } catch (err) {
-    // If the error has a code property (from k8s API), check for 404.
-    interface ApiError extends Error {
-      code?: number;
-    }
-    if (err instanceof Error && "code" in err && (err as ApiError).code === 404) {
+    const code = apiStatusCode(err);
+    if (code === 404) {
       return false;
     }
     // Rethrow other errors (permissions, network, etc.)

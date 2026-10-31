@@ -5,6 +5,8 @@ import {
   buildService,
   buildIngress,
   type CreateAppInput,
+} from "../../src/k8s/manifests/index.js";
+import {
   CPU_REQUEST,
   CPU_LIMIT,
   MEMORY_REQUEST,
@@ -12,7 +14,7 @@ import {
   EPHEMERAL_STORAGE_REQUEST,
   EPHEMERAL_STORAGE_LIMIT,
   PROGRESS_DEADLINE_SECONDS,
-} from "../../src/k8s/manifests.js";
+} from "../../src/k8s/manifests/constants.js";
 
 const baseInput: CreateAppInput = {
   name: "hello",
