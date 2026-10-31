@@ -14,6 +14,9 @@ spec:
     requests.memory: 4Gi
     limits.cpu: "4"
     limits.memory: 6Gi
+    # Ephemeral storage: node allocatable ~44.6Gi. Apps at 5Gi request / 10Gi limit leaves room for k3s system pods.
+    requests.ephemeral-storage: 5Gi
+    limits.ephemeral-storage: 10Gi
     # Pod count: reasonable limit for a small demo; prevents runaway deployments.
     pods: "20"
     # Service counts: no NodePorts (kube-proxy opens them on the node IP) or LoadBalancers (ServiceLB);
@@ -21,6 +24,8 @@ spec:
     services: "20"
     services.nodeports: "0"
     services.loadbalancers: "0"
+    # Ingress count: max 20 app ingress routes (one per app usually, plus some room).
+    count/ingresses.networking.k8s.io: "20"
     # PersistentVolumeClaims: not allowed yet; raise this when apps need persistent storage.
     persistentvolumeclaims: "0"
 ---
@@ -43,9 +48,12 @@ spec:
       defaultRequest:
         cpu: 50m
         memory: 64Mi
+        ephemeral-storage: 64Mi
       default:
         cpu: 500m
         memory: 256Mi
+        ephemeral-storage: 1Gi
       max:
         cpu: "2"
         memory: 2Gi
+        ephemeral-storage: 2Gi
