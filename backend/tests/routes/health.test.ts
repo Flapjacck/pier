@@ -6,7 +6,7 @@ import { testConfig } from "../helpers/test-config.js";
 
 describe("GET /health", () => {
   it("returns 200 with service identity", async () => {
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult(),
     });

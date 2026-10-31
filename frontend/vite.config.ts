@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/health": { target: backendOrigin, changeOrigin: true },
-      "/cluster": { target: backendOrigin, changeOrigin: true },
+      "/api": { target: backendOrigin, changeOrigin: true },
     },
   },
 });

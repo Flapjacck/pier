@@ -4,17 +4,17 @@ import { buildApp } from "../../src/app.js";
 import { createFakeClientsResult, createFailedClientsResult } from "../helpers/fake-clients.js";
 import { authHeader, testConfig } from "../helpers/test-config.js";
 
-describe("GET /apps", () => {
+describe("GET /api/apps", () => {
   it("returns 401 without a bearer token when auth is configured", async () => {
     const fakeApps = {
       listNamespacedDeployment: async () => ({ items: [] }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
-    const res = await app.inject({ method: "GET", url: "/apps" });
+    const res = await app.inject({ method: "GET", url: "/api/apps" });
     assert.equal(res.statusCode, 401);
     await app.close();
   });
@@ -31,14 +31,14 @@ describe("GET /apps", () => {
         ],
       }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
@@ -52,14 +52,14 @@ describe("GET /apps", () => {
     const fakeApps = {
       listNamespacedDeployment: async () => ({ items: [] }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
@@ -68,11 +68,11 @@ describe("GET /apps", () => {
   });
 
   it("returns 503 when kubeconfig failed to load", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult() });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 503);
@@ -88,14 +88,14 @@ describe("GET /apps", () => {
         throw new Error("Forbidden: cannot list deployments");
       },
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 503);
@@ -114,14 +114,14 @@ describe("GET /apps", () => {
         return { items: [] };
       },
     };
-    const app = buildApp(testConfig({ namespace: "custom-ns" }), {
+    const app = await buildApp(testConfig({ namespace: "custom-ns" }), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     await app.inject({
       method: "GET",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
     });
     assert.equal(seenNamespace, "custom-ns");

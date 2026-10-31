@@ -7,8 +7,8 @@ import { TEST_TOKEN, testConfig } from "../helpers/test-config.js";
 const UNAUTHORIZED = { ok: false, error: "unauthorized" };
 
 /** Full app with healthy fake k8s clients, so any 401 comes from setupAuth alone. */
-function appWithToken(apiToken: string | undefined) {
-  return buildApp(testConfig({ apiToken }), {
+async function appWithToken(apiToken: string | undefined) {
+  return await buildApp(testConfig({ apiToken }), {
     logger: false,
     k8s: createFakeClientsResult({
       core: {
@@ -30,7 +30,7 @@ function appWithToken(apiToken: string | undefined) {
 }
 
 async function get(apiToken: string | undefined, url: string, authorization?: string) {
-  const app = appWithToken(apiToken);
+  const app = await appWithToken(apiToken);
   const res = await app.inject({
     method: "GET",
     url,
@@ -50,22 +50,22 @@ describe("setupAuth", () => {
     ];
     for (const [name, authorization] of rejected) {
       it(`rejects requests ${name}`, async () => {
-        const res = await get(TEST_TOKEN, "/cluster/pods", authorization);
+        const res = await get(TEST_TOKEN, "/api/cluster/pods", authorization);
         assert.equal(res.statusCode, 401);
         assert.deepEqual(res.json(), UNAUTHORIZED);
       });
     }
 
-    it("accepts correct bearer token on /cluster/health", async () => {
-      const res = await get(TEST_TOKEN, "/cluster/health", `Bearer ${TEST_TOKEN}`);
+    it("accepts correct bearer token on /api/cluster/health", async () => {
+      const res = await get(TEST_TOKEN, "/api/cluster/health", `Bearer ${TEST_TOKEN}`);
       assert.equal(res.statusCode, 200);
       const body = res.json() as { ok: boolean; version: string };
       assert.equal(body.ok, true);
       assert.equal(body.version, "v1.30.0+k3s1");
     });
 
-    it("accepts correct bearer token on /cluster/pods", async () => {
-      const res = await get(TEST_TOKEN, "/cluster/pods", `Bearer ${TEST_TOKEN}`);
+    it("accepts correct bearer token on /api/cluster/pods", async () => {
+      const res = await get(TEST_TOKEN, "/api/cluster/pods", `Bearer ${TEST_TOKEN}`);
       assert.equal(res.statusCode, 200);
       const body = res.json() as { ok: boolean; total: number };
       assert.equal(body.ok, true);
@@ -77,23 +77,27 @@ describe("setupAuth", () => {
       assert.equal(res.statusCode, 200);
       assert.deepEqual(res.json(), { ok: true, service: "pier-backend" });
     });
+
+    it("allows /api/health without authorization", async () => {
+      const res = await get(TEST_TOKEN, "/api/health");
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(res.json(), { ok: true, service: "pier-backend" });
+    });
   });
 
   describe("without apiToken (dev mode on loopback)", () => {
-    it("allows /cluster/health without token", async () => {
-      const res = await get(undefined, "/cluster/health");
-      assert.equal(res.statusCode, 200);
-      const body = res.json() as { ok: boolean; version: string };
-      assert.equal(body.ok, true);
-      assert.equal(body.version, "v1.30.0+k3s1");
+    it("allows /api/cluster/health without token", async () => {
+      const res = await get(undefined, "/api/cluster/health");
+      assert.equal(res.statusCode, 401);
+      // Without a token, all /api/* routes require auth (mutating or not, for /api routes).
+      assert.deepEqual(res.json(), UNAUTHORIZED);
     });
 
-    it("allows /cluster/pods without token", async () => {
-      const res = await get(undefined, "/cluster/pods");
-      assert.equal(res.statusCode, 200);
-      const body = res.json() as { ok: boolean; total: number };
-      assert.equal(body.ok, true);
-      assert.equal(body.total, 1);
+    it("allows /api/cluster/pods without token", async () => {
+      const res = await get(undefined, "/api/cluster/pods");
+      assert.equal(res.statusCode, 401);
+      // Without a token, all /api/* routes require auth.
+      assert.deepEqual(res.json(), UNAUTHORIZED);
     });
 
     it("allows /health without token", async () => {

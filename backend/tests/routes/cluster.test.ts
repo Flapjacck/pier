@@ -7,7 +7,7 @@ import {
 } from "../helpers/fake-clients.js";
 import { authHeader, testConfig } from "../helpers/test-config.js";
 
-describe("GET /cluster/health", () => {
+describe("GET /api/cluster/health", () => {
   it("returns 200 when the cluster check passes", async () => {
     const fakeCore = {
       listNode: async () => ({
@@ -18,12 +18,12 @@ describe("GET /cluster/health", () => {
       getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ core: fakeCore as never, version: fakeVersion as never }),
     });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/health", headers: authHeader });
+    const res = await app.inject({ method: "GET", url: "/api/cluster/health", headers: authHeader });
     assert.equal(res.statusCode, 200);
     const body = res.json() as { ok: boolean; version: string };
     assert.equal(body.ok, true);
@@ -32,12 +32,12 @@ describe("GET /cluster/health", () => {
   });
 
   it("returns 503 when kubeconfig failed to load", async () => {
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFailedClientsResult("cannot read kubeconfig"),
     });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/health", headers: authHeader });
+    const res = await app.inject({ method: "GET", url: "/api/cluster/health", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
@@ -58,7 +58,7 @@ describe("GET /cluster/health", () => {
       getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }),
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         core: fakeCore as never,
@@ -67,7 +67,7 @@ describe("GET /cluster/health", () => {
       }),
     });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/health", headers: authHeader });
+    const res = await app.inject({ method: "GET", url: "/api/cluster/health", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
@@ -80,7 +80,7 @@ describe("GET /cluster/health", () => {
   });
 });
 
-describe("GET /cluster/pods", () => {
+describe("GET /api/cluster/pods", () => {
   it("returns 200 with pod list on success (namespaced)", async () => {
     let capturedNamespace: string | undefined;
     const fakeCore = {
@@ -97,12 +97,12 @@ describe("GET /cluster/pods", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ core: fakeCore as never }),
     });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
+    const res = await app.inject({ method: "GET", url: "/api/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 200);
     assert.equal(capturedNamespace, "pier-apps");
     const body = res.json() as { ok: boolean; total: number };
@@ -112,9 +112,9 @@ describe("GET /cluster/pods", () => {
   });
 
   it("returns 503 when kubeconfig failed to load", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult() });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
+    const res = await app.inject({ method: "GET", url: "/api/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);
@@ -129,12 +129,12 @@ describe("GET /cluster/pods", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ core: fakeCore as never, mode: "in-cluster" }),
     });
 
-    const res = await app.inject({ method: "GET", url: "/cluster/pods", headers: authHeader });
+    const res = await app.inject({ method: "GET", url: "/api/cluster/pods", headers: authHeader });
     assert.equal(res.statusCode, 503);
     const body = res.json() as { ok: boolean; error: string };
     assert.equal(body.ok, false);

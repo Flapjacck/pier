@@ -27,9 +27,9 @@ describe("buildApp k8s clients", () => {
       version: { getCode: async () => ({ gitVersion: "v1.36.5+k3s1" }) } as never,
       apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
     });
-    const app = buildApp(testConfig(), { logger: false, loadKubeConfig: loader.load });
+    const app = await buildApp(testConfig(), { logger: false, loadKubeConfig: loader.load });
 
-    for (const url of ["/cluster/health", "/cluster/pods", "/apps"]) {
+    for (const url of ["/api/cluster/health", "/api/cluster/pods", "/api/apps"]) {
       const res = await app.inject({ method: "GET", url, headers: authHeader });
       assert.equal(res.statusCode, 200, url);
     }
@@ -38,9 +38,9 @@ describe("buildApp k8s clients", () => {
   });
 
   it("returns 503 on cluster and app routes but 200 on /health with a bad kubeconfig", async () => {
-    const app = buildApp(testConfig({ kubeconfig: badKubeconfigFile() }), { logger: false });
+    const app = await buildApp(testConfig({ kubeconfig: badKubeconfigFile() }), { logger: false });
 
-    for (const url of ["/cluster/health", "/cluster/pods", "/apps"]) {
+    for (const url of ["/api/cluster/health", "/api/cluster/pods", "/api/apps"]) {
       const res = await app.inject({ method: "GET", url, headers: authHeader });
       assert.equal(res.statusCode, 503, url);
       assert.deepEqual(res.json(), { ok: false, error: "cluster unreachable" });
@@ -52,7 +52,7 @@ describe("buildApp k8s clients", () => {
 
   it("logs a one-line startup warning without kubeconfig content", async () => {
     const lines: string[] = [];
-    const app = buildApp(testConfig({ kubeconfig: badKubeconfigFile() }), {
+    const app = await buildApp(testConfig({ kubeconfig: badKubeconfigFile() }), {
       logger: { level: "warn", stream: { write: (line: string) => lines.push(line) } },
     });
     await app.ready();
