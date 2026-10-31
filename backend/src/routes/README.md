@@ -137,12 +137,16 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 }
 ```
 
-- `name` **(required)**: DNS-1035 name (DNS name with leading letter). Pattern: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (1–63 chars).
-- `image` **(required)**: Container image (1–255 chars, no whitespace). Example: `nginx:1.27`, `gcr.io/my-project/app:v1.0.0`.
-- `port` **(required)**: Container port (integer 1–65535).
-- `replicas`: Desired replicas (integer 0–10, default 1). Scale to 0 to pause an app.
-- `host`: Ingress hostname for the app (must end with `.` + `PIER_INGRESS_DOMAIN`, e.g. `hello.10.0.0.87.nip.io`). Only created if provided. Requires `PIER_INGRESS_DOMAIN` to be configured.
-- `env`: Environment variables as key-value pairs (up to 50 keys). Keys must match `^[A-Za-z_][A-Za-z0-9_]*$`; values are strings ≤4096 chars. Variables are sorted by key in the Pod spec.
+| Field | Type | Required | Constraints | Notes |
+|-------|------|----------|-------------|-------|
+| `name` | string | Yes | Pattern: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (1–63 chars) | DNS-1035 name (leading letter, lowercase, hyphens OK). |
+| `image` | string | Yes | 1–255 chars, no whitespace | Container image URL, e.g. `nginx:1.27`, `gcr.io/my-project/app:v1.0.0`. |
+| `port` | integer | Yes | 1–65535 | Container port number. |
+| `replicas` | integer | No | 0–10, default 1 | Desired replicas. Use 0 to pause an app. |
+| `host` | string | No | 1–253 chars, DNS-1123 format, must end with `.PIER_INGRESS_DOMAIN` | Ingress hostname. Requires `PIER_INGRESS_DOMAIN` to be configured. Automatically lowercased. |
+| `env` | object | No | ≤50 keys, key pattern `^[A-Za-z_][A-Za-z0-9_]*$`, values ≤4096 chars | Environment variables. |
+
+**Unknown properties are rejected** — the request body schema uses `additionalProperties: false`, so any field not listed above returns 400.
 
 ### Response
 
@@ -151,25 +155,18 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 { "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 0, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z" }
 ```
 
-**400 (validation error)**:
-```json
-{ "ok": false, "error": "invalid request", "details": "name must start with a letter..." }
-```
-Reasons: malformed `name` (leading digit, uppercase, trailing hyphen), `port` out of range, `replicas` > 10, bad `env` key, missing required fields, extra properties, `host` mismatch with `PIER_INGRESS_DOMAIN`, or `host` set when `PIER_INGRESS_DOMAIN` is unconfigured.
+| Status | Error | Details? | Reason |
+|--------|-------|----------|--------|
+| **400** | `invalid request` | Yes | Schema validation failed: malformed `name`, `port`/`replicas` out of range, bad `env` key, missing required fields, unknown property, `host` mismatch with `PIER_INGRESS_DOMAIN`, or `host` provided when `PIER_INGRESS_DOMAIN` unconfigured. |
+| **401** | `unauthorized` | No | Missing or wrong Bearer token. |
+| **403** | `quota exceeded` | Yes | Kubernetes API reported resource quota exceeded. Details include the quota message. |
+| **403** | `forbidden by cluster` | Yes | Kubernetes API returned 403 for other reasons (RBAC, etc.). Details include the API message. |
+| **409** | `app already exists` | No | Deployment with that name already exists in `PIER_NAMESPACE`. |
+| **409** | `host already in use` | No | Ingress host is already claimed by another app (case-insensitive check). |
+| **422** | `rejected by cluster` | Yes | Pod Security Policy or Validating Admission Policy rejected the pod. Details include the policy message. |
+| **503** | `cluster unreachable` | No | Kubernetes API unreachable or other 5xx error. Full error logged server-side, never sent to client. |
 
-**401 (unauthorized)**: (same as GET /apps)
-
-**409 (conflict)**:
-```json
-{ "ok": false, "error": "app already exists" }
-```
-or
-```json
-{ "ok": false, "error": "host already in use" }
-```
-Reasons: Deployment with that name already exists in `PIER_NAMESPACE`; or Ingress host is already claimed by another app. Both are checked before creation begins.
-
-**503 (cluster unreachable)**: (same as GET /apps) — full error logged server-side, never sent to client.
+**Global validation `details` field**: When the request body schema validation fails (status 400), the error handler extracts the first validation error from AJV and includes it in the `details` field for debugging (e.g., `"name must have required property"`). Routes whose response schema includes `details` will strip it if the route doesn't send it, so errors are safe.
 
 ### Manifest builders and creation
 
@@ -203,11 +200,13 @@ RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac
 ### Host rules
 
 If `host` is provided:
-- Must be a valid **DNS-1123 hostname** (lowercase letters, digits, hyphens, no wildcards). Pattern: `[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?` per label.
+- **Automatically lowercased** to ensure case-insensitive matching in Ingress rules. Example: `Hello.192.0.2.10.nip.io` becomes `hello.192.0.2.10.nip.io`.
+- Must be a valid **DNS-1123 hostname** (lowercase letters, digits, hyphens, no wildcards). Pattern: `[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?` per label. Rejected with 400 if invalid.
 - Must NOT contain wildcards (`*`). Rejected with 400 if wildcard present (prevents overly-broad rules).
-- Must end with `.` + `PIER_INGRESS_DOMAIN` (e.g. if domain is `example.com`, host must be `hello.example.com`, not `helloexample.com` or `example.com`).
-- Cannot equal `PIER_INGRESS_DOMAIN` itself.
-- Ingress is created with `ingressClassName: traefik`, one rule `host: <host>` → path `/` (Prefix) → Service port 80.
+- Must end with `.` + `PIER_INGRESS_DOMAIN` (e.g. if domain is `192.0.2.10.nip.io`, host must be `hello.192.0.2.10.nip.io`, not `helloexample.com` or `192.0.2.10.nip.io` itself).
+- Cannot equal `PIER_INGRESS_DOMAIN` itself. Rejected with 400.
+- **Case-insensitive host conflict check**: The pre-creation host-in-use check compares hosts case-insensitively, so uppercase `HELLO.example.com` conflicts with existing lowercase `hello.example.com`.
+- Ingress is created with `ingressClassName: traefik`, one rule `host: <host>` (lowercased) → path `/` (Prefix) → Service port 80.
 - If `PIER_INGRESS_DOMAIN` is not configured (empty or unset), `host` is rejected with 400.
 - **TLS:** Assumes Traefik is configured for TLS termination on ingress hosts. Traefik routes must have TLS enabled; HTTP-only will expose traffic in plaintext. See [#27](https://github.com/Flapjacck/pier/issues/27) for TLS enforcement.
 
