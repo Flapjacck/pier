@@ -43,6 +43,15 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
       return;
     }
 
+    // Mutating endpoints (POST, PUT, DELETE, PATCH) always require authentication,
+    // even on loopback. These are control-plane operations that use the backend's
+    // Kubernetes credentials, so they must never bypass auth.
+    const isMutating = ["POST", "PUT", "DELETE", "PATCH"].includes(req.method);
+    if (isMutating && !apiToken) {
+      throw new UnauthorizedError();
+    }
+
+    // Read-only endpoints (GET, HEAD, OPTIONS) can skip auth on loopback (dev mode).
     // If no token is configured, allow the request (dev mode on loopback).
     if (!apiToken) {
       return;

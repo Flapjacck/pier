@@ -203,11 +203,13 @@ RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac
 ### Host rules
 
 If `host` is provided:
-- Must be lowercase, valid DNS name, ≤253 chars total.
+- Must be a valid **DNS-1123 hostname** (lowercase letters, digits, hyphens, no wildcards). Pattern: `[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?` per label.
+- Must NOT contain wildcards (`*`). Rejected with 400 if wildcard present (prevents overly-broad rules).
 - Must end with `.` + `PIER_INGRESS_DOMAIN` (e.g. if domain is `example.com`, host must be `hello.example.com`, not `helloexample.com` or `example.com`).
 - Cannot equal `PIER_INGRESS_DOMAIN` itself.
 - Ingress is created with `ingressClassName: traefik`, one rule `host: <host>` → path `/` (Prefix) → Service port 80.
 - If `PIER_INGRESS_DOMAIN` is not configured (empty or unset), `host` is rejected with 400.
+- **TLS:** Assumes Traefik is configured for TLS termination on ingress hosts. Traefik routes must have TLS enabled; HTTP-only will expose traffic in plaintext. See [#27](https://github.com/Flapjacck/pier/issues/27) for TLS enforcement.
 
 ### Example flow
 
