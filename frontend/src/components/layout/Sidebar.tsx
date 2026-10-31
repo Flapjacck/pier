@@ -13,7 +13,7 @@ const NAV_ITEMS = [
 ] as const;
 
 const navBase =
-  "flex items-center gap-2.5 px-2.5 py-[7px] rounded-md text-[13.5px] transition-colors";
+  "flex items-center gap-2.5 px-2.5 py-[7px] rounded-pier text-[13.5px] transition-colors";
 
 const navActive =
   "bg-pier-surface-2 text-pier-fg font-semibold shadow-[inset_3px_0_0_var(--pier-water)]";

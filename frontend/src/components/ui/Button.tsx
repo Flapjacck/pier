@@ -8,16 +8,16 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const base =
   "inline-flex items-center gap-1.5 px-3.5 py-[7px] text-[13px] font-semibold font-sans " +
-  "rounded-md whitespace-nowrap cursor-pointer transition-opacity " +
+  "rounded-pier whitespace-nowrap cursor-pointer transition-opacity " +
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus " +
-  "disabled:opacity-50 disabled:cursor-not-allowed";
+  "disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none";
 
 const variants = {
   primary:
-    "bg-pier-fg text-pier-bg border-0 hover:opacity-80",
+    "bg-pier-fg text-pier-bg border-0 hover:opacity-80 disabled:hover:opacity-45",
   secondary:
     "bg-transparent text-pier-fg border border-pier-border-strong hover:bg-pier-surface " +
-    "transition-colors",
+    "transition-colors disabled:hover:bg-transparent",
 };
 
 /**
