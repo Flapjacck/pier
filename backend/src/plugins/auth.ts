@@ -25,15 +25,28 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
     );
   }
 
-  // Register error handler for UnauthorizedError.
-  app.setErrorHandler(async (error, _req, reply) => {
-    if (error instanceof UnauthorizedError) {
+  // Register error handler for UnauthorizedError and schema validation errors.
+  app.setErrorHandler(async (err, _req, reply) => {
+    if (err instanceof UnauthorizedError) {
       return reply.status(401).send({
         ok: false,
         error: "unauthorized",
       });
     }
-    throw error;
+    // Handle schema validation errors (querystring, body, params).
+    // These can come from AJV validation with different error structures.
+    const errObj = err as unknown as Record<string, unknown>;
+    if (
+      err instanceof Error &&
+      errObj.statusCode === 400 &&
+      (errObj.validation || errObj.ajv)
+    ) {
+      return reply.status(400).send({
+        ok: false,
+        error: "invalid request",
+      });
+    }
+    throw err;
   });
 
   // Register onRequest hook that runs before all handlers.
