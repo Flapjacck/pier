@@ -57,7 +57,7 @@ pnpm --dir frontend typecheck # tsc -b
 pnpm --dir frontend build    # Vite
 ```
 
-See [backend/README.md](./backend/README.md) for API/kubeconfig setup.
+See [backend/README.md](./backend/README.md) for API/kubeconfig setup and [frontend/README.md](./frontend/README.md) for the dashboard stack, tokens, and assets.
 
 ### Contributing
 

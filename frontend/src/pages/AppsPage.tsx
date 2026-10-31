@@ -19,7 +19,8 @@ export function AppsPage({ theme, toggle }: PierTheme) {
           title="Apps"
           description="All services running on your cluster"
           actions={
-            <Button>
+            // TODO(#46): wire Deploy to create-app flow
+            <Button disabled title="Coming soon">
               <PierIcon name="deploy" size={14} />
               Deploy
             </Button>
