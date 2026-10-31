@@ -42,25 +42,87 @@ pnpm dev               # http://127.0.0.1:3000
 
 ## API
 
+All cluster and app routes are served under the `/api` prefix. The health endpoint is available at both `/health` (root) and `/api/health`.
+
 | Method | Path | Auth | Returns |
 |--------|------|------|---------|
 | GET | `/health` | none | `{ ok, service }`. No cluster call; used by the probes. |
-| GET | `/cluster/health` | bearer | API server version and Ready/total node counts. |
-| GET | `/cluster/pods` | bearer | Every pod in every namespace. |
-| GET | `/apps` | bearer | Deployments in `PIER_NAMESPACE` labelled `pier.app`. |
-| POST | `/apps` | bearer | Create Deployment, Service, and optional Ingress. Accepts JSON: `{ name, image, port, replicas?, host?, env? }`. Returns `201` with App; `400` for validation; `409` if name or host exists; `503` if cluster unreachable. |
-| PATCH | `/apps/:name/scale` | bearer | Scale an app to 0–10 replicas. Accepts JSON: `{ replicas }`. Returns `200` with App; `404` if app unknown or terminating; `400`/`503` on error. |
-| POST | `/apps/:name/restart` | bearer | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt }`; `404` if app unknown; `400`/`503` on error. |
-| DELETE | `/apps/:name` | bearer | Delete an app (Deployment, Service, Ingress). No body. Returns `204` empty (idempotent); `404` if app unknown or already gone; `400`/`503` on error. |
+| GET | `/api/health` | none | `{ ok, service }`. Duplicate of `/health`. |
+| POST | `/api/login` | none* | Authenticate with the API token to get a session cookie. Accepts JSON: `{ token }` (1–512 chars). Returns `204` with `Set-Cookie pier_session` on success; `400` if auth disabled; `401` if wrong token; `429` if rate limited. |
+| POST | `/api/logout` | none* | Clear the session cookie. Returns `204`. |
+| GET | `/api/session` | auth** | Get session status. Returns `200 { ok, authDisabled }`; `401` if not authenticated. |
+| GET | `/api/cluster/health` | auth | API server version and Ready/total node counts. |
+| GET | `/api/cluster/pods` | auth | Every pod in every namespace. |
+| GET | `/api/apps` | auth | Deployments in `PIER_NAMESPACE` labelled `pier.app`. |
+| POST | `/api/apps` | auth | Create Deployment, Service, and optional Ingress. Accepts JSON: `{ name, image, port, replicas?, host?, env? }`. Returns `201` with App; `400` for validation; `409` if name or host exists; `503` if cluster unreachable. |
+| PATCH | `/api/apps/:name/scale` | auth | Scale an app to 0–10 replicas. Accepts JSON: `{ replicas }`. Returns `200` with App; `404` if app unknown or terminating; `400`/`503` on error. |
+| POST | `/api/apps/:name/restart` | auth | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt }`; `404` if app unknown; `400`/`503` on error. |
+| DELETE | `/api/apps/:name` | auth | Delete an app (Deployment, Service, Ingress). No body. Returns `204` empty (idempotent); `404` if app unknown or already gone; `400`/`503` on error. |
+
+\* Public endpoints; `POST /api/login` returns `400` if auth is disabled.  
+\*\* Requires bearer token or valid session cookie (see "Authentication" below).
+
+### Authentication
+
+Bearer token authentication:
 
 ```bash
-curl -H "Authorization: Bearer $PIER_API_TOKEN" http://127.0.0.1:3000/apps
+curl -H "Authorization: Bearer $PIER_API_TOKEN" http://192.0.2.10.nip.io/api/apps
 ```
 
-- With no `PIER_API_TOKEN`, which is only possible on a loopback `HOST`, auth is off and the server logs a warning.
-- A missing or wrong token returns `401 { ok: false, error: "unauthorized" }`.
-- If the cluster can't be reached, the route returns `503` with `error: "cluster unreachable"`, and the full error goes to the server log.
-- Fastify redacts the `Authorization` header from logs.
+Session cookie authentication (login → cookie → requests):
+
+```bash
+# 1. Login with the API token.
+curl -i -c jar -H "Content-Type: application/json" -d "{\"token\":\"$PIER_API_TOKEN\"}" http://192.0.2.10.nip.io/api/login
+
+# 2. Use the saved session cookie for subsequent requests.
+curl -b jar http://192.0.2.10.nip.io/api/apps
+
+# 3. Logout (clears the cookie).
+curl -b jar -c jar -X POST http://192.0.2.10.nip.io/api/logout
+```
+
+**Bearer tokens** (set in the `Authorization: Bearer <token>` header):
+- Take precedence over session cookies.
+- Do not require an `Origin` header check.
+- Compared against `PIER_API_TOKEN` using timing-safe SHA-256 hashing to prevent timing attacks.
+
+**Session cookies** (`pier_session`):
+- Created by `POST /api/login` with the API token.
+- Valid for 7 days from creation.
+- Stateless and signed with an HMAC-SHA256 key derived from `PIER_API_TOKEN`.
+- Rotating `PIER_API_TOKEN` invalidates all sessions automatically (they won't verify with the new key).
+- Cannot be revoked server-side individually; rotate the token to kill all sessions.
+- Set with `HttpOnly`, `SameSite=Strict`, `Path=/api`, `Max-Age=604800`, and `Secure` when the connection is HTTPS.
+- Cleared on the client by `POST /api/logout`.
+
+**Cookie-authenticated requests with mutations** (POST, PUT, PATCH, DELETE):
+- Must include an `Origin` header (from the browser or fallback to `Referer` origin) that matches `req.headers.host`.
+- If the header is missing or mismatched, the request is rejected with `403 { ok: false, error: "forbidden origin" }` (CSRF protection).
+- Example: a request to `http://192.0.2.10.nip.io/api/apps` with a session cookie must have `Origin: http://192.0.2.10.nip.io` or a matching `Referer`.
+
+**Rate limiting**:
+- `POST /api/login` limits failed attempts per IP to 5 within 60 seconds.
+- After the 6th failure, the request is rejected with `429 { ok: false, error: "too many attempts" }` until the window passes.
+- Successful login clears the rate limit entry for that IP.
+
+**Dev mode** (no `PIER_API_TOKEN`):
+- Only available on loopback (`HOST` is `127.*`, `::1`, or `localhost`).
+- Mutating requests (POST, PUT, PATCH, DELETE) are rejected with `401` even without auth.
+- Read-only requests (GET, HEAD, OPTIONS) on `/api` routes are rejected with `401` as well. The `/health` endpoints remain public.
+- Dev mode logs a startup warning: `"auth disabled: PIER_API_TOKEN not set (loopback only)"`.
+
+**Logging**:
+- Fastify redacts the `Authorization` header, `Cookie` header, and `Set-Cookie` response header from logs.
+
+### Error responses
+
+- Missing or wrong token: `401 { ok: false, error: "unauthorized" }`.
+- CSRF protection (missing/mismatched Origin on cookie-authed mutations): `403 { ok: false, error: "forbidden origin" }`.
+- Rate limited on login: `429 { ok: false, error: "too many attempts" }`.
+- Validation error: `400 { ok: false, error: "invalid request", details?: "first error message" }`.
+- Cluster unreachable: `503 { ok: false, error: "cluster unreachable" }`.
 
 Response shapes, status rules and diagrams: [src/routes/README.md](src/routes/README.md).
 
