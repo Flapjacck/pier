@@ -10,10 +10,10 @@ interface ApiError extends Error {
 
 describe("GET /apps/:name/pods", () => {
   it("returns 400 for invalid app name", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
     const res = await app.inject({
       method: "GET",
-      url: "/apps/Invalid-Name/pods",
+      url: "/api/apps/Invalid-Name/pods",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
@@ -29,14 +29,14 @@ describe("GET /apps/:name/pods", () => {
         throw err;
       },
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/nope/pods",
+      url: "/api/apps/nope/pods",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 404);
@@ -51,7 +51,7 @@ describe("GET /apps/:name/pods", () => {
     const fakeCore = {
       listNamespacedPod: async () => ({ items: [] }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeApps as never,
@@ -61,7 +61,7 @@ describe("GET /apps/:name/pods", () => {
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/pods",
+      url: "/api/apps/hello/pods",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
@@ -87,7 +87,7 @@ describe("GET /apps/:name/pods", () => {
         ],
       }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeApps as never,
@@ -97,7 +97,7 @@ describe("GET /apps/:name/pods", () => {
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/pods",
+      url: "/api/apps/hello/pods",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);
@@ -109,14 +109,14 @@ describe("GET /apps/:name/pods", () => {
   });
 
   it("returns 503 when cluster unreachable", async () => {
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: { ok: false, error: new Error("no cluster") },
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/pods",
+      url: "/api/apps/hello/pods",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 503);

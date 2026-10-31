@@ -25,12 +25,12 @@ const fakeDeployment: V1Deployment = {
   status: { readyReplicas: 1, updatedReplicas: 1, observedGeneration: 1 },
 };
 
-describe("POST /apps", () => {
+describe("POST /api/apps", () => {
   it("returns 401 without a bearer token when auth is configured (mutating endpoints always require auth)", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
     assert.equal(res.statusCode, 401);
@@ -38,10 +38,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 401 even without apiToken (mutating endpoints always require auth, no loopback bypass)", async () => {
-    const app = buildApp(testConfig({ apiToken: undefined }), { logger: false });
+    const app = await buildApp(testConfig({ apiToken: undefined }), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
     assert.equal(res.statusCode, 401);
@@ -74,14 +74,14 @@ describe("POST /apps", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeClients.apps as never, core: fakeClients.core as never, networking: fakeClients.networking as never }),
     });
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
@@ -93,10 +93,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 for invalid name (leading digit)", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "1bad", image: "nginx:1.27", port: 80 },
     });
@@ -105,10 +105,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 for invalid name (uppercase)", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "Hello", image: "nginx:1.27", port: 80 },
     });
@@ -117,10 +117,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 for port out of range", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 0 },
     });
@@ -129,10 +129,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 for replicas out of range", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80, replicas: 11 },
     });
@@ -141,10 +141,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 for bad env key", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -158,10 +158,10 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 for extra property", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -175,12 +175,12 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 when host provided but ingressDomain not configured", async () => {
-    const app = buildApp(testConfig({ ingressDomain: undefined }), {
+    const app = await buildApp(testConfig({ ingressDomain: undefined }), {
       logger: false,
     });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -196,12 +196,12 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 when host does not end with ingressDomain", async () => {
-    const app = buildApp(testConfig({ ingressDomain: "example.com" }), {
+    const app = await buildApp(testConfig({ ingressDomain: "example.com" }), {
       logger: false,
     });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -215,12 +215,12 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 when host contains wildcard", async () => {
-    const app = buildApp(testConfig({ ingressDomain: "example.com" }), {
+    const app = await buildApp(testConfig({ ingressDomain: "example.com" }), {
       logger: false,
     });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -236,12 +236,12 @@ describe("POST /apps", () => {
   });
 
   it("returns 400 when host has invalid DNS-1123 format", async () => {
-    const app = buildApp(testConfig({ ingressDomain: "example.com" }), {
+    const app = await buildApp(testConfig({ ingressDomain: "example.com" }), {
       logger: false,
     });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -263,14 +263,14 @@ describe("POST /apps", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeClients.apps as never }),
     });
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
@@ -300,14 +300,14 @@ describe("POST /apps", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeClients.apps as never, networking: fakeClients.networking as never }),
     });
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "newapp",
@@ -323,14 +323,14 @@ describe("POST /apps", () => {
   });
 
   it("returns 503 when kubeconfig failed to load", async () => {
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFailedClientsResult(),
     });
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
@@ -367,14 +367,14 @@ describe("POST /apps", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeClients.apps as never, core: fakeClients.core as never, networking: fakeClients.networking as never }),
     });
 
     await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });

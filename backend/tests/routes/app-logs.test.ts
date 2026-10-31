@@ -86,10 +86,10 @@ describe("SSELineTransform", () => {
 
 describe("GET /apps/:name/logs", () => {
   it("returns 400 for invalid tail parameter (tail=0)", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs?tail=0",
+      url: "/api/apps/hello/logs?tail=0",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
@@ -98,10 +98,10 @@ describe("GET /apps/:name/logs", () => {
   });
 
   it("returns 400 for tail > 5000", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs?tail=5001",
+      url: "/api/apps/hello/logs?tail=5001",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
@@ -110,10 +110,10 @@ describe("GET /apps/:name/logs", () => {
   });
 
   it("returns 400 for non-integer tail", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs?tail=abc",
+      url: "/api/apps/hello/logs?tail=abc",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
@@ -121,10 +121,10 @@ describe("GET /apps/:name/logs", () => {
   });
 
   it("returns 400 for invalid pod name", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs?pod=Bad_Pod",
+      url: "/api/apps/hello/logs?pod=Bad_Pod",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
@@ -135,10 +135,10 @@ describe("GET /apps/:name/logs", () => {
   // by the query handler itself. The test case is covered by testing other validation scenarios.
 
   it("returns 400 for invalid app name", async () => {
-    const app = buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
+    const app = await buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult() });
     const res = await app.inject({
       method: "GET",
-      url: "/apps/Invalid/logs",
+      url: "/api/apps/Invalid/logs",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
@@ -153,14 +153,14 @@ describe("GET /apps/:name/logs", () => {
         throw err;
       },
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({ apps: fakeApps as never }),
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/nope/logs",
+      url: "/api/apps/nope/logs",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 404);
@@ -175,7 +175,7 @@ describe("GET /apps/:name/logs", () => {
     const fakeCore = {
       listNamespacedPod: async () => ({ items: [] }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeApps as never,
@@ -185,7 +185,7 @@ describe("GET /apps/:name/logs", () => {
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs",
+      url: "/api/apps/hello/logs",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 404);
@@ -210,7 +210,7 @@ describe("GET /apps/:name/logs", () => {
         ],
       }),
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeApps as never,
@@ -220,7 +220,7 @@ describe("GET /apps/:name/logs", () => {
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs?pod=wrong-pod",
+      url: "/api/apps/hello/logs?pod=wrong-pod",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 404);
@@ -229,14 +229,14 @@ describe("GET /apps/:name/logs", () => {
   });
 
   it("returns 503 when cluster unreachable", async () => {
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: { ok: false, error: new Error("no cluster") },
     });
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs",
+      url: "/api/apps/hello/logs",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 503);
@@ -266,7 +266,7 @@ describe("GET /apps/:name/logs", () => {
         return new AbortController();
       },
     };
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeApps as never,
@@ -277,7 +277,7 @@ describe("GET /apps/:name/logs", () => {
 
     const res = await app.inject({
       method: "GET",
-      url: "/apps/hello/logs?follow=false",
+      url: "/api/apps/hello/logs?follow=false",
       headers: authHeader,
     });
     assert.equal(res.statusCode, 200);

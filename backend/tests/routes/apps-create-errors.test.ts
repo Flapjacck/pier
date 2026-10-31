@@ -25,12 +25,12 @@ const fakeDeployment: V1Deployment = {
   status: { readyReplicas: 1, updatedReplicas: 1, observedGeneration: 1 },
 };
 
-describe("POST /apps error handling", () => {
+describe("POST /api/apps error handling", () => {
   it("returns 400 with details when body is missing required field", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { image: "nginx:1.27", port: 80 },
     });
@@ -42,10 +42,10 @@ describe("POST /apps error handling", () => {
   });
 
   it("returns 400 with details when body is an array", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: [],
     });
@@ -57,10 +57,10 @@ describe("POST /apps error handling", () => {
   });
 
   it("returns 400 with details when missing required name", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { image: "nginx:1.27", port: 80 },
     });
@@ -73,10 +73,10 @@ describe("POST /apps error handling", () => {
   });
 
   it("returns 400 with details for unknown property", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
@@ -95,10 +95,10 @@ describe("POST /apps error handling", () => {
   });
 
   it("returns 400 for port: 0", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 0 },
     });
@@ -109,10 +109,10 @@ describe("POST /apps error handling", () => {
   });
 
   it("returns 400 for replicas: 11", async () => {
-    const app = buildApp(testConfig(), { logger: false });
+    const app = await buildApp(testConfig(), { logger: false });
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80, replicas: 11 },
     });
@@ -155,7 +155,7 @@ describe("POST /apps error handling", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeClients.apps as never,
@@ -166,7 +166,7 @@ describe("POST /apps error handling", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
@@ -206,7 +206,7 @@ describe("POST /apps error handling", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeClients.apps as never,
@@ -217,7 +217,7 @@ describe("POST /apps error handling", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
@@ -254,7 +254,7 @@ describe("POST /apps error handling", () => {
       },
     };
 
-    const app = buildApp(testConfig(), {
+    const app = await buildApp(testConfig(), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeClients.apps as never,
@@ -265,7 +265,7 @@ describe("POST /apps error handling", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: { name: "hello", image: "nginx:1.27", port: 80 },
     });
@@ -297,7 +297,7 @@ describe("POST /apps error handling", () => {
       },
     };
 
-    const app = buildApp(testConfig({ ingressDomain: "192.0.2.10.nip.io" }), {
+    const app = await buildApp(testConfig({ ingressDomain: "192.0.2.10.nip.io" }), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeClients.apps as never,
@@ -308,7 +308,7 @@ describe("POST /apps error handling", () => {
     // Request with lowercase host should conflict with uppercase in Ingress
     const res = await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "newapp",
@@ -356,7 +356,7 @@ describe("POST /apps error handling", () => {
       },
     };
 
-    const app = buildApp(testConfig({ ingressDomain: "192.0.2.10.nip.io" }), {
+    const app = await buildApp(testConfig({ ingressDomain: "192.0.2.10.nip.io" }), {
       logger: false,
       k8s: createFakeClientsResult({
         apps: fakeClients.apps as never,
@@ -367,7 +367,7 @@ describe("POST /apps error handling", () => {
 
     await app.inject({
       method: "POST",
-      url: "/apps",
+      url: "/api/apps",
       headers: authHeader,
       payload: {
         name: "hello",
