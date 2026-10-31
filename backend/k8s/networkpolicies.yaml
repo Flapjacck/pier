@@ -1,0 +1,149 @@
+# NetworkPolicies for pier-apps namespace.
+# These policies enforce network segmentation: apps can reach Traefik for ingress,
+# DNS for resolution, and public internet (except private ranges). Apps cannot reach
+# each other, pier-backend, or the cluster's private network by default.
+#
+# k3s enforces policies via kube-router. Test connectivity with:
+#   kubectl run t -n pier-apps --rm -i --image=busybox:1.36 --restart=Never -- wget -T 3 -qO- <target>
+#
+---
+# Default-deny: block all ingress and egress by default.
+# Every app pod must explicitly allow needed traffic.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow ingress from Traefik (in kube-system) to all pods in pier-apps.
+# This enables external access via HTTP/HTTPS through the ingress controller.
+# Traefik is identified by:
+#   - namespace kube-system (kubernetes.io/metadata.name=kube-system)
+#   - pod label app.kubernetes.io/name=traefik
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+---
+# Allow DNS egress to kube-dns in kube-system.
+# Required for apps to resolve service names and external domains.
+# Targets kube-dns pods (label k8s-app=kube-dns) in kube-system namespace on TCP/UDP 53.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+---
+# Allow egress to public internet (deny private networks).
+# Apps can reach 0.0.0.0/0 except RFC1918 private ranges and link-local addresses.
+#
+# Blocked ranges:
+#   - 10.0.0.0/8: RFC1918 private (includes cluster CIDRs 10.42.0.0/16 pods, 10.43.0.0/16 services)
+#   - 172.16.0.0/12: RFC1918 private
+#   - 192.168.0.0/16: RFC1918 private
+#   - 169.254.0.0/16: link-local (APIPA)
+#   - 100.64.0.0/10: shared address space (RFC 6598)
+#
+# Note: Cluster service CIDR (10.43.0.0/16) falls within 10.0.0.0/8. If k3s is
+# reinstalled with different CIDRs (e.g. non-RFC1918), add them as additional
+# exceptions. Kubernetes services running in default and kube-system namespaces
+# are thus blocked for apps, providing isolation from pier-backend and system pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internet-egress
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8        # RFC1918 private + cluster CIDRs
+              - 172.16.0.0/12      # RFC1918 private
+              - 192.168.0.0/16     # RFC1918 private
+              - 169.254.0.0/16     # link-local (APIPA)
+              - 100.64.0.0/10      # shared address space (RFC 6598)
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+        - protocol: UDP
+          port: 443
+---
+# OPTIONAL: App-to-app egress (not applied by default).
+# Uncomment and adapt to allow app-a to reach app-b on port 8080, for example.
+#
+# apiVersion: networking.k8s.io/v1
+# kind: NetworkPolicy
+# metadata:
+#   name: allow-app-a-to-app-b
+#   namespace: pier-apps
+#   labels:
+#     app.kubernetes.io/managed-by: pier
+#     app.kubernetes.io/part-of: pier
+# spec:
+#   podSelector:
+#     matchLabels:
+#       pier.app: a
+#   policyTypes:
+#     - Egress
+#   egress:
+#     - to:
+#         - podSelector:
+#             matchLabels:
+#               pier.app: b
+#       ports:
+#         - protocol: TCP
+#           port: 8080
