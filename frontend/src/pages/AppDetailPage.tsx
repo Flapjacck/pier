@@ -15,7 +15,9 @@ const TDVal =
 /** App detail — navigated to by clicking a row in AppsTable. */
 export function AppDetailPage({ theme, toggle }: PierTheme) {
   const { name } = useParams<{ name: string }>();
-  const app = name ? MOCK_APP_DETAILS[name] : undefined;
+  const app = name && Object.prototype.hasOwnProperty.call(MOCK_APP_DETAILS, name)
+    ? MOCK_APP_DETAILS[name as keyof typeof MOCK_APP_DETAILS]
+    : undefined;
 
   return (
     <MainLayout theme={theme} toggle={toggle}>
