@@ -1,4 +1,4 @@
-export type DeployStatus = "running" | "building" | "failed" | "stopped" | "queued";
+export type DeployStatus = "running" | "building" | "failed" | "stopped";
 
 export interface AppRow {
   /** Display name of the service */

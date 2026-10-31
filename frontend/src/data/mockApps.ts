@@ -6,7 +6,7 @@ export const MOCK_APPS: AppRow[] = [
   { name: "api",          status: "building", ago: "now",     ref: "main@b71e0d3" },
   { name: "worker",       status: "failed",   ago: "14m ago", ref: "feat/queue@9ac3e10" },
   { name: "postgres",     status: "stopped",  ago: "3d ago",  ref: "16.4" },
-  { name: "grafana",      status: "queued",   ago: "pending", ref: "11.2.0" },
+  { name: "grafana",      status: "building", ago: "pending", ref: "11.2.0" },
 ];
 
 /** Full detail data keyed by app name, shown on the app detail page */
@@ -48,7 +48,7 @@ export const MOCK_APP_DETAILS: Record<string, AppDetail> = {
     port: 5432,
   },
   "grafana": {
-    name: "grafana", status: "queued", ago: "pending", ref: "11.2.0",
+    name: "grafana", status: "building", ago: "pending", ref: "11.2.0",
     image: "grafana/grafana:11.2.0",
     namespace: "pier",
     replicas: { ready: 0, total: 1 },
