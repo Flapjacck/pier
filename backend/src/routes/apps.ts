@@ -186,6 +186,28 @@ export function appsRoutesWithDeps(deps: AppsRouteDeps): FastifyPluginAsync {
               details: "host must be ≤253 characters",
             });
           }
+          
+          const hostLower = host.toLowerCase();
+          
+          // Reject wildcards (DNS-1123 compliant hosts only, no pattern matches)
+          if (hostLower.includes("*")) {
+            return reply.status(400).send({
+              ok: false,
+              error: "invalid request",
+              details: "host cannot contain wildcards",
+            });
+          }
+          
+          // Validate DNS-1123 format: labels [a-z0-9]([a-z0-9-]{0,61}[a-z0-9])? separated by dots
+          const dnsPattern = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+          if (!dnsPattern.test(hostLower)) {
+            return reply.status(400).send({
+              ok: false,
+              error: "invalid request",
+              details: "host must be a valid DNS-1123 hostname (e.g., hello.example.com)",
+            });
+          }
+          
           if (!deps.ingressDomain) {
             return reply.status(400).send({
               ok: false,
@@ -193,7 +215,8 @@ export function appsRoutesWithDeps(deps: AppsRouteDeps): FastifyPluginAsync {
               details: "ingress not configured",
             });
           }
-          const hostLower = host.toLowerCase();
+          
+          // Host must end with .<domain>, not equal to it.
           const suffix = `.${deps.ingressDomain}`;
           if (!hostLower.endsWith(suffix) || hostLower === deps.ingressDomain) {
             return reply.status(400).send({

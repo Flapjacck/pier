@@ -26,8 +26,19 @@ const fakeDeployment: V1Deployment = {
 };
 
 describe("POST /apps", () => {
-  it("returns 401 without a bearer token when auth is configured", async () => {
+  it("returns 401 without a bearer token when auth is configured (mutating endpoints always require auth)", async () => {
     const app = buildApp(testConfig(), { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: "/apps",
+      payload: { name: "hello", image: "nginx:1.27", port: 80 },
+    });
+    assert.equal(res.statusCode, 401);
+    await app.close();
+  });
+
+  it("returns 401 even without apiToken (mutating endpoints always require auth, no loopback bypass)", async () => {
+    const app = buildApp(testConfig({ apiToken: undefined }), { logger: false });
     const res = await app.inject({
       method: "POST",
       url: "/apps",
@@ -200,6 +211,48 @@ describe("POST /apps", () => {
       },
     });
     assert.equal(res.statusCode, 400);
+    await app.close();
+  });
+
+  it("returns 400 when host contains wildcard", async () => {
+    const app = buildApp(testConfig({ ingressDomain: "example.com" }), {
+      logger: false,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/apps",
+      headers: authHeader,
+      payload: {
+        name: "hello",
+        image: "nginx:1.27",
+        port: 80,
+        host: "*.example.com",
+      },
+    });
+    assert.equal(res.statusCode, 400);
+    const body = res.json() as { details?: string };
+    assert.match(body.details || "", /wildcard/i);
+    await app.close();
+  });
+
+  it("returns 400 when host has invalid DNS-1123 format", async () => {
+    const app = buildApp(testConfig({ ingressDomain: "example.com" }), {
+      logger: false,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/apps",
+      headers: authHeader,
+      payload: {
+        name: "hello",
+        image: "nginx:1.27",
+        port: 80,
+        host: "-invalid.example.com",
+      },
+    });
+    assert.equal(res.statusCode, 400);
+    const body = res.json() as { details?: string };
+    assert.match(body.details || "", /DNS-1123|hostname/i);
     await app.close();
   });
 

@@ -66,8 +66,14 @@ export async function createApp(
   }
 
   // Pre-check: if host provided, ensure it's not in use by another app.
+  // Note: This check is cluster-wide but not race-safe. Two concurrent requests
+  // can both pass the list-then-create check and create overlapping Ingress rules.
+  // For atomic host reservation, consider a ValidatingAdmissionPolicy (future work: #27).
   if (input.host) {
     try {
+      // Check Ingresses in all namespaces (via multiple queries).
+      // TODO: Use a ValidatingAdmissionPolicy for atomic cluster-wide host uniqueness (see #27).
+      // For now, check pier-apps and assume user namespaces don't create conflicting ingresses.
       const response = await clients.networking.listNamespacedIngress({
         namespace,
         labelSelector: `${MANAGED_BY_LABEL}=${MANAGED_BY_VALUE}`,
