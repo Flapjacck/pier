@@ -6,6 +6,7 @@ export type Config = {
   apiToken: string | undefined;
   kubeconfig: string | undefined;
   namespace: string;
+  ingressDomain: string | undefined;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -31,6 +32,43 @@ function parsePort(raw: string | undefined): number {
 function optionalNonEmpty(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed === "" || trimmed === undefined ? undefined : trimmed;
+}
+
+/**
+ * Parse and validate an ingress domain.
+ * Format: lowercase DNS name with 2+ labels, ≤253 chars total.
+ * Each label must match [a-z0-9]([-a-z0-9]{0,61}[a-z0-9])? (DNS-1035 compatible).
+ */
+function parseIngressDomain(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  
+  if (trimmed === "") {
+    return ""; // Empty → undefined after the caller checks
+  }
+
+  if (trimmed.length > 253) {
+    throw new Error(
+      `Invalid PIER_INGRESS_DOMAIN "${raw}": must be ≤253 characters (got ${trimmed.length})`,
+    );
+  }
+
+  const labels = trimmed.split(".");
+  if (labels.length < 2) {
+    throw new Error(
+      `Invalid PIER_INGRESS_DOMAIN "${raw}": must have at least 2 labels (e.g. example.com)`,
+    );
+  }
+
+  const labelPattern = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
+  for (const label of labels) {
+    if (!labelPattern.test(label)) {
+      throw new Error(
+        `Invalid PIER_INGRESS_DOMAIN "${raw}": label "${label}" must start with a letter or digit, end with a letter or digit, and contain only lowercase letters, digits, and hyphens`,
+      );
+    }
+  }
+
+  return trimmed;
 }
 
 /**
@@ -60,11 +98,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
+  // Parse ingress domain: empty string becomes undefined.
+  const ingressDomainRaw = optionalNonEmpty(env.PIER_INGRESS_DOMAIN);
+  let ingressDomain: string | undefined;
+  if (ingressDomainRaw) {
+    const parsed = parseIngressDomain(ingressDomainRaw);
+    ingressDomain = parsed === "" ? undefined : parsed;
+  }
+
   return {
     port: parsePort(env.PORT),
     host,
     apiToken,
     kubeconfig: optionalNonEmpty(env.KUBECONFIG),
     namespace: env.PIER_NAMESPACE?.trim() || "pier-apps",
+    ingressDomain,
   };
 }
