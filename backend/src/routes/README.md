@@ -7,7 +7,7 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 | `health.ts` | `GET /health`, `GET /api/health` |
 | `session.ts` | `POST /api/login`, `POST /api/logout`, `GET /api/session` |
 | `cluster.ts` | `GET /api/cluster/health`, `GET /api/cluster/pods` |
-| `apps.ts` | `GET /api/apps`, `POST /api/apps` |
+| `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps` |
 
 ## Common behaviour
 
@@ -185,17 +185,21 @@ RBAC: the ClusterRole `pier-backend-cluster-health` in [`../../k8s/rbac.yaml`](.
 
 ## `GET /api/apps`
 
-Lists Deployments in `PIER_NAMESPACE` (default `pier-apps`) that have the `pier.app` label. Unlabelled Deployments are skipped. The result is a bare JSON array sorted by name, and `[]` when there are none. Fastify validates it against the response schema in `apps.ts`.
+Lists Deployments in `PIER_NAMESPACE` (default `pier-apps`) that have the `pier.app` label. Unlabelled Deployments are skipped. The result is a bare JSON array sorted by name, and `[]` when there are none. Fastify validates it against the response schema in `apps.ts`. Makes one parallel `listNamespacedIngress` call to fetch hosts for all apps.
 
 ```json
 [
-  { "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 2, "status": "running", "createdAt": "2026-10-29T15:00:00.000Z" }
+  { "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 2, "status": "running", "createdAt": "2026-10-29T15:00:00.000Z", "port": 8080, "host": "hello.192.0.2.10.nip.io", "url": "http://hello.192.0.2.10.nip.io" },
+  { "name": "api", "image": "myimage:v1", "replicas": 1, "ready": 1, "status": "running", "createdAt": "2026-10-31T16:00:00.000Z", "port": 8080 }
 ]
 ```
 
 - `name` comes from the `pier.app` label value, falling back to `metadata.name`.
 - `image` is the first container's image.
 - `replicas` is `spec.replicas` (default 1), and `ready` is `status.readyReplicas` (default 0).
+- `port` (optional) is the container port from `containers[0]`: preferred port named `http`, or first port if `http` is not present. Omitted if no ports are defined.
+- `host` (optional) is the Ingress hostname, lowercased. Omitted if no active Ingress is found (404, terminating, or no `pier.app` label on Ingress).
+- `url` (optional) is `http://` + `host`. Omitted when `host` is absent. Will switch to `https://` when #29 (TLS) lands.
 
 `status` (`deriveStatus` in `../k8s/apps.ts`) is decided by the first rule that matches, in this order:
 
@@ -211,6 +215,44 @@ The 503 body is `{ "ok": false, "error": "cluster unreachable" }`, without `mode
 RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac-apps.yaml), not the cluster ClusterRole.
 
 If an app stays `building` or turns `failed` because Pod Security or the quota rejected its pods, see [Debugging rejected apps](../../k8s/README.md#debugging-rejected-apps).
+
+## `GET /api/apps/:name`
+
+Retrieves a single Deployment by name, fetching both the Deployment and its Ingress (if present). Returns the App with the same shape as `GET /api/apps`.
+
+### Response
+
+**200 (success)**: the App (same shape as `GET /api/apps`):
+
+```json
+{ "name": "hello", "image": "nginx:1.27", "replicas": 1, "ready": 1, "status": "running", "createdAt": "2026-10-31T16:00:00.000Z", "port": 8080, "host": "hello.192.0.2.10.nip.io", "url": "http://hello.192.0.2.10.nip.io" }
+```
+
+Fields are the same as `GET /api/apps`: `port` comes from the container, `host`/`url` are omitted if no active Ingress is found.
+
+| Status | Error | Reason |
+|--------|-------|--------|
+| **400** | `invalid request` | `name` fails DNS-1035 validation (uppercase, underscore, digit-leading, etc.). |
+| **401** | `unauthorized` | Missing or wrong Bearer token. |
+| **404** | `app not found` | Deployment does not exist, is terminating (deletionTimestamp set), or lacks the `pier.app=<name>` label. |
+| **503** | `cluster unreachable` | Kubernetes API unreachable or read fails (403, 500, etc.). Full error logged server-side. |
+
+### Example
+
+```bash
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+
+# Retrieve a specific app.
+curl -s "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps/hello | jq
+
+# Not found (non-existent app).
+curl -si "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps/nope | head -1
+# HTTP/1.1 404 Not Found
+
+# Bad name (uppercase).
+curl -si "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps/Hello | head -1
+# HTTP/1.1 400 Bad Request
+```
 
 ## `POST /api/apps`
 
@@ -242,10 +284,12 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 
 ### Response
 
-**201 (success)**: the created App (same shape as `GET /apps`):
+**201 (success)**: the created App (same shape as `GET /api/apps`):
 ```json
-{ "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 0, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z" }
+{ "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 0, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z", "port": 8080, "host": "hello.192.0.2.10.nip.io", "url": "http://hello.192.0.2.10.nip.io" }
 ```
+
+When `host` is not provided in the request, `host` and `url` are omitted from the 201 response (only `port` is included).
 
 | Status | Error | Details? | Reason |
 |--------|-------|----------|--------|
@@ -479,11 +523,13 @@ Scale an app to a specific number of replicas (0–10).
 
 ### Response
 
-**200 (success)**: the updated App (same shape as `GET /apps`):
+**200 (success)**: the updated App (same shape as `GET /api/apps`, but `host` and `url` are omitted):
 
 ```json
-{ "name": "web", "image": "nginx:latest", "replicas": 3, "ready": 2, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z" }
+{ "name": "web", "image": "nginx:latest", "replicas": 3, "ready": 2, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z", "port": 8080 }
 ```
+
+Note: PATCH `/api/apps/:name/scale` returns `port` but not `host` or `url` (the read does not fetch the Ingress). To get the full App details with host/url, use `GET /api/apps/:name` instead.
 
 **400 (validation error)**:
 ```json
