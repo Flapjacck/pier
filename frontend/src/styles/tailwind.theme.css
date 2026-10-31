@@ -81,7 +81,28 @@
   --color-pier-accent-bg:     var(--pier-accent-bg);
   --color-pier-focus:         var(--pier-focus);
 
-  /* ── Fonts ── */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  /* ── Fonts (match fontsource variable family names in main.tsx) ── */
+  --font-sans: var(--pier-font-sans);
+  --font-mono: var(--pier-font-mono);
+
+  /* ── Radius ── */
+  --radius-pier: var(--pier-radius);
+  --radius-pier-lg: var(--pier-radius-lg);
+
+  /* ── Status (semantic; switch with data-theme via tokens.css) ── */
+  --color-pier-status-running: var(--pier-status-running);
+  --color-pier-status-running-bg: var(--pier-status-running-bg);
+  --color-pier-status-running-icon: var(--pier-status-running-icon);
+
+  --color-pier-status-building: var(--pier-status-building);
+  --color-pier-status-building-bg: var(--pier-status-building-bg);
+  --color-pier-status-building-icon: var(--pier-status-building-icon);
+
+  --color-pier-status-failed: var(--pier-status-failed);
+  --color-pier-status-failed-bg: var(--pier-status-failed-bg);
+  --color-pier-status-failed-icon: var(--pier-status-failed-icon);
+
+  --color-pier-status-stopped: var(--pier-status-stopped);
+  --color-pier-status-stopped-bg: var(--pier-status-stopped-bg);
+  --color-pier-status-stopped-icon: var(--pier-status-stopped-icon);
 }
