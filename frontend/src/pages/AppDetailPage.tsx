@@ -4,8 +4,6 @@ import { MOCK_APP_DETAILS } from "../data/mockApps";
 import { MainLayout } from "../components/layout/MainLayout";
 import { StatusPill } from "../components/apps/StatusPill";
 import { StatCard } from "../components/ui/StatCard";
-import { Button } from "../components/ui/Button";
-import { PierIcon } from "../components/icons/PierIcon";
 
 const TDKey =
   "py-2.5 text-[11.5px] font-semibold tracking-wide uppercase text-pier-muted w-36 pr-4 align-top border-b border-pier-border";
@@ -42,14 +40,7 @@ export function AppDetailPage({ theme, toggle }: PierTheme) {
               <h1 className="m-0 text-2xl font-bold text-pier-fg leading-none">{app.name}</h1>
               <StatusPill status={app.status} />
               <span className="text-[13px] text-pier-muted ml-auto">{app.ago}</span>
-              <Button variant="secondary">
-                <PierIcon name="rollback" size={14} />
-                Rollback
-              </Button>
-              <Button>
-                <PierIcon name="deploy" size={14} />
-                Deploy
-              </Button>
+              {/* TODO(#45): Rollback and Deploy actions */}
             </div>
 
             {/* Stat cards */}
