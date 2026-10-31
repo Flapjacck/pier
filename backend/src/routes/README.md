@@ -4,13 +4,20 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 
 | File | Routes |
 |------|--------|
-| `health.ts` | `GET /health` |
-| `cluster.ts` | `GET /cluster/health`, `GET /cluster/pods` |
-| `apps.ts` | `GET /apps`, `POST /apps` |
+| `health.ts` | `GET /health`, `GET /api/health` |
+| `session.ts` | `POST /api/login`, `POST /api/logout`, `GET /api/session` |
+| `cluster.ts` | `GET /api/cluster/health`, `GET /api/cluster/pods` |
+| `apps.ts` | `GET /api/apps`, `POST /api/apps` |
 
 ## Common behaviour
 
-- **Auth** (`../plugins/auth.ts`): every route except `/health` needs `Authorization: Bearer $PIER_API_TOKEN` when a token is configured. A wrong, missing or non-Bearer header returns `401 { "ok": false, "error": "unauthorized" }`. With no token, auth is skipped, which `config.ts` only allows on a loopback `HOST`.
+- **API Prefix**: All cluster and app routes are served under `/api`. Health endpoints are available at both `/health` (root) and `/api/health` (for consistency).
+- **Auth** (`../plugins/auth.ts`): Routes under `/api` require authentication when `PIER_API_TOKEN` is configured. Public routes: `/health`, `/api/health`, `POST /api/login`, `POST /api/logout`. Mutating endpoints always require auth, even on loopback (dev mode). Supported auth methods:
+  - **Bearer token** (`Authorization: Bearer $PIER_API_TOKEN`): takes precedence, no Origin check.
+  - **Session cookie** (`pier_session`): created by `POST /api/login`, requires Origin header check for mutating requests (CSRF protection).
+  - A wrong, missing, or invalid token/cookie returns `401 { "ok": false, "error": "unauthorized" }`.
+  - Cookie-authed mutations without a matching Origin header return `403 { "ok": false, "error": "forbidden origin" }`.
+  - With no token configured on loopback, read-only routes are allowed, mutating routes return `401`.
 - **Cluster clients**: `buildApp()` in `../app.ts` calls `createK8sClients()` once and passes the result to each route factory. If the kubeconfig failed to load, routes return `503 { "ok": false, "error": "cluster unreachable" }`. The same `503` is returned when a Kubernetes call fails. The full error goes to the server log only, never to the client.
 - **Credentials**: `loadKubeConfig()` is called once at startup. Inside a pod it uses the ServiceAccount token (`in-cluster`); outside, `KUBECONFIG` (if set) or `~/.kube/config` (`kubeconfig`). Routes receive the mode from shared clients, so the response's `mode` field is always consistent for the lifetime of the app. A change to `KUBECONFIG` requires a restart.
 
@@ -43,15 +50,100 @@ export function restartRoutesWithDeps(deps: { k8s: K8sClientsResult; namespace: 
 }
 ```
 
-## `GET /health`
+## `GET /health` and `GET /api/health`
 
-No auth, no cluster call. Used by the liveness and readiness probes.
+No auth, no cluster call. Used by the liveness and readiness probes. Both routes return the same response.
 
 ```json
 { "ok": true, "service": "pier-backend" }
 ```
 
-## `GET /cluster/health` and `GET /cluster/pods`
+## `POST /api/login`
+
+Authenticate with the API token to obtain a session cookie. The session is valid for 7 days and is stateless (signed HMAC-SHA256); rotating `PIER_API_TOKEN` invalidates all sessions.
+
+### Request
+
+```json
+{ "token": "secret-token-string" }
+```
+
+- `token` (required): 1–512 characters. Must match `PIER_API_TOKEN` exactly (compared using timing-safe SHA-256).
+
+### Response
+
+**204 (success)**: Session cookie set. The response includes a `Set-Cookie` header with `pier_session`:
+
+```
+Set-Cookie: pier_session=v1.<expMs>.<signature>; HttpOnly; SameSite=Strict; Path=/api; Max-Age=604800; Secure
+```
+
+The `Secure` flag is only set when the connection is HTTPS.
+
+**400 (auth disabled)**: `{ "ok": false, "error": "auth disabled" }` when `PIER_API_TOKEN` is not configured.
+
+**401 (wrong token)**: `{ "ok": false, "error": "unauthorized" }` when the token does not match.
+
+**429 (rate limited)**: `{ "ok": false, "error": "too many attempts" }` after 5 failed attempts within 60 seconds from the same IP address. Clients should back off; the limit clears after the window passes or on a successful login.
+
+### Examples
+
+```bash
+TOKEN="my-secret-token"
+
+# Login and save the session cookie to a file (jar).
+curl -i -c jar -H "Content-Type: application/json" \
+  -d "{\"token\":\"$TOKEN\"}" \
+  http://192.0.2.10.nip.io/api/login
+# Response: HTTP/1.1 204 No Content
+#           Set-Cookie: pier_session=...; HttpOnly; SameSite=Strict; Path=/api; Max-Age=604800
+
+# Use the session cookie for subsequent requests.
+curl -b jar http://192.0.2.10.nip.io/api/apps
+# Response: 200 [ ... ]
+```
+
+## `POST /api/logout`
+
+Clear the session cookie. Always returns 204 (idempotent), even if no cookie is present.
+
+### Request
+
+No body required.
+
+### Response
+
+**204 (success)**: Cookie cleared. The response includes a `Set-Cookie` header with `Max-Age=0`:
+
+```
+Set-Cookie: pier_session=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0
+```
+
+### Examples
+
+```bash
+# Logout (clears the cookie).
+curl -X POST -b jar -c jar http://192.0.2.10.nip.io/api/logout
+# Subsequent requests will fail with 401 (no valid cookie).
+```
+
+## `GET /api/session`
+
+Get the current session status. Requires authentication (bearer token or session cookie).
+
+### Response
+
+**200 (success)**:
+
+```json
+{ "ok": true, "authDisabled": false }
+```
+
+- `authDisabled` is `false` when a token is configured, `true` when auth is disabled (dev mode on loopback).
+
+**401 (unauthorized)**: Not authenticated (no bearer token or invalid session cookie).
+
+## `GET /api/cluster/health` and `GET /api/cluster/pods`
 
 ```mermaid
 sequenceDiagram
@@ -91,7 +183,7 @@ Each entry in `/cluster/pods`'s `pods[]` looks like this (`nodeName` and `starte
 
 RBAC: the ClusterRole `pier-backend-cluster-health` in [`../../k8s/rbac.yaml`](../../k8s/rbac.yaml).
 
-## `GET /apps`
+## `GET /api/apps`
 
 Lists Deployments in `PIER_NAMESPACE` (default `pier-apps`) that have the `pier.app` label. Unlabelled Deployments are skipped. The result is a bare JSON array sorted by name, and `[]` when there are none. Fastify validates it against the response schema in `apps.ts`.
 
@@ -120,7 +212,7 @@ RBAC: the Role `pier-app-manager` in [`../../k8s/rbac-apps.yaml`](../../k8s/rbac
 
 If an app stays `building` or turns `failed` because Pod Security or the quota rejected its pods, see [Debugging rejected apps](../../k8s/README.md#debugging-rejected-apps).
 
-## `POST /apps`
+## `POST /api/apps`
 
 Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orchestrates creation in order, with pre-checks for conflicts and rollback on failure.
 
@@ -228,28 +320,29 @@ To allow app-to-app communication on a private network, add an optional NetworkP
 ### Example flow
 
 ```bash
-TOKEN=<token>
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+
 # Create an app without ingress (internal-only).
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
   -d '{"name":"api","image":"myimage:v1","port":8080,"replicas":2}' \
-  http://pier-backend:3000/apps
+  http://192.0.2.10.nip.io/api/apps
 # Response: 201 { name: "api", ..., status: "building" }
 
 # Wait for it to stabilize.
 sleep 5
 
 # Create with ingress (publicly routable via Traefik).
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"web","image":"nginx:latest","port":80,"host":"web.example.com","env":{"WORKER_PROCESSES":"2"}}' \
-  http://pier-backend:3000/apps
+curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
+  -d '{"name":"web","image":"nginx:latest","port":80,"host":"web.192.0.2.10.nip.io","env":{"WORKER_PROCESSES":"2"}}' \
+  http://192.0.2.10.nip.io/api/apps
 # Response: 201 { name: "web", ..., status: "building" }
 
 # List all apps.
-curl -H "Authorization: Bearer $TOKEN" http://pier-backend:3000/apps
+curl "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps
 # Response: 200 [ { name: "api", ... }, { name: "web", ... } ]
 ```
 
-## `GET /apps/:name/logs`
+## `GET /api/apps/:name/logs`
 
 Stream logs from a running pod's container. Supports both plain-text (follow=false, default) and Server-Sent Events (SSE) streaming (follow=true).
 
@@ -352,14 +445,14 @@ When a client disconnects (closes the socket), the backend immediately aborts th
 
 ```bash
 AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
-curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io:3000/apps/myapp/logs?tail=100"
+curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io/api/apps/myapp/logs?tail=100"
 ```
 
 **Stream logs in real-time (SSE):**
 
 ```bash
 AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
-curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io:3000/apps/myapp/logs?follow=true&tail=50"
+curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io/api/apps/myapp/logs?follow=true&tail=50"
 ```
 
 Note: `-N` disables buffering; remove it to enable buffering (not recommended for logs).
@@ -368,10 +461,10 @@ Note: `-N` disables buffering; remove it to enable buffering (not recommended fo
 
 ```bash
 AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
-curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io:3000/apps/myapp/logs?pod=myapp-xyz-abc&follow=true"
+curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io/api/apps/myapp/logs?pod=myapp-xyz-abc&follow=true"
 ```
 
-## `PATCH /apps/:name/scale`
+## `PATCH /api/apps/:name/scale`
 
 Scale an app to a specific number of replicas (0–10).
 
@@ -407,22 +500,22 @@ Reasons: bad app name, replicas outside 0–10, non-integer replicas, missing `r
 ### Examples
 
 ```bash
-TOKEN=<token>
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
 
 # Scale to 3 replicas
-curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+curl -X PATCH "${AUTH[@]}" -H "Content-Type: application/json" \
   -d '{"replicas":3}' \
-  http://pier-backend:3000/apps/web
+  http://192.0.2.10.nip.io/api/apps/web
 # Response: 200 { name: "web", ..., replicas: 3, ready: 0, status: "building" }
 
 # Scale to 0 (pause)
-curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+curl -X PATCH "${AUTH[@]}" -H "Content-Type: application/json" \
   -d '{"replicas":0}' \
-  http://pier-backend:3000/apps/web
+  http://192.0.2.10.nip.io/api/apps/web
 # Response: 200 { name: "web", ..., replicas: 0, ready: 0, status: "stopped" }
 ```
 
-## `POST /apps/:name/restart`
+## `POST /api/apps/:name/restart`
 
 Restart an app by triggering a pod rollout. This updates the `kubectl.kubernetes.io/restartedAt` annotation on the pod template, which causes all existing pods to be replaced with new ones.
 
@@ -455,25 +548,25 @@ Uses JSON Patch to update the Deployment's pod template. If `spec.template.metad
 ### Examples
 
 ```bash
-TOKEN=<token>
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
 
 # Restart app (pods will be replaced within ~30s)
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  http://pier-backend:3000/apps/web/restart
+curl -X POST "${AUTH[@]}" \
+  http://192.0.2.10.nip.io/api/apps/web/restart
 # Response: 202 { ok: true, restartedAt: "2026-10-31T16:05:30.000Z" }
 
 # Wait for pods to stabilize
 sleep 5
 
 # Check new pod names
-curl -s -H "Authorization: Bearer $TOKEN" http://pier-backend:3000/apps/web/pods | jq '.[].name'
+curl -s "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps/web/pods | jq '.[].name'
 
 # Verify the annotation was set
 kubectl -n pier-apps get deploy web -o jsonpath='{.spec.template.metadata.annotations}'
 # Output: {"kubectl.kubernetes.io/restartedAt":"2026-10-31T16:05:30.000Z", ...}
 ```
 
-## `DELETE /apps/:name`
+## `DELETE /api/apps/:name`
 
 Delete an app (Deployment, Service, and Ingress). Idempotent: repeating the request returns 404 on the second call, which is correct behavior.
 
@@ -502,16 +595,16 @@ No body or parameters.
 ### Examples
 
 ```bash
-TOKEN=<token>
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
 
 # Delete app
-curl -X DELETE -H "Authorization: Bearer $TOKEN" \
-  http://pier-backend:3000/apps/web
+curl -X DELETE "${AUTH[@]}" \
+  http://192.0.2.10.nip.io/api/apps/web
 # Response: 204 (no body)
 
 # Verify it's gone (returns 404)
-curl -X DELETE -H "Authorization: Bearer $TOKEN" \
-  http://pier-backend:3000/apps/web
+curl -X DELETE "${AUTH[@]}" \
+  http://192.0.2.10.nip.io/api/apps/web
 # Response: 404 { ok: false, error: "app not found" }
 
 # Check kubectl (may see the app for ~30s with deletionTimestamp)
@@ -528,16 +621,16 @@ POST /apps is serialized by a module-level promise chain (`createMutex`) in `src
 ### Example: safe concurrency with one replica
 
 ```bash
-TOKEN=<token>
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
 
 # Fire two requests in parallel for the same host
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"app1","image":"nginx:latest","port":80,"host":"test.example.internal"}' \
-  http://pier-backend:3000/apps &
+curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
+  -d '{"name":"app1","image":"nginx:latest","port":80,"host":"test.192.0.2.10.nip.io"}' \
+  http://192.0.2.10.nip.io/api/apps &
   
-curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"app2","image":"nginx:latest","port":80,"host":"test.example.internal"}' \
-  http://pier-backend:3000/apps &
+curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
+  -d '{"name":"app2","image":"nginx:latest","port":80,"host":"test.192.0.2.10.nip.io"}' \
+  http://192.0.2.10.nip.io/api/apps &
 
 wait
 # Result: exactly one 201 with an app created, one 409 with "host already in use"
