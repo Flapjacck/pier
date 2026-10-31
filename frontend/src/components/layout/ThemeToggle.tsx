@@ -35,7 +35,7 @@ export function ThemeToggle({ theme, toggle }: Props) {
     <button
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="flex items-center gap-2 w-full px-2.5 py-[7px] rounded-md bg-transparent
+      className="flex items-center gap-2 w-full px-2.5 py-[7px] rounded-pier bg-transparent
                  border-none text-[13px] font-sans text-pier-muted cursor-pointer text-left
                  transition-colors hover:bg-pier-surface-2 hover:text-pier-fg
                  focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus"
