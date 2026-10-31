@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pier</title>
 
+    <!-- No-flash theme script: runs before styles load to set data-theme + theme-color meta -->
+    <script>
+      (function() {
+        try {
+          const stored = localStorage.getItem('pier-theme');
+          const theme = (stored === 'light' || stored === 'dark') ? stored : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          document.documentElement.dataset.theme = theme;
+          const meta = document.querySelector('meta[name="theme-color"]') || document.createElement('meta');
+          meta.setAttribute('name', 'theme-color');
+          meta.setAttribute('content', theme === 'light' ? '#ffffff' : '#000000');
+          if (!document.querySelector('meta[name="theme-color"]')) document.head.appendChild(meta);
+        } catch {}
+      })();
+    </script>
+
     <!-- Favicons + PWA (from pier-brand-kit/favicon/) -->
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -12,8 +27,7 @@
     <link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" />
 
     <!-- Social preview -->
     <meta property="og:title" content="Pier" />

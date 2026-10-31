@@ -21,16 +21,21 @@ function detectTheme(): Theme {
  * Manages the Pier UI theme.
  * - Reads the stored preference from localStorage on first load.
  * - Falls back to the OS colour scheme if no preference is stored.
- * - Syncs <html data-theme> so tokens.css switches the semantic tokens.
- * - Returns a toggle() that persists the user's choice.
+ * - Syncs <html data-theme> and theme-color meta so tokens.css switches semantic tokens
+ *   and the browser tab bar reflects the active theme.
+ * - toggle() stops following OS changes and persists the user's choice.
  */
 export function usePierTheme(): PierTheme {
   const [theme, setTheme] = useState<Theme>(detectTheme);
 
-  // Apply data-theme attribute and persist whenever theme changes
+  // Set data-theme attribute and theme-color meta whenever theme changes
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    try { localStorage.setItem(STORAGE_KEY, theme); } catch { /* ignore */ }
+    const themeColor = theme === "light" ? "#ffffff" : "#000000";
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute("content", themeColor);
+    }
   }, [theme]);
 
   // Follow OS changes only when the user hasn't explicitly set a preference
@@ -38,7 +43,7 @@ export function usePierTheme(): PierTheme {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => {
       try {
-        if (!localStorage.getItem(STORAGE_KEY)) {
+        if (!Object.prototype.hasOwnProperty.call(localStorage, STORAGE_KEY)) {
           setTheme(e.matches ? "dark" : "light");
         }
       } catch {
@@ -50,7 +55,11 @@ export function usePierTheme(): PierTheme {
   }, []);
 
   function toggle() {
-    setTheme(prev => (prev === "light" ? "dark" : "light"));
+    const next: Theme = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch { /* ignore */ }
   }
 
   return { theme, toggle };
