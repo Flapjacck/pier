@@ -100,6 +100,9 @@ kubectl apply $APPLY_OPTS -f "$BACKEND_DIR/k8s/rbac-apps.yaml"
 if [[ -f "$BACKEND_DIR/k8s/quota.yaml" ]]; then
   kubectl apply $APPLY_OPTS -f "$BACKEND_DIR/k8s/quota.yaml"
 fi
+if [[ -f "$BACKEND_DIR/k8s/networkpolicies.yaml" ]]; then
+  kubectl apply $APPLY_OPTS -f "$BACKEND_DIR/k8s/networkpolicies.yaml"
+fi
 if [[ -f "$BACKEND_DIR/k8s/policy-services.yaml" ]]; then
   kubectl apply $APPLY_OPTS -f "$BACKEND_DIR/k8s/policy-services.yaml"
 fi
