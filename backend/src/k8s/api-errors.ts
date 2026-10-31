@@ -30,3 +30,52 @@ export function apiStatusCode(err: unknown): number | undefined {
 
   return undefined;
 }
+
+/**
+ * Extract error message from an API error, parsing JSON body if present.
+ * Returns a message string (trimmed to 300 chars), or undefined if none found.
+ *
+ * Handles:
+ * - ApiException with body property (string or object) containing a message field
+ * - Error.message property
+ * - Never returns the raw body JSON (security: prevents leaking internal details)
+ */
+export function apiErrorMessage(err: unknown): string | undefined {
+  if (err == null) {
+    return undefined;
+  }
+
+  const errObj = err as unknown as Record<string, unknown>;
+
+  // Try to parse body (string or object with a message field).
+  if ("body" in errObj) {
+    const body = errObj.body;
+    let parsed: unknown;
+
+    // If body is a JSON string, parse it.
+    if (typeof body === "string") {
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        // Not JSON, ignore.
+      }
+    } else {
+      parsed = body;
+    }
+
+    // If parsed object has a message field, use it.
+    if (parsed && typeof parsed === "object" && "message" in parsed) {
+      const msg = (parsed as Record<string, unknown>).message;
+      if (typeof msg === "string") {
+        return msg.trim().slice(0, 300);
+      }
+    }
+  }
+
+  // Fall back to Error.message.
+  if (err instanceof Error && err.message) {
+    return err.message.trim().slice(0, 300);
+  }
+
+  return undefined;
+}
