@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createApp, AppExistsError, HostInUseError } from "../../k8s/create-app.js";
+import { createAppSeralized, AppExistsError, HostInUseError } from "../../k8s/create-app.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import {
   appSchema,
@@ -181,14 +181,19 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
         }
 
         try {
-          const app = await createApp(deps.k8s.clients, deps.namespace, {
-            name,
-            image,
-            port,
-            replicas,
-            host,
-            env,
-          });
+          const app = await createAppSeralized(
+            deps.k8s.clients,
+            deps.namespace,
+            {
+              name,
+              image,
+              port,
+              replicas,
+              host,
+              env,
+            },
+            req.log,
+          );
           return reply.status(201).send(app);
         } catch (err) {
           if (err instanceof AppExistsError) {

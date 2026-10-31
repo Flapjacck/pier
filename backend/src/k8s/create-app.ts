@@ -1,7 +1,9 @@
 import type { AppsV1Api, CoreV1Api, NetworkingV1Api } from "@kubernetes/client-node";
-import { buildDeployment, buildService, buildIngress, type CreateAppInput } from "./manifests.js";
+import type { FastifyBaseLogger } from "fastify";
+import { buildDeployment, buildService, buildIngress, type CreateAppInput } from "./manifests/index.js";
 import { deploymentToApp, type App } from "./apps.js";
 import { MANAGED_BY_LABEL, MANAGED_BY_VALUE } from "./labels.js";
+import { apiStatusCode } from "./api-errors.js";
 
 /** Thrown when trying to create an app that already exists. */
 export class AppExistsError extends Error {
@@ -29,11 +31,13 @@ type K8sClients = {
  * Create an app with Deployment, Service, and optional Ingress.
  * Performs pre-checks: app must not exist, host must not be in use.
  * On failure after any create, rolls back (best effort, logged, doesn't mask original error).
+ * Optional logger logs each rollback failure with resource kind and name (no secrets).
  */
 export async function createApp(
   clients: K8sClients,
   namespace: string,
   input: CreateAppInput,
+  logger?: Pick<FastifyBaseLogger, "warn">,
 ): Promise<App> {
   // Pre-check: deployment must not exist.
   try {
@@ -43,37 +47,28 @@ export async function createApp(
     });
     throw new AppExistsError(`app "${input.name}" already exists`);
   } catch (err) {
-    // 404 is expected (app doesn't exist); any other error is fatal.
-    if (
-      err instanceof Error &&
-      "code" in err &&
-      typeof (err as Record<string, number>).code === "number"
-    ) {
-      const code = (err as Record<string, number>).code;
-      if (code === 404) {
-        // Expected: app doesn't exist yet.
-      } else if (code === 409) {
-        // Race condition: app was just created.
-        throw new AppExistsError(`app "${input.name}" already exists`);
-      } else {
-        throw err; // Re-throw API error.
-      }
-    } else if (err instanceof AppExistsError) {
-      throw err; // Re-throw our error.
-    } else {
+    if (err instanceof AppExistsError) {
       throw err;
+    }
+    const code = apiStatusCode(err);
+    if (code === 404) {
+      // Expected: app doesn't exist yet.
+    } else if (code === 409) {
+      // Race condition: app was just created.
+      throw new AppExistsError(`app "${input.name}" already exists`);
+    } else {
+      throw err; // Re-throw API error.
     }
   }
 
-  // Pre-check: if host provided, ensure it's not in use by another app.
-  // Note: This check is cluster-wide but not race-safe. Two concurrent requests
-  // can both pass the list-then-create check and create overlapping Ingress rules.
-  // For atomic host reservation, consider a ValidatingAdmissionPolicy (future work: #27).
+  // Pre-check: if host provided, ensure it's not in use by another Pier-managed app.
+  // This check scans Ingresses in the app namespace with the Pier managed-by label.
+  // Note: Not race-safe; concurrent requests can both pass the check and create overlapping
+  // Ingress rules. With a single backend replica (deployment.yaml.tmpl), the check is
+  // effectively serialized by the create-app mutex. For multi-replica backends, a real
+  // reservation (e.g., Lease or ConfigMap) would be needed.
   if (input.host) {
     try {
-      // Check Ingresses in all namespaces (via multiple queries).
-      // TODO: Use a ValidatingAdmissionPolicy for atomic cluster-wide host uniqueness (see #27).
-      // For now, check pier-apps and assume user namespaces don't create conflicting ingresses.
       const response = await clients.networking.listNamespacedIngress({
         namespace,
         labelSelector: `${MANAGED_BY_LABEL}=${MANAGED_BY_VALUE}`,
@@ -154,26 +149,69 @@ export async function createApp(
           });
         }
       } catch (rollbackErr) {
-        // Log but don't mask the original error.
-        if (rollbackErr instanceof Error) {
-          // We can't use req.log here, so this is captured in the outer try-catch error handler.
-          // The original error will be logged by the route handler.
-        }
+        // Log rollback failure but don't mask the original error.
+        logger?.warn(
+          { kind: item?.type ?? "unknown", name: item?.name ?? "unknown", err: rollbackErr },
+          "rollback delete failed",
+        );
       }
     }
 
     // Re-throw the original error (or wrap 409 in AppExistsError).
-    if (
-      err instanceof Error &&
-      "code" in err &&
-      typeof (err as Record<string, number>).code === "number"
-    ) {
-      const code = (err as Record<string, number>).code;
-      if (code === 409) {
-        throw new AppExistsError(`app "${input.name}" already exists`);
-      }
+    const code = apiStatusCode(err);
+    if (code === 409) {
+      throw new AppExistsError(`app "${input.name}" already exists`);
     }
 
     throw err;
   }
+}
+
+/**
+ * Module-level mutex for serializing app creation.
+ * This ensures the host check and create are atomic from the perspective of concurrent requests,
+ * which is correct only while the backend runs one replica (deployment.yaml.tmpl replicas: 1).
+ * If replicas increase, a real reservation (e.g., Lease or ConfigMap) is needed.
+ */
+let createMutex: Promise<void> = Promise.resolve();
+
+/**
+ * Acquire and release the creation mutex.
+ * Each createApp call chains off the tail of this promise.
+ */
+export async function createAppSeralized(
+  clients: K8sClients,
+  namespace: string,
+  input: CreateAppInput,
+  logger?: Pick<FastifyBaseLogger, "warn">,
+): Promise<App> {
+  let result: App;
+  let thrownErr: Error | undefined;
+
+  createMutex = createMutex.then(
+    async () => {
+      try {
+        result = await createApp(clients, namespace, input, logger);
+      } catch (err) {
+        thrownErr = err instanceof Error ? err : new Error(String(err));
+      }
+    },
+    async () => {
+      // If the previous call failed, continue anyway (don't let one poison the chain).
+      try {
+        result = await createApp(clients, namespace, input, logger);
+      } catch (err) {
+        thrownErr = err instanceof Error ? err : new Error(String(err));
+      }
+    },
+  );
+
+  await createMutex;
+
+  if (thrownErr) {
+    throw thrownErr;
+  }
+
+  // result will be assigned if no error
+  return result!;
 }
