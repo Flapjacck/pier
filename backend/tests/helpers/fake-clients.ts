@@ -39,3 +39,17 @@ export function createFailedClientsResult(message = "cluster unreachable"): K8sC
     error: new Error(message),
   };
 }
+
+/**
+ * Error with a code property (mimics k8s API error).
+ */
+export class FakeApiError extends Error {
+  code: number;
+
+  constructor(code: number, message = `API error ${code}`) {
+    super(message);
+    this.code = code;
+    this.name = "FakeApiError";
+  }
+}
+
