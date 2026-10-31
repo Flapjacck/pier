@@ -87,7 +87,9 @@ export function deploymentToApp(d: V1Deployment): App {
   };
 }
 
-/** List Pier-managed apps in a namespace (label pier.app must be present). */
+/** List Pier-managed apps in a namespace (label pier.app must be present).
+ * Skips Deployments with deletionTimestamp set (being terminated).
+ */
 export async function listApps(
   apps: AppsV1Api,
   namespace: string,
@@ -97,7 +99,12 @@ export async function listApps(
     labelSelector: appSelector(),
   });
 
-  const appList = (response.items ?? []).map(deploymentToApp);
+  // Filter out Deployments with deletionTimestamp (being terminated).
+  const liveDeployments = (response.items ?? []).filter(
+    (d) => !d.metadata?.deletionTimestamp,
+  );
+
+  const appList = liveDeployments.map(deploymentToApp);
   appList.sort((a, b) => a.name.localeCompare(b.name));
   return appList;
 }
