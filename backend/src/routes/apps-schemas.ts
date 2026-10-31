@@ -66,6 +66,9 @@ export const appSchema = {
       enum: ["running", "stopped", "building", "failed"],
     },
     createdAt: { type: "string" },
+    port: { type: "integer" },
+    host: { type: "string" },
+    url: { type: "string" },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
 } as const;

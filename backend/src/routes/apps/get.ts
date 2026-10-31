@@ -33,7 +33,13 @@ export function getAppsRoutesWithDeps(deps: GetAppsRouteDeps): FastifyPluginAsyn
         }
 
         try {
-          return await listApps(deps.k8s.clients.apps, deps.namespace);
+          return await listApps(
+            {
+              apps: deps.k8s.clients.apps,
+              networking: deps.k8s.clients.networking,
+            },
+            deps.namespace,
+          );
         } catch (err) {
           req.log.error({ err }, "list apps failed");
           return reply.status(503).send({
