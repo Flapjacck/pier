@@ -234,3 +234,175 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 curl -H "Authorization: Bearer $TOKEN" http://pier-backend:3000/apps
 # Response: 200 [ { name: "api", ... }, { name: "web", ... } ]
 ```
+
+## `PATCH /apps/:name/scale`
+
+Scale an app to a specific number of replicas (0–10).
+
+### Request
+
+```json
+{ "replicas": 3 }
+```
+
+- `replicas` **(required)**: integer between 0 and 10. Use 0 to pause (scale to zero replicas).
+- `additionalProperties: false`: extra properties are rejected with 400.
+
+### Response
+
+**200 (success)**: the updated App (same shape as `GET /apps`):
+
+```json
+{ "name": "web", "image": "nginx:latest", "replicas": 3, "ready": 2, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z" }
+```
+
+**400 (validation error)**:
+```json
+{ "ok": false, "error": "invalid request", "details": "name must match DNS-1035 pattern" }
+```
+Reasons: bad app name, replicas outside 0–10, non-integer replicas, missing `replicas` field, extra properties, body not JSON.
+
+**401 (unauthorized)**: missing or wrong bearer token.
+
+**404 (not found)**: app does not exist or is being deleted (has `deletionTimestamp`).
+
+**503 (cluster unreachable)**: Kubernetes API unreachable or request failed.
+
+### Examples
+
+```bash
+TOKEN=<token>
+
+# Scale to 3 replicas
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"replicas":3}' \
+  http://pier-backend:3000/apps/web
+# Response: 200 { name: "web", ..., replicas: 3, ready: 0, status: "building" }
+
+# Scale to 0 (pause)
+curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"replicas":0}' \
+  http://pier-backend:3000/apps/web
+# Response: 200 { name: "web", ..., replicas: 0, ready: 0, status: "stopped" }
+```
+
+## `POST /apps/:name/restart`
+
+Restart an app by triggering a pod rollout. This updates the `kubectl.kubernetes.io/restartedAt` annotation on the pod template, which causes all existing pods to be replaced with new ones.
+
+### Request
+
+No body required. Method is POST for visibility (it's a side effect operation).
+
+### Response
+
+**202 (accepted)**: Pod rollout triggered.
+
+```json
+{ "ok": true, "restartedAt": "2026-10-31T16:05:30.000Z" }
+```
+
+`restartedAt` is the UTC timestamp of the restart operation.
+
+**400 (validation error)**: bad app name (see PATCH /apps/:name/scale for details).
+
+**401 (unauthorized)**: missing or wrong bearer token.
+
+**404 (not found)**: app does not exist or is being deleted.
+
+**503 (cluster unreachable)**: Kubernetes API unreachable or request failed.
+
+### Internals
+
+Uses JSON Patch to update the Deployment's pod template. If `spec.template.metadata.annotations` already exists, adds or replaces the `kubectl.kubernetes.io/restartedAt` field. If no annotations exist, creates the whole map.
+
+### Examples
+
+```bash
+TOKEN=<token>
+
+# Restart app (pods will be replaced within ~30s)
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://pier-backend:3000/apps/web/restart
+# Response: 202 { ok: true, restartedAt: "2026-10-31T16:05:30.000Z" }
+
+# Wait for pods to stabilize
+sleep 5
+
+# Check new pod names
+curl -s -H "Authorization: Bearer $TOKEN" http://pier-backend:3000/apps/web/pods | jq '.[].name'
+
+# Verify the annotation was set
+kubectl -n pier-apps get deploy web -o jsonpath='{.spec.template.metadata.annotations}'
+# Output: {"kubectl.kubernetes.io/restartedAt":"2026-10-31T16:05:30.000Z", ...}
+```
+
+## `DELETE /apps/:name`
+
+Delete an app (Deployment, Service, and Ingress). Idempotent: repeating the request returns 404 on the second call, which is correct behavior.
+
+### Request
+
+No body or parameters.
+
+### Response
+
+**204 (success)**: Deletion initiated. Deployment is marked for deletion with `propagationPolicy: Foreground`, which ensures owned Service and Ingress are garbage-collected within ~30s. Explicitly deleting Service and Ingress first ensures older or orphaned resources are cleaned up even if they lack owner references.
+
+**400 (validation error)**: bad app name.
+
+**401 (unauthorized)**: missing or wrong bearer token.
+
+**404 (not found)**: app does not exist or is already being deleted (has `deletionTimestamp`). Also returned if all resources are already gone.
+
+**503 (cluster unreachable)**: Kubernetes API unreachable or request failed.
+
+### Semantics
+
+- **Idempotent**: `DELETE /apps/foo` twice returns 204 then 404. The second call is not a client error; the app is gone, which is the desired state.
+- **Terminating apps**: A Deployment with `deletionTimestamp` set is treated as deleted. POST /apps with that name returns 409 (name in use), but scale/restart/delete return 404. Terminating apps are also excluded from `GET /apps`.
+- **Foreground deletion**: The Deployment is deleted with `propagationPolicy: Foreground`, which blocks until the Deployment itself is gone (typically ~30s). Owned resources (Service, Ingress) are garbage-collected as dependents.
+
+### Examples
+
+```bash
+TOKEN=<token>
+
+# Delete app
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  http://pier-backend:3000/apps/web
+# Response: 204 (no body)
+
+# Verify it's gone (returns 404)
+curl -X DELETE -H "Authorization: Bearer $TOKEN" \
+  http://pier-backend:3000/apps/web
+# Response: 404 { ok: false, error: "app not found" }
+
+# Check kubectl (may see the app for ~30s with deletionTimestamp)
+kubectl -n pier-apps get all,ingress -l pier.app=web
+# Eventually shows nothing
+```
+
+## App creation race condition and the create mutex
+
+POST /apps is serialized by a module-level promise chain (`createMutex`) in `src/k8s/create-app.ts`. Each call to `createApp` is chained after the previous one, ensuring the host check (listing Ingresses) and creation are atomic from the perspective of concurrent requests.
+
+**This is correct only while the backend runs one replica** (as set in `deployment.yaml.tmpl`). If replicas > 1, two backends may both pass the host check and create overlapping Ingress rules. To support multi-replica backends, a real distributed reservation (e.g., Kubernetes Lease or ConfigMap) is needed.
+
+### Example: safe concurrency with one replica
+
+```bash
+TOKEN=<token>
+
+# Fire two requests in parallel for the same host
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"app1","image":"nginx:latest","port":80,"host":"test.example.internal"}' \
+  http://pier-backend:3000/apps &
+  
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"app2","image":"nginx:latest","port":80,"host":"test.example.internal"}' \
+  http://pier-backend:3000/apps &
+
+wait
+# Result: exactly one 201 with an app created, one 409 with "host already in use"
+```
