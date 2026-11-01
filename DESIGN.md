@@ -262,11 +262,15 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 
 ### Log viewer *(#47)*
 
-- **LogViewer** component: reusable log viewer with dark panel in **both** themes (`pier-gray-950`), JetBrains Mono monospace stream, scrollable region with optional line numbers.
-- **Features:** live EventSource streaming or static plain-text fetch; auto-scroll that pauses on scroll-up; capped buffer (5000 lines, drop oldest); reconnection with backoff (1s → 30s ± 20% jitter); filter (case-insensitive substring, display-only); copy and download to `.log` file; ANSI escape stripping on ingest.
-- **Pod picker, tail size, follow toggle:** toolbar controls; status badge (dot + label: Live, Reconnecting _Ns_, Stream ended, Pod gone, Error, Static, Loading).
-- **Extracted components:** `LogPanel` (dark scrollable panel with line renders), `StatusBadge` (status indicator with action buttons), `useEventSourceManager` (EventSource lifecycle and reconnection), `LogBuffer` (capped line buffer with stable ids).
-- **Accessibility:** `role="log"` on panel, `aria-label` with pod name, `aria-live="polite"` on status (not per-line), keyboard-navigable (Tab through controls, scroll panel with arrow keys / Page Down).
+- **LogsCard** component: complete log viewer in a single rounded card with header bar and scrollable body. Dark surface in both themes (`--pier-log-bg`, `-fg`, `-muted`, `-border` tokens).
+- **Header bar:** status indicator (● + label: Live, Reconnecting _Ns_, Ended, Pod gone, Paused, Loading), action buttons (Retry, Use newest pod), compact pod and tail selectors, Follow toggle (role=switch), and ⋯ menu (Copy, Download).
+- **Body:** JetBrains Mono monospace text, 12px, line numbers from buffer, `whitespace-pre-wrap break-words`. States: skeleton while loading, "Waiting for logs…" when connected with no lines, capped notice ("Showing last N lines"), "No pods" state handled in parent.
+- **Features:** live EventSource with automatic reconnection (backoff 1s → 30s ± 20% jitter, divider line on reconnect) or static fetch (follow=false); auto-scroll pinned to bottom until user scrolls up, then "↓ N new lines" pill appears; tap to jump to latest; ANSI escape stripping on ingest; capped buffer (5000 lines, slice not shift).
+- **Pod handling:** Waits for pod to be known before streaming (pod: undefined means loading). Pod picker is on the header; tail and follow are controls, not a filter.
+- **Copy and Download:** inline menu; download filename is `<app>-<pod>-<yyyyMMdd-HHmmss>.log`.
+- **Accessibility:** `role="log"` on scroller, `aria-label` with pod name, status via `aria-live="polite"`, controls Tab/keyboard reachable.
+- **LogBuffer:** Returns fresh arrays and stored line numbers (`.n`), not ids. ANSI stripping on ingest. Efficient cap with `slice(-maxLines)`.
+- **useLogStream:** Single effect, clear state machine, no cross-hook recursion, local cancellation flag, cleanup clears all refs and timers.
 
 ### Toast
 
