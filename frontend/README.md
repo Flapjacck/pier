@@ -28,12 +28,15 @@ pnpm --dir frontend build      # output in frontend/dist/
 | `src/api/` | Typed API client (`types.ts`, `client.ts`, `request.ts`, `errors.ts`) |
 | `src/context/` | `AuthContext`, `ThemeContext`, `ShellContext`, `PageActionsContext` |
 | `src/hooks/useApi.ts` | Small fetch hook (loading, error, data, refetch, abort on unmount) |
+| `src/hooks/useLogStream.ts` | Live log streaming (EventSource with backoff/reconnect or static fetch) (#47) |
+| `src/hooks/useEventSourceLogs.ts` | EventSource lifecycle manager with reconnection (extracted from useLogStream) |
 | `src/hooks/useApps.ts` | Apps list fetcher with 10s auto-refresh (visible-tab only, no overlapping requests) |
 | `src/styles/tokens.css` | Pier semantic CSS variables (light/dark via `data-theme`) |
 | `src/styles/tailwind.theme.css` | Tailwind v4 `@theme` aliases → utilities |
 | `src/styles/index.css` | Tailwind import, token imports, base resets |
 | `src/components/layout/` | `AppShell`, `Sidebar`, `Header`, mobile drawer |
-| `src/components/ui/` | Shared primitives (Button, Dialog, Toast, Table, …) |
+| `src/components/ui/` | Shared primitives (Button, Dialog, Toast, Table, LogViewer, LogPanel, StatusBadge, …) |
+| `src/lib/logBuffer.ts` | Capped line buffer with ANSI stripping, stable ids (#47) |
 | `src/components/` | Apps, brand, icons, auth guards |
 | `src/pages/` | Route-level views (including `LoginPage`) |
 | `src/hooks/usePierTheme.ts` | Theme persistence and `data-theme` sync (used by `ThemeProvider`) |
@@ -68,7 +71,7 @@ Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigi
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
   - `/:name/pods` → Pods tab (list, refresh, reasons)
-  - `/:name/logs` → Logs tab (placeholder, `TODO(#47)`)
+  - `/:name/logs` → Logs tab (live EventSource or static logs with pod/tail picker, auto-scroll, filter, copy, download)
   - `/:name/settings` → Settings tab (scale, restart, delete)
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
@@ -83,6 +86,13 @@ Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigi
 ## Brand assets
 
 Copy only what the app references from the gitignored **`pier-brand-kit/`** tree into `public/`.
+
+## Log streaming (#47)
+
+- **Live logs:** `useLogStream` hook opens an `EventSource` to the backend's `GET /api/apps/:name/logs?follow=true&pod=…&tail=…` and streams line-by-line. On any connection error, it classifies the error (pod gone, cluster unreachable, transient) and reconnects with exponential backoff (1s → 30s ± 20% jitter). The stream is closed on unmount or when the pod/tail changes.
+- **Static mode:** When `follow=false`, a single `getAppLogsText` fetch returns the last `tail` lines as plain text. No reconnect needed.
+- **Buffer:** `LogBuffer` stores lines with stable incrementing ids, strips ANSI escapes, and caps at 5000 lines (drops oldest). Accessible as `toText()`.
+- **Display:** `LogViewer` component renders the filtered view (case-insensitive substring) with auto-scroll (stays pinned to bottom until scroll-up), jump-to-latest button, line count, copy/download, and status badge. The panel is dark (`pier-gray-950`) in both themes, JetBrains Mono monospace.
 
 ## No hex in components
 
