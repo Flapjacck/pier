@@ -6,6 +6,7 @@ import type {
   ClusterPodsResult,
   KubeConfigMode,
   PodSummary,
+  RestartResult,
   SessionInfo,
 } from "./types";
 
@@ -141,4 +142,11 @@ export function parseClusterHealth(json: unknown): ClusterHealth {
   }
   if (typeof json.error === "string") health.error = json.error;
   return health;
+}
+
+export function parseRestartResult(json: unknown): RestartResult {
+  if (!isRecord(json) || json.ok !== true || typeof json.restartedAt !== "string") {
+    throw new SyntaxError("Invalid restart response");
+  }
+  return { ok: true, restartedAt: json.restartedAt };
 }

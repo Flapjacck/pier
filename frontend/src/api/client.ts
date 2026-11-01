@@ -4,10 +4,11 @@ import {
   parseAppPodList,
   parseClusterHealth,
   parseClusterPodsResult,
+  parseRestartResult,
   parseSessionInfo,
 } from "./guards";
 import { request, requestVoid, type RequestOptions } from "./request";
-import type { App, ClusterHealth, ClusterPodsResult, CreateAppBody, ScaleBody, SessionInfo } from "./types";
+import type { App, ClusterHealth, ClusterPodsResult, CreateAppBody, RestartResult, ScaleBody, SessionInfo } from "./types";
 
 export { ApiError, type ApiErrorKind } from "./errors";
 export type {
@@ -18,6 +19,7 @@ export type {
   ClusterPodsResult,
   CreateAppBody,
   PodSummary,
+  RestartResult,
   ScaleBody,
   SessionInfo,
 } from "./types";
@@ -84,11 +86,11 @@ export function scaleApp(name: string, replicas: number, options?: RequestOption
   });
 }
 
-export function restartApp(name: string, options?: RequestOptions): Promise<App> {
+export function restartApp(name: string, options?: RequestOptions): Promise<RestartResult> {
   return request(`/api/apps/${encodeURIComponent(name)}/restart`, {
     ...options,
     method: "POST",
-    parse: parseApp,
+    parse: parseRestartResult,
   });
 }
 
