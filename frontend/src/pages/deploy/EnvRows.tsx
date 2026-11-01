@@ -126,9 +126,6 @@ export function EnvRows({
         <PierIcon name="add" size={14} />
         Add variable
       </Button>
-      {errors[""] && (
-        <p className="text-[12px] text-pier-status-failed m-0">{errors[""]}</p>
-      )}
     </div>
   );
 }
