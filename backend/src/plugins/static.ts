@@ -63,27 +63,28 @@ export async function setupStaticServing(
     prefix: "/",
     wildcard: false,
     index: false, // Disable auto-serving index.html; we handle it in setNotFoundHandler
-    setHeaders: (res, filePath) => {
-      const url = res.req.url?.split("?")[0] || "";
+  });
 
-      // /assets/* (hashed, immutable): cache for 1 year.
-      if (url.startsWith("/assets/")) {
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        res.setHeader("X-Content-Type-Options", "nosniff");
-      }
-      // index.html: no-cache (always revalidate).
-      else if (url === "/index.html") {
-        res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("Content-Security-Policy", CSP_HEADER);
-        res.setHeader("X-Content-Type-Options", "nosniff");
-        res.setHeader("Referrer-Policy", "same-origin");
-      }
-      // Other public files: 1 hour cache.
-      else {
-        res.setHeader("Cache-Control", "public, max-age=3600");
-        res.setHeader("X-Content-Type-Options", "nosniff");
-      }
-    },
+  // Hook: add cache headers to static assets after they're sent.
+  app.addHook("onSend", async (req, reply) => {
+    const urlPath = req.url.split("?")[0] || "/";
+
+    // Skip non-GET/HEAD or if response is not from static file (check status < 400).
+    if ((req.method !== "GET" && req.method !== "HEAD") || reply.statusCode >= 400) {
+      return;
+    }
+
+    // /assets/* (hashed, immutable): cache for 1 year.
+    if (urlPath.startsWith("/assets/")) {
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+      reply.header("X-Content-Type-Options", "nosniff");
+    }
+    // Other public files (non-root): 1 hour cache.
+    // Root (/) and /index.html are handled in notFoundHandler (they get no-cache).
+    else if (urlPath !== "/" && urlPath !== "/index.html" && fs.existsSync(path.join(publicDir, urlPath))) {
+      reply.header("Cache-Control", "public, max-age=3600");
+      reply.header("X-Content-Type-Options", "nosniff");
+    }
   });
 
   // Root-level notFoundHandler: routes to index.html or returns a proper 404.
