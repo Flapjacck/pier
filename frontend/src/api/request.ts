@@ -80,12 +80,10 @@ export async function request<T>(
   }
 
   if (res.status === 204) {
-    if (!res.ok) {
-      const errJson = await readErrorBody(res);
-      maybeRedirectUnauthorized(res.status, skipAuthRedirect);
-      throw apiErrorFromResponse(res.status, errJson);
-    }
-    throw new ApiError(204, { ok: false, error: "unexpected empty body" });
+    if (res.ok) return parse ? parse(null) : (null as T);
+    const errJson = await readErrorBody(res);
+    maybeRedirectUnauthorized(res.status, skipAuthRedirect);
+    throw apiErrorFromResponse(res.status, errJson);
   }
 
   if (parseAsText) {
@@ -111,7 +109,8 @@ export async function request<T>(
     throw apiErrorFromResponse(res.status, isApiErrorBody(json) ? json : null);
   }
 
-  return parse!(json);
+  if (!parse) throw new ApiError(res.status, { ok: false, error: "parse function required" });
+  return parse(json);
 }
 
 export async function requestVoid(path: string, options: RequestOptions = {}): Promise<void> {
