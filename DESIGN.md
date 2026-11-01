@@ -280,6 +280,15 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 
 - `Table`, `TableHead`, `TableBody`, `TableRow`, `TableHeaderCell`, `TableCell`, `TableEmpty`; compact row padding per density rules.
 
+### Apps list (`AppsPage`, #44)
+
+- **Columns:** Name (link), Status (pill), Ready (ready/replicas, tabular numbers), Image (mono, truncated with full value in `title`), URL (external link with icon when present, else em dash), Created (relative time in `<time dateTime>` with full ISO in `title`).
+- **Loading state (first load):** 4 skeleton rows in the table, not a full-page spinner.
+- **Error state:** Inline error panel with `error.message` or cluster-unreachable copy (network/unavailable kinds); Retry button refetches.
+- **Empty state:** `ThemeIllustration` (empty-dock), headline and subheadline, "Deploy an app" button linked to `/apps/new` (disabled with `title="Coming soon"` until #46, `TODO(#46)` comment).
+- **Data state:** Search input (type="search", case-insensitive by name), manual Refresh button with pending spinner, "Updated Xs ago" note, app count (e.g. "3 apps"). Search showing zero results renders "No apps match …" row via `TableEmpty`.
+- **Auto-refresh:** Every 10s while `document.visibilityState === "visible"` and no request in flight; old data stays visible while background refetch proceeds (no skeleton flash). Announce refresh results to `aria-live="polite"` without repeating on each auto-refresh tick.
+
 ### Skeleton
 
 - `rounded-pier` blocks; `motion-safe:animate-pulse` only.
@@ -289,6 +298,13 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 - Full-viewport centred card **outside** the app shell; optional subtle `pattern-waves-{light,dark}.svg` background at low opacity.
 - Stacked lockup SVG (`PierStackedLogo`, min 48px), `Field` + password `Input` with show/hide, primary **Sign in** submit.
 - Errors use `Field` alert wiring; copy states the failure and recovery (wrong token, rate limit, auth disabled, unreachable).
+
+### App detail placeholder (`AppDetailPage`, #44 / #45)
+
+- **Loading:** Skeleton with heading and field rows.
+- **404 (not_found):** `lost-container-colour-{light,dark}` illustration, headline "App not found", subheadline naming the app, "Back to apps" link button.
+- **Error:** Inline error panel with message or cluster-unreachable copy; Retry button.
+- **Data:** Simple card with app name as `h1`, status pill, then rows of label (left, 24ch width) + value: Status, Ready (ready/replicas), Image (mono, truncated), Port (if present), URL (external link with icon, if present), Created (relative time with full ISO in `title`). `TODO(#45): tabs (overview, pods, logs, settings)` for future expansion.
 
 ### Status pages
 
@@ -313,7 +329,7 @@ Full asset map (source: gitignored `pier-brand-kit/`). Copy into `frontend/publi
 | Apps list empty | `illustrations/svg/empty-dock-colour-{light,dark}.svg` | #44 |
 | 404 page | `illustrations/svg/lost-at-sea-colour-{light,dark}.svg` | #43 |
 | 500 / error boundary | `illustrations/svg/rough-waters-colour-{light,dark}.svg` | #43 |
-| App not found (`/apps/:name` 404) | `illustrations/svg/lost-container-colour-{light,dark}.svg` | #45 |
+| App not found (`/apps/:name` 404) | `illustrations/svg/lost-container-colour-{light,dark}.svg` | #44 |
 | Deploy succeeded | `illustrations/svg/deployed-colour-{light,dark}.svg` | #46 |
 | Backend/cluster unreachable | `illustrations/svg/maintenance-colour-{light,dark}.svg` | #42/#43 |
 | Onboarding / first run, README hero | `illustrations/svg/hero-*`, `ship-*` | Marketing/docs only. |

@@ -1,6 +1,6 @@
 # Pier frontend
 
-React 19 + Vite 8 + Tailwind CSS v4 dashboard for the Pier control plane. Mock app data lives in `src/data/mockApps.ts` until the API list/detail endpoints are wired (#44).
+React 19 + Vite 8 + Tailwind CSS v4 dashboard for the Pier control plane. Apps list loads from the backend API; no mock data.
 
 ## Design context
 
@@ -28,6 +28,7 @@ pnpm --dir frontend build      # output in frontend/dist/
 | `src/api/` | Typed API client (`types.ts`, `client.ts`, `request.ts`, `errors.ts`) |
 | `src/context/` | `AuthContext`, `ThemeContext`, `ShellContext`, `PageActionsContext` |
 | `src/hooks/useApi.ts` | Small fetch hook (loading, error, data, refetch, abort on unmount) |
+| `src/hooks/useApps.ts` | Apps list fetcher with 10s auto-refresh (visible-tab only, no overlapping requests) |
 | `src/styles/tokens.css` | Pier semantic CSS variables (light/dark via `data-theme`) |
 | `src/styles/tailwind.theme.css` | Tailwind v4 `@theme` aliases → utilities |
 | `src/styles/index.css` | Tailwind import, token imports, base resets |
@@ -47,6 +48,8 @@ pnpm --dir frontend build      # output in frontend/dist/
 - **Data hook:** `useApi` is an in-house hook (no TanStack Query) to keep dependencies minimal and match Pier’s small surface area; it aborts on unmount and dependency changes.
 
 ## Local dev (frontend + backend)
+
+**Required:** Backend must be running for the apps list and detail endpoints to work.
 
 1. In `backend/`, set `PIER_API_TOKEN` in `.env` and run `pnpm dev` (listens on port 3000).
 2. In another terminal: `pnpm --dir frontend dev` (port 5173).
