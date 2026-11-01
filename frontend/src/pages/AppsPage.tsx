@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { AppsTable } from "../components/apps/AppsTable";
 import { ThemeIllustration } from "../components/brand/ThemeIllustration";
 import { PierIcon } from "../components/icons/PierIcon";
@@ -26,10 +27,12 @@ export function AppsPage() {
 
   const headerActions = useMemo(
     () => (
-      <Button disabled title="Coming soon">
-        <PierIcon name="deploy" size={14} />
-        Deploy
-      </Button>
+      <Link to="/apps/new">
+        <Button>
+          <PierIcon name="deploy" size={14} />
+          Deploy
+        </Button>
+      </Link>
     ),
     [],
   );
@@ -103,10 +106,12 @@ export function AppsPage() {
                 </span>
               </p>
             </div>
-            <Button disabled title="Coming soon">
-              <PierIcon name="deploy" size={14} />
-              Deploy an app
-            </Button>
+            <Link to="/apps/new">
+              <Button>
+                <PierIcon name="deploy" size={14} />
+                Deploy an app
+              </Button>
+            </Link>
           </div>
         </div>
       </div>

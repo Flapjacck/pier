@@ -204,8 +204,21 @@ describe("POST /api/logout", () => {
 });
 
 describe("GET /api/session", () => {
-  it("returns 200 with authDisabled:false when authed with bearer token", async () => {
-    const app = await appWithClients(TEST_TOKEN);
+  it("returns 200 with authDisabled:false and ingressDomain when set", async () => {
+    const app = await buildApp(testConfig({ apiToken: TEST_TOKEN, ingressDomain: "192.0.2.10.nip.io" }), {
+      logger: false,
+      k8s: createFakeClientsResult({
+        core: {
+          listNode: async () => ({
+            items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
+          }),
+          listNamespacedPod: async () => ({ items: [] }),
+        } as never,
+        version: { getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }) } as never,
+        apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
+        networking: { listNamespacedIngress: async () => ({ items: [] }) } as never,
+      }),
+    });
     const res = await app.inject({
       method: "GET",
       url: "/api/session",
@@ -214,9 +227,39 @@ describe("GET /api/session", () => {
     await app.close();
 
     assert.equal(res.statusCode, 200);
-    const body = res.json() as { ok: boolean; authDisabled: boolean };
+    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null };
     assert.equal(body.ok, true);
     assert.equal(body.authDisabled, false);
+    assert.equal(body.ingressDomain, "192.0.2.10.nip.io");
+  });
+
+  it("returns 200 with authDisabled:false and ingressDomain:null when not configured", async () => {
+    const app = await buildApp(testConfig({ apiToken: TEST_TOKEN, ingressDomain: undefined }), {
+      logger: false,
+      k8s: createFakeClientsResult({
+        core: {
+          listNode: async () => ({
+            items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
+          }),
+          listNamespacedPod: async () => ({ items: [] }),
+        } as never,
+        version: { getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }) } as never,
+        apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
+        networking: { listNamespacedIngress: async () => ({ items: [] }) } as never,
+      }),
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/session",
+      headers: authHeader,
+    });
+    await app.close();
+
+    assert.equal(res.statusCode, 200);
+    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null };
+    assert.equal(body.ok, true);
+    assert.equal(body.authDisabled, false);
+    assert.equal(body.ingressDomain, null);
   });
 
   it("returns 200 with authDisabled:false when authed with session cookie", async () => {
@@ -249,7 +292,20 @@ describe("GET /api/session", () => {
   });
 
   it("returns 200 with authDisabled:true when no token is configured", async () => {
-    const app = await appWithClients(undefined);
+    const app = await buildApp(testConfig({ apiToken: undefined, ingressDomain: undefined }), {
+      logger: false,
+      k8s: createFakeClientsResult({
+        core: {
+          listNode: async () => ({
+            items: [{ status: { conditions: [{ type: "Ready", status: "True" }] } }],
+          }),
+          listNamespacedPod: async () => ({ items: [] }),
+        } as never,
+        version: { getCode: async () => ({ gitVersion: "v1.30.0+k3s1" }) } as never,
+        apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
+        networking: { listNamespacedIngress: async () => ({ items: [] }) } as never,
+      }),
+    });
     const res = await app.inject({
       method: "GET",
       url: "/api/session",
@@ -257,9 +313,10 @@ describe("GET /api/session", () => {
     await app.close();
 
     assert.equal(res.statusCode, 200);
-    const body = res.json() as { ok: boolean; authDisabled: boolean };
+    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null };
     assert.equal(body.ok, true);
     assert.equal(body.authDisabled, true);
+    assert.equal(body.ingressDomain, null);
   });
 
   it("returns 401 when not authenticated (no bearer, no valid cookie)", async () => {

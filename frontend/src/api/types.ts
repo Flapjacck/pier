@@ -7,7 +7,7 @@
  * - backend/src/k8s/client.ts (KubeConfigMode)
  * - backend/src/routes/apps-schemas.ts (PostAppsBody, error bodies)
  * - backend/src/routes/apps/restart.ts (RestartResult)
- * - backend/src/routes/session.ts (SessionInfo)
+ * - backend/src/routes/session.ts (SessionInfo) — now includes ingressDomain
  */
 
 export type KubeConfigMode = "in-cluster" | "kubeconfig";
@@ -66,6 +66,7 @@ export type ClusterPodsResult = {
 export type SessionInfo = {
   ok: true;
   authDisabled: boolean;
+  ingressDomain: string | null;
 };
 
 /** POST /api/apps body — mirrors apps-schemas PostAppsBody */

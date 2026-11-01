@@ -18,6 +18,7 @@ export type AuthStatus = "checking" | "authenticated" | "anonymous" | "unreachab
 type AuthContextValue = {
   status: AuthStatus;
   authDisabled: boolean;
+  ingressDomain: string | null;
   login: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   retrySession: () => void;
@@ -38,11 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [status, setStatus] = useState<AuthStatus>("checking");
   const [authDisabled, setAuthDisabled] = useState(false);
+  const [ingressDomain, setIngressDomain] = useState<string | null>(null);
   const loadSession = useCallback(async (signal?: AbortSignal) => {
     setStatus("checking");
     try {
       const session = await api.getSession({ signal });
       setAuthDisabled(session.authDisabled);
+      setIngressDomain(session.ingressDomain);
       setStatus("authenticated");
     } catch (err) {
       if (signal?.aborted) return;
@@ -74,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.login(token);
     const session = await api.getSession({ skipAuthRedirect: true });
     setAuthDisabled(session.authDisabled);
+    setIngressDomain(session.ingressDomain);
     setStatus("authenticated");
   }, []);
 
@@ -88,8 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [navigate]);
 
   const value = useMemo(
-    () => ({ status, authDisabled, login, logout, retrySession }),
-    [status, authDisabled, login, logout, retrySession],
+    () => ({ status, authDisabled, ingressDomain, login, logout, retrySession }),
+    [status, authDisabled, ingressDomain, login, logout, retrySession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
