@@ -29,7 +29,7 @@ pnpm --dir frontend build      # output in frontend/dist/
 | `src/context/` | `AuthContext`, `ThemeContext`, `ShellContext`, `PageActionsContext` |
 | `src/hooks/useApi.ts` | Small fetch hook (loading, error, data, refetch, abort on unmount) |
 | `src/hooks/useLogStream.ts` | Live log streaming (EventSource with backoff/reconnect or static fetch) (#47) |
-| `src/hooks/useEventSourceLogs.ts` | EventSource lifecycle manager with reconnection (extracted from useLogStream) |
+| `src/components/ui/LogsCard.tsx` | Complete log viewer card with header, controls, and scrollable panel (#47) |
 | `src/hooks/useApps.ts` | Apps list fetcher with 10s auto-refresh (visible-tab only, no overlapping requests) |
 | `src/styles/tokens.css` | Pier semantic CSS variables (light/dark via `data-theme`) |
 | `src/styles/tailwind.theme.css` | Tailwind v4 `@theme` aliases → utilities |
@@ -71,7 +71,7 @@ Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigi
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
   - `/:name/pods` → Pods tab (list, refresh, reasons)
-  - `/:name/logs` → Logs tab (live EventSource or static logs with pod/tail picker, auto-scroll, filter, copy, download)
+  - `/:name/logs` → Logs tab (live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
   - `/:name/settings` → Settings tab (scale, restart, delete)
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
@@ -89,10 +89,10 @@ Copy only what the app references from the gitignored **`pier-brand-kit/`** tree
 
 ## Log streaming (#47)
 
-- **Live logs:** `useLogStream` hook opens an `EventSource` to the backend's `GET /api/apps/:name/logs?follow=true&pod=…&tail=…` and streams line-by-line. On any connection error, it classifies the error (pod gone, cluster unreachable, transient) and reconnects with exponential backoff (1s → 30s ± 20% jitter). The stream is closed on unmount or when the pod/tail changes.
-- **Static mode:** When `follow=false`, a single `getAppLogsText` fetch returns the last `tail` lines as plain text. No reconnect needed.
-- **Buffer:** `LogBuffer` stores lines with stable incrementing ids, strips ANSI escapes, and caps at 5000 lines (drops oldest). Accessible as `toText()`.
-- **Display:** `LogViewer` component renders the filtered view (case-insensitive substring) with auto-scroll (stays pinned to bottom until scroll-up), jump-to-latest button, line count, copy/download, and status badge. The panel is dark (`pier-gray-950`) in both themes, JetBrains Mono monospace.
+- **Live logs:** `useLogStream` hook opens `EventSource` to `/api/apps/:name/logs?follow=true&pod=…&tail=…` and streams lines. On connection error, it probes with one-line fetch to classify (pod gone, cluster down, transient), then reconnects with backoff (1s → 30s ± 20% jitter). Stream closes on unmount, pod/tail/follow change, or backend `end` event. Pushes divider line on reconnect.
+- **Static mode:** When `follow=false`, one `getAppLogsText` fetch returns tail lines as plain text. Status is "Paused".
+- **Buffer:** `LogBuffer` stores `.n` (line number, stable incremental) and `.text` (ANSI-stripped). Returns fresh arrays via `getLines()` and tracks drops via `append()` result. Capped at 5000 lines with efficient `slice()` not `shift()`.
+- **Display:** `LogsCard` renders a card with header bar (status dot + label, action buttons, pod/tail/follow selectors, ⋯ menu) and scrollable log body (JetBrains Mono 12px). Auto-scroll sticks to bottom; scroll-up shows line count pill. Copy and Download in menu. No filter or Clear (simplified UI).
 
 ## No hex in components
 
