@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -33,16 +33,13 @@ const variants = {
 /**
  * Pier-styled button with primary, secondary, ghost, and danger variants.
  */
-export function Button({
-  variant = "primary",
-  size = "default",
-  className,
-  children,
-  ...rest
-}: Props) {
+export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
+  { variant = "primary", size = "default", className, children, ...rest },
+  ref,
+) {
   return (
-    <button className={cn(base, sizes[size], variants[variant], className)} {...rest}>
+    <button ref={ref} className={cn(base, sizes[size], variants[variant], className)} {...rest}>
       {children}
     </button>
   );
-}
+});
