@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { createAppSeralized } from "../../k8s/create-app.js";
+import { createAppSerialized } from "../../k8s/create-app.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import {
   appSchema,
@@ -97,7 +97,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
         }
 
         try {
-          const app = await createAppSeralized(
+          const app = await createAppSerialized(
             deps.k8s.clients,
             deps.namespace,
             {

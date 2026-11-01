@@ -1,9 +1,13 @@
 import type { FastifyReply } from "fastify";
 import { apiErrorMessage, apiStatusCode } from "../../k8s/api-errors.js";
-import { AppExistsError, HostInUseError } from "../../k8s/create-app.js";
+import {
+  AppExistsError,
+  CreateTimeoutError,
+  HostInUseError,
+} from "../../k8s/create-app.js";
 
 /**
- * Map a caught error from createAppSeralized to a Fastify response.
+ * Map a caught error from createAppSerialized to a Fastify response.
  * Returns true if the error was handled, false if it should be re-thrown.
  */
 export function mapPostAppsError(
@@ -18,6 +22,15 @@ export function mapPostAppsError(
 
   if (err instanceof HostInUseError) {
     reply.status(409).send({ ok: false, error: "host already in use" });
+    return true;
+  }
+
+  if (err instanceof CreateTimeoutError) {
+    reply.status(503).send({
+      ok: false,
+      error: "cluster unreachable",
+      details: "create timed out",
+    });
     return true;
   }
 
