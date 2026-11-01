@@ -1,5 +1,5 @@
 # deployment.yaml.tmpl
-# Rendered by deploy-local.sh: __IMAGE__ and __TOKEN_SHA256__ are substituted.
+# Rendered by deploy-local.sh: __IMAGE__, __TOKEN_SHA256__, and __DASHBOARD_HOST__ are substituted.
 # Do not kubectl apply this template directly; use deploy-local.sh instead.
 # 
 # The pod-template annotation pier.dev/token-sha256 ensures that when PIER_API_TOKEN
@@ -54,6 +54,10 @@ spec:
               value: "pier-apps"
             - name: PIER_INGRESS_DOMAIN
               value: "__INGRESS_DOMAIN__"
+            - name: PIER_TRUST_PROXY
+              value: "true"
+            - name: PIER_DASHBOARD_HOST
+              value: "__DASHBOARD_HOST__"
             - name: PIER_API_TOKEN
               valueFrom:
                 secretKeyRef:

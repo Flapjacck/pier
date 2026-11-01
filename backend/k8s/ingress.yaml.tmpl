@@ -1,0 +1,25 @@
+# ingress.yaml.tmpl
+# Rendered by deploy-local.sh: __DASHBOARD_HOST__ is substituted.
+# Do not kubectl apply this template directly; use deploy-local.sh instead.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pier-backend
+  namespace: default
+  labels:
+    app: pier-backend
+    app.kubernetes.io/part-of: pier
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: __DASHBOARD_HOST__
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pier-backend
+                port:
+                  number: 80
