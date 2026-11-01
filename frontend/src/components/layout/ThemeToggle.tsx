@@ -1,6 +1,4 @@
-import type { Theme } from "../../hooks/usePierTheme";
-
-interface Props { theme: Theme; toggle: () => void; }
+import { useTheme } from "../../context/ThemeContext";
 
 function SunIcon() {
   return (
@@ -28,20 +26,29 @@ function MoonIcon() {
   );
 }
 
+interface Props {
+  /** Icon-only for collapsed sidebar rail */
+  compact?: boolean;
+}
+
 /** Sun/moon toggle pinned to the sidebar footer. Persists via localStorage. */
-export function ThemeToggle({ theme, toggle }: Props) {
+export function ThemeToggle({ compact = false }: Props) {
+  const { theme, toggle } = useTheme();
   const isDark = theme === "dark";
   return (
     <button
+      type="button"
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      title={compact ? (isDark ? "Light mode" : "Dark mode") : undefined}
       className="flex items-center gap-2 w-full px-2.5 py-[7px] rounded-pier bg-transparent
                  border-none text-[13px] font-sans text-pier-muted cursor-pointer text-left
                  transition-colors hover:bg-pier-surface-2 hover:text-pier-fg
-                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus"
+                 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus
+                 justify-center md:justify-start"
     >
       {isDark ? <SunIcon /> : <MoonIcon />}
-      {isDark ? "Light mode" : "Dark mode"}
+      {!compact && (isDark ? "Light mode" : "Dark mode")}
     </button>
   );
 }
