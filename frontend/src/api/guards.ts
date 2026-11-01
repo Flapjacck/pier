@@ -33,7 +33,10 @@ export function parseSessionInfo(json: unknown): SessionInfo {
   if (!isRecord(json) || json.ok !== true || typeof json.authDisabled !== "boolean") {
     throw new SyntaxError("Invalid session response");
   }
-  return { ok: true, authDisabled: json.authDisabled };
+  // ingressDomain is optional (null or string); default to null for backward compatibility
+  const ingressDomain =
+    typeof json.ingressDomain === "string" ? json.ingressDomain : null;
+  return { ok: true, authDisabled: json.authDisabled, ingressDomain };
 }
 
 export function parseApp(json: unknown): App {

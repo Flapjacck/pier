@@ -9,6 +9,7 @@ import { AppDetailPods } from "./pages/app-detail/AppDetailPods";
 import { AppDetailLogs } from "./pages/app-detail/AppDetailLogs";
 import { AppDetailSettings } from "./pages/app-detail/AppDetailSettings";
 import { AppsPage } from "./pages/AppsPage";
+import { DeployPage } from "./pages/DeployPage";
 import { BoomPage } from "./pages/BoomPage";
 import { ErrorPage } from "./pages/ErrorPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
             errorElement: <ErrorPage />,
             children: [
               { path: "apps", element: <AppsPage /> },
+              { path: "apps/new", element: <DeployPage /> },
               {
                 path: "apps/:name",
                 element: <AppDetailLayout />,

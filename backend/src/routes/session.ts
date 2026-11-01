@@ -4,6 +4,7 @@ import { tokensMatch } from "../plugins/auth.js";
 
 type SessionRouteDeps = {
   apiToken: string | undefined;
+  ingressDomain: string | undefined;
 };
 
 /**
@@ -191,19 +192,20 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
     });
 
     /**
-     * GET /api/session — get the current session status.
+     * GET /api/session — get the current session status and ingress domain.
      *
      * Requires authentication (bearer or cookie).
      *
      * Responses:
      * - 200: authenticated or auth disabled
-     *   { ok: true, authDisabled: boolean }
+     *   { ok: true, authDisabled: boolean, ingressDomain: string | null }
      * - 401: not authenticated
      */
     app.get("/session", async (_req, reply) => {
       return reply.status(200).send({
         ok: true,
         authDisabled: !deps.apiToken,
+        ingressDomain: deps.ingressDomain ?? null,
       });
     });
   };

@@ -7,6 +7,7 @@ export type ApiErrorKind =
   | "not_found"
   | "conflict"
   | "validation"
+  | "rejected"
   | "rate_limited"
   | "unavailable"
   | "network"
@@ -43,6 +44,7 @@ function classifyError(status: number, _message: string): ApiErrorKind {
   if (status === 404) return "not_found";
   if (status === 409) return "conflict";
   if (status === 400) return "validation";
+  if (status === 422) return "rejected";
   if (status === 429) return "rate_limited";
   if (status === 503) return "unavailable";
   return "unknown";
