@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useMemo, useLayoutEffect, useRef, useState } from "react";
 import type { AppPod } from "../../api/types";
 import type { LogLine, LogStreamStatus } from "../../hooks/useLogStream";
 import { Button } from "./Button";
+import { Input } from "./Input";
 import { Skeleton } from "./Skeleton";
 import { useToast } from "./Toast";
 
@@ -43,7 +44,15 @@ export function LogsCard({
   const [autoScroll, setAutoScroll] = useState(true);
   const [newLineCount, setNewLineCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const { push: toast } = useToast();
+
+  // Filter lines by search term (case-insensitive)
+  const filteredLines = useMemo(() => {
+    if (!search) return lines;
+    const lower = search.toLowerCase();
+    return lines.filter((line) => line.text.toLowerCase().includes(lower));
+  }, [lines, search]);
 
   const isLoading = status.kind === "loading";
 
@@ -147,6 +156,20 @@ export function LogsCard({
         {/* Status and reconnect actions */}
         <span className="text-[13px]">●</span>
         <span className={`text-[13px] font-medium ${statusColor}`}>{statusLabel}</span>
+
+        {/* Search bar */}
+        <Input
+          type="search"
+          placeholder="Search logs…"
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+          className="h-7 px-2 text-[12px] flex-1 min-w-[120px] max-w-xs"
+        />
+        {search && (
+          <span className="text-[11px] text-pier-muted">
+            {filteredLines.length} / {lines.length}
+          </span>
+        )}
 
         {status.kind === "reconnecting" && (
           <Button variant="ghost" size="sm" onClick={reconnectNow}>
@@ -262,6 +285,10 @@ export function LogsCard({
           <div className="flex items-center justify-center h-full text-pier-log-muted">
             <p className="text-[13px]">Waiting for logs…</p>
           </div>
+        ) : filteredLines.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-pier-log-muted">
+            <p className="text-[13px]">No matching lines</p>
+          </div>
         ) : (
           <pre className="p-4 m-0 whitespace-pre-wrap break-words">
             {droppedCount > 0 && (
@@ -269,7 +296,7 @@ export function LogsCard({
                 [Showing last {lines.length} lines]
               </div>
             )}
-            {lines.map((line) => (
+            {filteredLines.map((line) => (
               <div key={line.n} className="flex">
                 <span className="w-12 text-right text-pier-log-muted pr-3 select-none">
                   {line.n}
