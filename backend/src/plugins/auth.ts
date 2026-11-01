@@ -152,7 +152,7 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
       return;
     }
 
-    // Only enforce auth on /api/* paths. Anything else is unauthenticated (404 today, SPA later).
+    // Only enforce auth on /api/* paths. Static files and SPA routes are public.
     if (!path.startsWith("/api/")) {
       return;
     }

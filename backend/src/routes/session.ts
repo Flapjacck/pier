@@ -64,8 +64,8 @@ export const rateLimiter = new RateLimiter();
 
 /**
  * Extract the client IP from the request.
- * For local development, req.ip is sufficient.
- * For production with a reverse proxy, #48 will set up trustProxy.
+ * If trustProxy is enabled, respects X-Forwarded-For header from the reverse proxy.
+ * Otherwise, uses req.ip directly (local development or direct connection).
  */
 function getClientIp(req: FastifyRequest): string {
   return req.ip ?? "unknown";
@@ -87,8 +87,6 @@ function setSessionCookie(
     path: "/api",
     maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
     secure: isSecure,
-    // TODO: #48 will set trustProxy. This cookie is set by the backend
-    // regardless of whether a reverse proxy or TLS terminator is in front.
   });
 }
 
