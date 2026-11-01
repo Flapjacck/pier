@@ -55,6 +55,7 @@ export function Menu({ trigger, options, selectedId, onSelect, className }: Prop
       enabledOptions.findIndex((o) => o.id === selectedId),
     );
     setActiveIndex(idx >= 0 ? idx : 0);
+    listRef.current?.focus();
   }, [open, selectedId, enabledOptions]);
 
   useEffect(() => {

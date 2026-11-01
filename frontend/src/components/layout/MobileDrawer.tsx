@@ -60,7 +60,7 @@ export function MobileDrawer({ clusterState }: Props) {
         aria-modal="true"
         aria-label="Navigation menu"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-60 flex flex-col bg-pier-surface border-r border-pier-border",
+          "fixed inset-y-0 left-0 z-50 w-60 flex flex-col bg-pier-surface border-r border-pier-border overscroll-contain",
           "md:hidden motion-safe:transition-transform duration-200",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
