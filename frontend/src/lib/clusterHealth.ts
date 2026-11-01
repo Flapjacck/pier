@@ -1,3 +1,6 @@
+import * as api from "../api/client";
+import { ApiError } from "../api/errors";
+
 export type ClusterHealthState = "online" | "unreachable" | "checking";
 
 const DEBUG_KEY = "pier.debug.unreachable";
@@ -12,14 +15,21 @@ function debugUnreachable(): boolean {
   }
 }
 
-/**
- * Cluster health for the sidebar indicator.
- * TODO(#42): GET /api/cluster/health via typed API client.
- */
+/** Cluster reachability for the sidebar indicator (maps API health to online/unreachable). */
 export async function getClusterHealth(): Promise<ClusterHealthState> {
   if (debugUnreachable()) return "unreachable";
-  // TODO(#42): fetch /api/cluster/health; map 503/network to unreachable
-  return "online";
+  try {
+    await api.getClusterHealth();
+    return "online";
+  } catch (err) {
+    if (err instanceof ApiError && err.kind === "unauthorized") {
+      throw err;
+    }
+    if (err instanceof ApiError && (err.kind === "unavailable" || err.kind === "network")) {
+      return "unreachable";
+    }
+    return "unreachable";
+  }
 }
 
 export function clearClusterHealthDebug(): void {

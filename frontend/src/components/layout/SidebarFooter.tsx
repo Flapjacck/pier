@@ -1,4 +1,4 @@
-import { logout } from "../../lib/auth";
+import { useAuth } from "../../context/AuthContext";
 import type { ClusterHealthState } from "../../lib/clusterHealth";
 import { IconLogout } from "../icons/InlineIcons";
 import { Button } from "../ui/Button";
@@ -11,6 +11,7 @@ interface Props {
 }
 
 export function SidebarFooter({ clusterState, collapsed }: Props) {
+  const { logout } = useAuth();
   return (
     <div className="p-2 border-t border-pier-border flex flex-col gap-0.5">
       <ClusterStatus state={clusterState} compact={collapsed} />

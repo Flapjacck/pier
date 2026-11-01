@@ -13,8 +13,12 @@ export function useClusterHealth() {
 
   const refresh = useCallback(async () => {
     setState("checking");
-    const next = await getClusterHealth();
-    setState(next);
+    try {
+      const next = await getClusterHealth();
+      setState(next);
+    } catch {
+      /* 401: global auth handler redirects; leave state until navigation */
+    }
   }, []);
 
   useEffect(() => {
