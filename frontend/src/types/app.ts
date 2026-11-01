@@ -1,4 +1,7 @@
-export type DeployStatus = "running" | "building" | "failed" | "stopped";
+import type { AppStatus } from "../api/types";
+
+/** Mock rows and API apps share the same four deploy states. */
+export type DeployStatus = AppStatus;
 
 export interface AppRow {
   /** Display name of the service */
