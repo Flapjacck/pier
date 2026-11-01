@@ -1,6 +1,7 @@
 import { cn } from "../../lib/cn";
 import { getStatusClasses } from "../../lib/status";
 import type { DeployStatus } from "../../types/app";
+import { StatusIcon } from "./StatusIcon";
 
 interface Props {
   status: DeployStatus;
@@ -22,14 +23,9 @@ export function StatusPill({ status }: Props) {
         t.background,
       )}
     >
-      <img
-        src={t.icon}
-        width={13}
-        height={13}
-        aria-hidden="true"
-        alt=""
-        className="block shrink-0"
-      />
+      <span className={t.icon}>
+        <StatusIcon status={status} />
+      </span>
       {t.label}
     </span>
   );
