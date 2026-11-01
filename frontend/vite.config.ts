@@ -9,8 +9,10 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   server: {
     proxy: {
-      "/health": { target: backendOrigin, changeOrigin: true },
-      "/api": { target: backendOrigin, changeOrigin: true },
+      // Keep Host as localhost:5173 so it matches the browser Origin on cookie mutations
+      // (backend auth rejects POST/PUT/PATCH/DELETE when Origin host !== Host).
+      "/health": { target: backendOrigin, changeOrigin: false },
+      "/api": { target: backendOrigin, changeOrigin: false },
     },
   },
 });
