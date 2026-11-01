@@ -19,11 +19,14 @@ export type FieldErrors = {
   port?: string;
   replicas?: string;
   host?: string;
+  form?: string; // Form-level error shown once
   env?: Record<string, string>; // Keyed by env row id
 };
 
+import type { CreateAppBody } from "../api/client";
+
 export type ValidationResult =
-  | { ok: true; body: Record<string, unknown> }
+  | { ok: true; body: CreateAppBody }
   | { ok: false; errors: FieldErrors };
 
 interface ValidationOptions {
@@ -154,7 +157,7 @@ export function validateDeployForm(
   }
 
   // Build the body.
-  const body: Record<string, unknown> = {
+  const body: CreateAppBody = {
     name,
     image,
     port: Number(port),

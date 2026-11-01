@@ -7,7 +7,7 @@ import type { FieldErrors } from "../../lib/deployValidation";
 
 /**
  * Map an API error from createApp() to form field errors.
- * Handles 409 (conflict), 400 (validation), 422 (rejected), and 403 (forbidden).
+ * Always returns at least one message.
  */
 export function mapApiErrorToFields(err: ApiError): FieldErrors {
   const errors: FieldErrors = {};
@@ -18,11 +18,13 @@ export function mapApiErrorToFields(err: ApiError): FieldErrors {
       errors.name = "App already exists";
     } else if (err.error === "host already in use") {
       errors.host = "Host already in use";
+    } else {
+      errors.form = "The app or host already exists";
     }
   } else if (err.kind === "validation") {
-    // 400: invalid request.
+    // 400: invalid request
     if (err.details) {
-      // Try to map to a field if the details mention it.
+      // Try to map to a field if the details mention it
       if (err.details.includes("host")) {
         errors.host = err.details;
       } else if (err.details.includes("name")) {
@@ -36,24 +38,33 @@ export function mapApiErrorToFields(err: ApiError): FieldErrors {
       } else if (err.details.includes("env")) {
         errors.env = { "": err.details };
       } else {
-        // Generic form alert.
-        errors.env = { "": err.details };
+        errors.form = err.details;
       }
+    } else {
+      errors.form = "The server rejected the request (400)";
     }
   } else if (err.kind === "rejected") {
-    // 422: rejected by cluster (VAP, Pod Security, etc.).
-    if (err.details) {
-      errors.env = { "": `Rejected by cluster: ${err.details}` };
-    } else {
-      errors.env = { "": "Rejected by cluster" };
-    }
+    // 422: rejected by cluster (VAP, Pod Security, etc.)
+    errors.form = err.details
+      ? `Rejected by cluster: ${err.details}`
+      : "Rejected by cluster";
   } else if (err.kind === "forbidden") {
-    // 403: quota exceeded or forbidden.
-    if (err.details) {
-      errors.env = { "": `${err.error}: ${err.details}` };
-    } else {
-      errors.env = { "": err.error };
-    }
+    // 403: quota exceeded or forbidden
+    errors.form = err.details
+      ? `${err.error}: ${err.details}`
+      : err.error;
+  } else if (err.kind === "network" || err.kind === "unavailable") {
+    // Network errors are shown as a banner, not form errors
+    errors.form = err.message || "Network error";
+  } else {
+    // Any other status
+    const msg = err.message || "Deploy failed";
+    errors.form = msg;
+  }
+
+  // Ensure at least one error message exists
+  if (!Object.keys(errors).some((k) => errors[k as keyof FieldErrors])) {
+    errors.form = "Deploy failed";
   }
 
   return errors;
