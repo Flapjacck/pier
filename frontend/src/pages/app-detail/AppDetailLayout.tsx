@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Outlet, Link } from "react-router-dom";
 import { getApp } from "../../api/client";
 import { StatusPill } from "../../components/apps/StatusPill";
@@ -9,6 +9,7 @@ import { ExternalLink } from "../../components/ui/ExternalLink";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { Tabs, type TabItem } from "../../components/ui/Tabs";
 import { useApi } from "../../hooks/useApi";
+import { useToast } from "../../components/ui/Toast";
 import { formatRelativeTime } from "../../lib/time";
 import { AppDetailContext } from "./useAppDetail";
 
@@ -20,6 +21,7 @@ import { AppDetailContext } from "./useAppDetail";
  */
 export function AppDetailLayout() {
   const { name } = useParams<{ name: string }>();
+  const { push: showToast } = useToast();
   const [lastUpdated, setLastUpdated] = useState<Date | undefined>();
 
   const fetcher = useCallback(
@@ -33,13 +35,23 @@ export function AppDetailLayout() {
   const { data: app, error, loading, refetch } = useApi(fetcher, [name]);
   const [localApp, setLocalApp] = useState(app);
 
-  // Update local copy when app changes from API
-  useMemo(() => {
+  // Update local copy when app successfully fetches
+  useEffect(() => {
     if (app) {
       setLocalApp(app);
       setLastUpdated(new Date());
     }
   }, [app]);
+
+  // Show error toast if refetch fails while data exists
+  useEffect(() => {
+    if (error && localApp && !loading) {
+      const msg = error.kind === "network" || error.kind === "unavailable"
+        ? "Could not reach the cluster. Check that the backend is running."
+        : error.message;
+      showToast({ variant: "error", title: "Couldn't refresh app", description: msg });
+    }
+  }, [error, localApp, loading, showToast]);
 
   const tabItems: TabItem[] = useMemo(
     () => [
@@ -51,7 +63,8 @@ export function AppDetailLayout() {
     [name],
   );
 
-  if (loading) {
+  // Show skeleton only on initial load, not during refetch
+  if (loading && !localApp) {
     return (
       <div className="max-w-4xl">
         <div className="bg-pier-bg border border-pier-border rounded-pier-lg p-6 mb-4">
@@ -75,7 +88,8 @@ export function AppDetailLayout() {
     );
   }
 
-  if (error?.kind === "not_found") {
+  // Show not-found or error only if no app data
+  if (!localApp && error?.kind === "not_found") {
     return (
       <div className="max-w-3xl">
         <div className="bg-pier-bg border border-pier-border rounded-pier-lg p-6">
@@ -106,7 +120,8 @@ export function AppDetailLayout() {
     );
   }
 
-  if (error) {
+  // Show error page only if no app data and there's an error
+  if (!localApp && error) {
     const errorMessage =
       error.kind === "network" || error.kind === "unavailable"
         ? "Could not reach the cluster. Check that the backend is running."
@@ -157,6 +172,9 @@ export function AppDetailLayout() {
                 variant="secondary"
                 size="sm"
                 title="Refresh app data"
+                disabled={loading}
+                aria-busy={loading}
+                className={loading ? "animate-spin" : ""}
               >
                 <PierIcon name="rollback" size={14} />
               </Button>
