@@ -79,7 +79,8 @@ interface ConfirmProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  description: string;
+  description?: string;
+  children?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "default" | "danger";
@@ -91,14 +92,16 @@ export function ConfirmDialog({
   onConfirm,
   title,
   description,
+  children,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   variant = "default",
 }: ConfirmProps) {
   return (
     <Dialog open={open} onClose={onClose} title={title}>
-      <p className="m-0 mb-4 text-sm text-pier-muted">{description}</p>
-      <div className="flex justify-end gap-2">
+      {description && <p className="m-0 mb-4 text-sm text-pier-muted">{description}</p>}
+      {children}
+      <div className="flex justify-end gap-2 mt-4">
         <Button variant="secondary" type="button" onClick={onClose}>
           {cancelLabel}
         </Button>

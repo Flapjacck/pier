@@ -3,7 +3,11 @@ import { LoginRoute } from "./components/auth/LoginRoute";
 import { RequireAuth } from "./components/auth/RequireAuth";
 import { AppShell } from "./components/layout/AppShell";
 import { AuthProvider } from "./context/AuthContext";
-import { AppDetailPage } from "./pages/AppDetailPage";
+import { AppDetailLayout } from "./pages/app-detail/AppDetailLayout";
+import { AppDetailOverview } from "./pages/app-detail/AppDetailOverview";
+import { AppDetailPods } from "./pages/app-detail/AppDetailPods";
+import { AppDetailLogs } from "./pages/app-detail/AppDetailLogs";
+import { AppDetailSettings } from "./pages/app-detail/AppDetailSettings";
 import { AppsPage } from "./pages/AppsPage";
 import { BoomPage } from "./pages/BoomPage";
 import { ErrorPage } from "./pages/ErrorPage";
@@ -33,7 +37,18 @@ export const router = createBrowserRouter([
             errorElement: <ErrorPage />,
             children: [
               { path: "apps", element: <AppsPage /> },
-              { path: "apps/:name", element: <AppDetailPage /> },
+              {
+                path: "apps/:name",
+                element: <AppDetailLayout />,
+                errorElement: <ErrorPage />,
+                children: [
+                  { index: true, element: <AppDetailOverview /> },
+                  { path: "pods", element: <AppDetailPods /> },
+                  { path: "logs", element: <AppDetailLogs /> },
+                  { path: "settings", element: <AppDetailSettings /> },
+                  { path: "*", element: <NotFoundPage /> },
+                ],
+              },
               ...devRoutes,
               { path: "*", element: <NotFoundPage /> },
             ],
