@@ -4,7 +4,7 @@ WORKDIR /app
 RUN corepack enable pnpm
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN cd frontend && pnpm install --frozen-lockfile
-COPY frontend/tsconfig.json frontend/vite.config.ts ./frontend/
+COPY frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/vite.config.ts frontend/index.html ./frontend/
 COPY frontend/src ./frontend/src
 COPY frontend/public ./frontend/public
 RUN cd frontend && pnpm build
@@ -28,10 +28,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PIER_PUBLIC_DIR=/app/public
 # Copy package metadata and pruned production dependencies.
-COPY --chown=node:node backend/package.json ./
-COPY --chown=node:node backend/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/backend/package.json ./
+COPY --chown=node:node --from=build /app/backend/node_modules ./node_modules
 # Copy compiled backend output.
-COPY --chown=node:node backend/dist ./dist
+COPY --chown=node:node --from=build /app/backend/dist ./dist
 # Copy frontend dist to public.
 COPY --chown=node:node --from=web /app/frontend/dist ./public
 USER node

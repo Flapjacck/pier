@@ -1,3 +1,4 @@
+/* eslint-disable no-undef, no-empty */
 (function() {
   try {
     const stored = localStorage.getItem('pier-theme');
