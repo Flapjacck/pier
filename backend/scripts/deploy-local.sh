@@ -9,6 +9,7 @@ set -euo pipefail
 # Resolve directories from script location so it works from any cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_ROOT="$(dirname "$BACKEND_DIR")"
 
 # Source load-env.sh to define load_env_file.
 source "$SCRIPT_DIR/lib/load-env.sh"
@@ -79,7 +80,7 @@ fi
 # Build and import image (unless --dry-run).
 if [[ $DRY_RUN -eq 0 ]]; then
   echo "==> Building image pier-backend:$TAG"
-  docker build -t "pier-backend:$TAG" "$BACKEND_DIR"
+  docker build -f "$BACKEND_DIR/Dockerfile" -t "pier-backend:$TAG" "$REPO_ROOT"
 
   echo "==> Importing image into k3s via SSH"
   docker save "pier-backend:$TAG" | ssh "$K3S_SSH_USER@$K3S_HOST" sudo k3s ctr images import -
@@ -123,13 +124,30 @@ kubectl -n default create secret generic pier-backend-secrets \
 # Compute token SHA256 (never echo it).
 TOKEN_SHA256=$(printf '%s' "$PIER_API_TOKEN" | sha256sum | cut -d' ' -f1)
 
+# Compute dashboard host: use PIER_DASHBOARD_HOST, or derive from PIER_INGRESS_DOMAIN, or skip.
+DASHBOARD_HOST="${PIER_DASHBOARD_HOST:-}"
+if [[ -z "$DASHBOARD_HOST" && -n "${PIER_INGRESS_DOMAIN:-}" ]]; then
+  DASHBOARD_HOST="pier.${PIER_INGRESS_DOMAIN}"
+fi
+
 # Render deployment template and apply.
 echo "==> Rendering and applying deployment"
 sed -e "s|__IMAGE__|pier-backend:$TAG|" \
     -e "s|__TOKEN_SHA256__|$TOKEN_SHA256|" \
     -e "s|__INGRESS_DOMAIN__|${PIER_INGRESS_DOMAIN:-}|" \
+    -e "s|__DASHBOARD_HOST__|${DASHBOARD_HOST:-}|" \
     "$BACKEND_DIR/k8s/deployment.yaml.tmpl" | \
   kubectl apply $APPLY_OPTS -f -
+
+# Apply dashboard ingress if a dashboard host is set.
+if [[ -n "$DASHBOARD_HOST" ]]; then
+  echo "==> Rendering and applying dashboard ingress"
+  sed -e "s|__DASHBOARD_HOST__|$DASHBOARD_HOST|" \
+      "$BACKEND_DIR/k8s/ingress.yaml.tmpl" | \
+    kubectl apply $APPLY_OPTS -f -
+else
+  echo "==> Skipping dashboard ingress (PIER_DASHBOARD_HOST and PIER_INGRESS_DOMAIN not set)"
+fi
 
 # Skip rollout check in --dry-run mode.
 if [[ $DRY_RUN -eq 0 ]]; then
@@ -139,6 +157,10 @@ fi
 
 echo "==> Deployment successful!"
 echo ""
+if [[ -n "$DASHBOARD_HOST" ]]; then
+  echo "Dashboard: http://$DASHBOARD_HOST"
+  echo ""
+fi
 echo "Troubleshooting:"
 echo "  kubectl -n default describe pod -l app=pier-backend"
 echo "  kubectl -n default logs -l app=pier-backend"
