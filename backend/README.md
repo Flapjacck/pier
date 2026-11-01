@@ -21,7 +21,7 @@ pnpm dev               # http://127.0.0.1:3000
 |----------|---------|---------|-------|
 | `PORT` | `3000` | server | Integer 1–65535, otherwise startup fails. |
 | `HOST` | `127.0.0.1` | server | Any non-loopback host (anything other than `127.*`, `::1`, `localhost`) requires `PIER_API_TOKEN`, or startup fails. |
-| `PIER_API_TOKEN` | unset | server | Bearer token for every route except `/health`. Generate with `openssl rand -hex 32`. |
+| `PIER_API_TOKEN` | unset | server | Bearer token for `/api/*` (except `GET /api/session`, login, and logout when unset). Generate with `openssl rand -hex 32`. |
 | `PIER_NAMESPACE` | `pier-apps` | server | Namespace GET `/apps` and POST `/apps` use. |
 | `PIER_INGRESS_DOMAIN` | unset | server, `deploy-local.sh` | Wildcard DNS suffix for ingress hosts (e.g. `apps.example.internal` or `10.0.0.87.nip.io`). Required if POST `/apps` receives a `host` parameter. Used by `deploy-local.sh` to render `deployment.yaml.tmpl`. |
 | `KUBECONFIG` | `~/.kube/config` | server (outside a pod, at startup) | Read once at startup via `loadKubeConfig()`. Use an absolute path; `~` is not expanded in `.env`. Ignored in-cluster. Changes require a server restart. |
@@ -83,7 +83,7 @@ curl -b jar http://192.0.2.10.nip.io/api/apps
 curl -b jar -c jar -X POST http://192.0.2.10.nip.io/api/logout
 ```
 
-**Bearer tokens** (set in the `Authorization: Bearer <token>` header):
+**Bearer tokens** (`Authorization: Bearer <token>`, case-insensitive scheme, optional whitespace):
 - Take precedence over session cookies.
 - Do not require an `Origin` header check.
 - Compared against `PIER_API_TOKEN` using timing-safe SHA-256 hashing to prevent timing attacks.
@@ -107,11 +107,12 @@ curl -b jar -c jar -X POST http://192.0.2.10.nip.io/api/logout
 - After the 6th failure, the request is rejected with `429 { ok: false, error: "too many attempts" }` until the window passes.
 - Successful login clears the rate limit entry for that IP.
 
-**Dev mode** (no `PIER_API_TOKEN`):
+**No token configured** (loopback only):
 - Only available on loopback (`HOST` is `127.*`, `::1`, or `localhost`).
-- Mutating requests (POST, PUT, PATCH, DELETE) are rejected with `401` even without auth.
-- Read-only requests (GET, HEAD, OPTIONS) on `/api` routes are rejected with `401` as well. The `/health` endpoints remain public.
-- Dev mode logs a startup warning: `"auth disabled: PIER_API_TOKEN not set (loopback only)"`.
+- Every `/api/*` request returns `401` except `GET /api/session`, `POST /api/login`, and `POST /api/logout`.
+- `GET /api/session` returns `{ ok: true, authDisabled: true, … }` so the UI can show a “set `PIER_API_TOKEN` in `backend/.env`” screen instead of a login loop.
+- `/health` and `/api/health` remain public (query strings on `/health` are allowed).
+- Startup logs: `"auth disabled: PIER_API_TOKEN not set (loopback only)"`.
 
 **Logging**:
 - Fastify redacts the `Authorization` header, `Cookie` header, and `Set-Cookie` response header from logs.
