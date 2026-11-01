@@ -136,7 +136,7 @@ Density follows familiar cloud-dashboard patterns (Vercel / Cloudflare): fixed r
 
 - Monochrome surfaces (`pier-bg`, `pier-surface`, `pier-border`) with water as the sole interactive accent in chrome.
 - Deploy status always **icon + colour + text label**; semantic status tokens switch automatically in dark mode.
-- **Border-first elevation**; shadows only on floating overlays (dialog, dropdown, toast)—*(planned in #43)*.
+- **Border-first elevation**; shadows only on floating overlays (dialog, dropdown, toast).
 - **Inter Variable** for all UI chrome; **JetBrains Mono Variable** only for code, IDs, hashes, images, and logs.
 - Motion conveys state (150–250ms); loader respects `prefers-reduced-motion`.
 
@@ -199,21 +199,21 @@ The palette is a harmonised OKLCH band: each hue exposes **soft / base / text / 
 
 ## Layout
 
-**Target shell (#43):** 240px sidebar (collapses to icon rail), 56px top header with breadcrumb switcher, `main` content with max readable width for forms and settings prose (~65–75ch where applicable). Tables and log panes may run full content width.
+**App shell (shipped #43):** 240px sidebar (`w-60`, collapses to 56px icon rail `w-14`, state in `localStorage` `pier.sidebar.collapsed`), 56px header (`h-14`) with breadcrumb `Pier / Apps / <app>` and app switcher dropdown, flat `bg-pier-bg` content column (no slats gutter or outer content card). Pages set titles in `main`; primary actions register in the header actions slot via `useSetPageActions`.
 
-**Current interim shell:** Fixed sidebar (~220px), page-level headers inside a content card over a **slats** pattern gutter (`pattern-slats-*`).
+**Content width:** Forms and settings prose target ~65–75ch (`max-w-*` on page roots). Tables and log panes may run wider.
 
-**Responsive:** Below **768px**, sidebar becomes a slide-over drawer; header and menu button remain (#43).
+**Responsive:** Below **768px**, sidebar is hidden; header menu opens a slide-over drawer (focus trap, Escape, backdrop click, body scroll lock, closes on navigation).
 
-**Density:** Compact table rows (`text-sm`, ~10px vertical cell padding), 24px outer content padding (`p-6`), 16px card padding. Pattern background visible only in the gutter around the primary card.
+**Density:** Compact table rows (`text-sm`, ~10px vertical cell padding), 24px outer content padding (`p-6`), 16px in-page card padding.
 
-**Landmarks:** `nav` (sidebar), `header` (top bar), `main` (page content)—required in #43 AppShell.
+**Landmarks:** `nav` (sidebar / drawer), `header` (top bar), `main` (`#main-content`, skip link provided).
 
 ## Elevation & Depth
 
-Border-first material: surfaces separate with `border-pier-border` and tonal steps (`pier-surface` vs `pier-bg`), not drop shadows. The boardwalk **slats** pattern provides a subtle depth layer behind the main card.
+Border-first material: surfaces separate with `border-pier-border` and tonal steps (`pier-surface` vs `pier-bg`), not drop shadows.
 
-Shadows are **rare**—reserved for overlays (dialog, dropdown, toast) at low opacity. Cards at rest use borders, not elevation shadows.
+Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at low opacity. In-page cards at rest use borders, not elevation shadows. Slats pattern remains available for marketing/docs backgrounds, not the dashboard shell.
 
 **Motion:** 150–250ms transitions for hover/focus/open; no page-load choreography. Pier loader SVG hides boat motion under `prefers-reduced-motion`.
 
@@ -231,12 +231,14 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, toast) at low op
 - **Shape:** `rounded-pier`, 13px semibold label, inline icon gap 6px.
 - **Primary:** Inverted ink on paper (`bg-pier-fg text-pier-bg`); hover via opacity.
 - **Secondary:** Transparent with `border-pier-border-strong`; hover fills `pier-surface`.
-- **Danger *(planned in #43–#46)*:** Destructive confirm actions only (`delete`); uses failed ramp, not generic “error” styling elsewhere.
+- **Danger:** Destructive confirm actions only (`delete`, `ConfirmDialog` danger variant); uses failed ramp, not generic “error” styling elsewhere.
+- **Ghost / icon:** Ghost for tertiary chrome; `size="icon"` for icon-only controls (requires `aria-label`).
 - **Focus:** 2px `outline-pier-focus`, 2px offset; disabled at 45% opacity.
 
 ### Inputs / Fields
 
-- **Style *(planned in #43)*:** `rounded-pier`, border `pier-border-strong`, background `pier-bg`, 13–14px text.
+- **Input / Select:** `rounded-pier`, border `pier-border-strong`, background `pier-bg`, 13–14px text, 36px height.
+- **Field:** Label + hint + error; wires `aria-describedby` / `aria-invalid` onto the control.
 - **Focus:** Ring/border shift to `pier-focus`—match global `:focus-visible` in `index.css`.
 
 ### Cards / Containers
@@ -246,9 +248,12 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, toast) at low op
 
 ### Navigation
 
-- **Nav item:** 13.5px, icon 16px outline from sprite; inactive `text-pier-muted`, hover `pier-surface-2`.
-- **Active:** Semibold text, `pier-surface-2` fill, **3px inset water bar** on the left (active wayfinding).
-- **Mobile *(#43)*:** Drawer with focus trap and Escape to close.
+- **Nav item:** 13.5px, icon 16px outline from sprite (solid when active); inactive `text-pier-muted`, hover `pier-surface-2`.
+- **Active:** Semibold text, `pier-surface-2` fill, **3px inset water bar** on the left (`aria-current` via `NavLink`).
+- **Sidebar footer:** Cluster status dot + label (polled health), theme toggle, logout.
+- **Header breadcrumb:** `Pier / Apps / <app>`; app segment opens **Menu** listbox (mock app list until #44).
+- **Mobile:** Drawer with focus trap, Escape, backdrop dismiss, route-change close.
+- **Tabs:** Link-based `Tabs` with `aria-current="page"` on active tab (#45+ detail tabs).
 
 ### StatusPill
 
@@ -259,9 +264,31 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, toast) at low op
 
 - Dark panel in **both** themes (`pier-gray-950` / deep status neutrals), monospace stream, scrollable region, clear timestamp column optional.
 
-### Shared primitives *(planned in #43)*
+### Toast
 
-Toast (`aria-live`), Dialog/confirm (focus trap, Escape), Tabs (link-based, `aria-current`), Select, Skeleton, Table primitives—each uses `pier-*` tokens only; document updates in this file when shipped.
+- Fixed bottom-right stack; `aria-live="polite"`; success and error variants; auto-dismiss 5s with pause on hover/focus; dismiss button.
+
+### Dialog
+
+- Native `<dialog>` modal; titled header; `ConfirmDialog` with default and **danger** confirm buttons; Escape closes and focus returns.
+
+### Menu
+
+- Listbox dropdown for app switcher (and similar); arrow keys, Home/End, Enter, Escape; click-outside dismiss.
+
+### Table
+
+- `Table`, `TableHead`, `TableBody`, `TableRow`, `TableHeaderCell`, `TableCell`, `TableEmpty`; compact row padding per density rules.
+
+### Skeleton
+
+- `rounded-pier` blocks; `motion-safe:animate-pulse` only.
+
+### Status pages
+
+- **404 (`NotFoundPage`):** `lost-at-sea-colour-{light,dark}` + link to `/apps`.
+- **Error boundary (`ErrorPage`):** `rough-waters-colour-*`; dev-only `<details>` with mono error; Back / Reload.
+- **Unreachable (`UnreachablePage`):** `maintenance-colour-*` when cluster health is unreachable; Retry clears dev stub and refetches.
 
 ### Brand Assets
 
