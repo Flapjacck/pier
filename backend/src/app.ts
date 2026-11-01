@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import type { Config } from "./config";
 import { setupAuth } from "./plugins/auth";
+import { setupStaticServing } from "./plugins/static";
 import type { KubeConfigLoader } from "./k8s/client";
 import { createK8sClients, type K8sClientsResult } from "./k8s/clients";
 import { appsRoutesWithDeps } from "./routes/apps";
@@ -16,6 +17,8 @@ type BuildAppOptions = {
   k8s?: K8sClientsResult;
   /** Kubeconfig loader passed to createK8sClients() (tests count or fake it). */
   loadKubeConfig?: KubeConfigLoader;
+  /** Override publicDir for tests. */
+  publicDir?: string;
 };
 
 /**
@@ -44,6 +47,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
 
   const app = Fastify({
     logger,
+    trustProxy: config.trustProxy,
     ajv: {
       customOptions: {
         removeAdditional: false, // Reject unknown keys instead of silently stripping them
@@ -77,8 +81,11 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(healthRoutes);
     await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
-    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain }));
+    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost }));
   }, { prefix: "/api" });
+
+  // Register static file serving (dashboard SPA) after API routes.
+  await setupStaticServing(app, opts.publicDir ?? config.publicDir);
 
   return app;
 }
