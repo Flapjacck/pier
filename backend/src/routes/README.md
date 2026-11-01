@@ -314,7 +314,7 @@ The creation process is orchestrated by `src/k8s/create-app.ts`:
    - if `host` provided, `listNamespacedIngress` with `app.kubernetes.io/managed-by=pier` label; scan all rules for matching hosts → if found, throw `HostInUseError`.
 
 2. **Creation in order** (atomic from the client's perspective; Kubernetes may still have transient errors):
-   - `createNamespacedDeployment` with labels, security settings, resources (see [`src/k8s/manifests.ts`](../k8s/README.md)).
+   - `createNamespacedDeployment` with labels, security settings, resources (see [`src/k8s/manifests/`](../k8s/README.md)).
    - `createNamespacedService` (ClusterIP) with owner reference pointing to the Deployment.
    - `createNamespacedIngress` if host provided, with owner reference pointing to the Deployment.
 
