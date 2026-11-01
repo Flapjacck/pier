@@ -56,6 +56,10 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
     if (nameFollowsSubdomain && publicUrl) {
       setSubdomain(newName.toLowerCase());
     }
+    // Clear name error as user types
+    if (errors.name) {
+      setErrors((prev) => ({ ...prev, name: undefined }));
+    }
   };
 
   // When subdomain is manually edited, stop following the name.
@@ -274,7 +278,12 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
         <Input
           id="deploy-image"
           value={image}
-          onChange={(e) => setImage(e.target.value)}
+          onChange={(e) => {
+            setImage(e.target.value);
+            if (errors.image) {
+              setErrors((prev) => ({ ...prev, image: undefined }));
+            }
+          }}
           onBlur={() => setTouched(true)}
           placeholder="nginx:1.27"
           className="font-mono text-[12.5px]"
@@ -293,7 +302,12 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
           id="deploy-port"
           type="number"
           value={port}
-          onChange={(e) => setPort(e.target.value)}
+          onChange={(e) => {
+            setPort(e.target.value);
+            if (errors.port) {
+              setErrors((prev) => ({ ...prev, port: undefined }));
+            }
+          }}
           onBlur={() => setTouched(true)}
           placeholder="80"
           invalid={touched && Boolean(errors.port)}
@@ -311,7 +325,12 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
           id="deploy-replicas"
           type="number"
           value={replicas}
-          onChange={(e) => setReplicas(e.target.value)}
+          onChange={(e) => {
+            setReplicas(e.target.value);
+            if (errors.replicas) {
+              setErrors((prev) => ({ ...prev, replicas: undefined }));
+            }
+          }}
           onBlur={() => setTouched(true)}
           placeholder="1"
           invalid={touched && Boolean(errors.replicas)}
@@ -342,6 +361,7 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
               subdomain={subdomain}
               ingressDomain={ingressDomain}
               onSubdomainChange={handleSubdomainChange}
+              onClearError={() => setErrors((prev) => ({ ...prev, host: undefined }))}
               error={touched ? errors.host : undefined}
             />
           )}
@@ -362,6 +382,14 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
         onRowChange={handleEnvRowChange}
         onRowRemove={handleEnvRowRemove}
         onRowAdd={handleEnvRowAdd}
+        onClearRowError={(id) =>
+          setErrors((prev) => {
+            if (!prev.env) return prev;
+            const newEnv = { ...prev.env };
+            delete newEnv[id];
+            return { ...prev, env: Object.keys(newEnv).length > 0 ? newEnv : undefined };
+          })
+        }
       />
 
       {/* Actions */}

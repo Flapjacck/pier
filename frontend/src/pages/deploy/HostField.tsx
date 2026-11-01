@@ -6,6 +6,7 @@ interface Props {
   subdomain: string;
   ingressDomain: string | null;
   onSubdomainChange: (subdomain: string) => void;
+  onClearError: () => void;
   error?: string;
 }
 
@@ -18,6 +19,7 @@ export function HostField({
   subdomain,
   ingressDomain,
   onSubdomainChange,
+  onClearError,
   error,
 }: Props) {
   if (!ingressDomain) {
@@ -47,7 +49,12 @@ export function HostField({
       <div className="flex items-center gap-2">
         <Input
           value={subdomain}
-          onChange={(e) => onSubdomainChange(e.target.value)}
+          onChange={(e) => {
+            onSubdomainChange(e.target.value);
+            if (error) {
+              onClearError();
+            }
+          }}
           placeholder="demo"
         />
         <span className="text-pier-muted text-[13px] whitespace-nowrap">
