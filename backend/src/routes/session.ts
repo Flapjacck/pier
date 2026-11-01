@@ -64,7 +64,7 @@ export const rateLimiter = new RateLimiter();
 
 /**
  * Extract the client IP from the request.
- * If trustProxy is enabled, respects X-Forwarded-For header from the reverse proxy.
+ * If trustProxy is enabled, respects X-Forwarded-For header from one proxy hop (Traefik).
  * Otherwise, uses req.ip directly (local development or direct connection).
  */
 function getClientIp(req: FastifyRequest): string {
