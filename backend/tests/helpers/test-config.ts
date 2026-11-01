@@ -11,6 +11,9 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     kubeconfig: undefined,
     namespace: "pier-apps",
     ingressDomain: "example.com",
+    publicDir: undefined,
+    trustProxy: false,
+    dashboardHost: undefined,
     ...overrides,
   };
 }
