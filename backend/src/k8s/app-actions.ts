@@ -1,4 +1,5 @@
 import type { AppsV1Api, CoreV1Api, NetworkingV1Api } from "@kubernetes/client-node";
+import { PatchStrategy, setHeaderOptions } from "@kubernetes/client-node";
 import { deploymentToApp, type App } from "./apps.js";
 import { getLiveApp } from "./app-lookup.js";
 import { apiStatusCode } from "./api-errors.js";
@@ -58,37 +59,30 @@ export async function restartApp(
 
   const restartedAt = now.toISOString();
 
-  const patches: Array<{
-    op: "add" | "replace";
+  type JsonPatchAdd = {
+    op: "add";
     path: string;
-    value?: string | Record<string, string>;
-  }> = [];
+    value: string | Record<string, string>;
+  };
 
-  if (existing.spec?.template?.metadata?.annotations) {
-    patches.push({
-      op: "replace",
-      path: "/spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt",
-      value: restartedAt,
-    });
-  } else {
-    patches.push({
-      op: "add",
-      path: "/spec/template/metadata/annotations",
-      value: {
-        "kubectl.kubernetes.io/restartedAt": restartedAt,
-      },
-    });
-  }
+  const restartedAtPath =
+    "/spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (apps.patchNamespacedDeployment as any)({
-    namespace,
-    name,
-    body: patches,
-    headers: {
-      "Content-Type": "application/json-patch+json",
-    },
-  });
+  const patches: JsonPatchAdd[] =
+    existing.spec?.template?.metadata?.annotations
+      ? [{ op: "add", path: restartedAtPath, value: restartedAt }]
+      : [
+          {
+            op: "add",
+            path: "/spec/template/metadata/annotations",
+            value: { "kubectl.kubernetes.io/restartedAt": restartedAt },
+          },
+        ];
+
+  await apps.patchNamespacedDeployment(
+    { namespace, name, body: patches },
+    setHeaderOptions("Content-Type", PatchStrategy.JsonPatch),
+  );
 
   return { restartedAt };
 }
