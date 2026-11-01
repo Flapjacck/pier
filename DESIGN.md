@@ -270,7 +270,11 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 
 ### Dialog
 
-- Native `<dialog>` modal; titled header; `ConfirmDialog` with default and **danger** confirm buttons; Escape closes and focus returns.
+- Native `<dialog>` modal; titled header; `ConfirmDialog` with default and **danger** confirm buttons; optional custom children for form fields; Escape closes and focus returns.
+
+### ExternalLink
+
+- Inline link with arrow icon (`currentColor`), opens in new tab with `rel="noreferrer"`. Used for app URLs in tables and detail pages.
 
 ### Menu
 
@@ -299,12 +303,21 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 - Stacked lockup SVG (`PierStackedLogo`, min 48px), `Field` + password `Input` with show/hide, primary **Sign in** submit.
 - Errors use `Field` alert wiring; copy states the failure and recovery (wrong token, rate limit, auth disabled, unreachable).
 
-### App detail placeholder (`AppDetailPage`, #44 / #45)
+### App detail (`AppDetailLayout` + tabs, #45)
 
-- **Loading:** Skeleton with heading and field rows.
+- **Layout:** App name as `h1`, status pill, optional external URL link (using `ExternalLink`), refresh button, "Updated X ago" timestamp.
+- **Tabs:** Link-based navigation (`Tabs`) switching between Overview, Pods, Logs, Settings without reloading the layout. `aria-current="page"` on active tab.
+- **Loading:** Skeleton with heading and tab row.
 - **404 (not_found):** `lost-container-colour-{light,dark}` illustration, headline "App not found", subheadline naming the app, "Back to apps" link button.
 - **Error:** Inline error panel with message or cluster-unreachable copy; Retry button.
-- **Data:** Simple card with app name as `h1`, status pill, then rows of label (left, 24ch width) + value: Status, Ready (ready/replicas), Image (mono, truncated), Port (if present), URL (external link with icon, if present), Created (relative time with full ISO in `title`). `TODO(#45): tabs (overview, pods, logs, settings)` for future expansion.
+- **Overview tab:** Definition list (`<dl>`) of Image (mono, full value with break/wrap), Port (if present), Replicas (ready/desired), Host (if present), URL (external link, if present), Created (relative time with ISO in `title`).
+- **Pods tab:** `listAppPods` table with columns: Name (mono), Phase, Ready (with ready/not-ready styling), Restarts (highlight when > 0), Node, Age (from startedAt). Secondary lines for waitingReason / lastTerminationReason. Refresh button; skeleton rows while loading; `TableEmpty` "No pods (scaled to 0?)" state; inline error with Retry.
+- **Logs tab:** Placeholder card ("Live logs are coming soon", `TODO(#47)`). No dead controls.
+- **Settings tab:** Three bordered sections:
+  - **Scale:** Labelled number `Input` (0–10, integer, current replicas default), inline validation error, Apply button (disabled while invalid/unchanged/pending). Success toast shows new replica count; error toast on failure. Optimistic local `setApp` update.
+  - **Restart:** Button opens `ConfirmDialog` ("Restart <app>? Pods are replaced one by one."). Success toast shows `restartedAt` timestamp; Refetch app and pods. Button shows pending state.
+  - **Danger zone (delete):** Red border, `delete` icon (the only red icon). Opens `ConfirmDialog` (danger variant) with a text field where you must type the exact app name to enable Delete. Success toast; navigates to `/apps` with `replace`. Treat 404 as success (already gone).
+  - All actions: no double-submits, focus returns sensibly, results announced via toast `aria-live`.
 
 ### Status pages
 

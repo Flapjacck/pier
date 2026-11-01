@@ -63,7 +63,12 @@ Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigi
 
 - `/login` → public sign-in (no shell)
 - `/` → redirect to `/apps` (requires session)
-- `/apps`, `/apps/:name` → inside `AppShell` (sidebar + header + `main`)
+- `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
+- `/apps/:name` → nested routes with `AppDetailLayout`:
+  - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
+  - `/:name/pods` → Pods tab (list, refresh, reasons)
+  - `/:name/logs` → Logs tab (placeholder, `TODO(#47)`)
+  - `/:name/settings` → Settings tab (scale, restart, delete)
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
 - Dev only: `/__boom` throws to test the error boundary
