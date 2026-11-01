@@ -93,7 +93,11 @@ describe("GET /apps/:name/logs", () => {
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
-    assert.deepEqual(res.json(), { ok: false, error: "invalid request" });
+    assert.deepEqual(res.json(), {
+      ok: false,
+      error: "invalid request",
+      details: "must be >= 1",
+    });
     await app.close();
   });
 
@@ -105,7 +109,11 @@ describe("GET /apps/:name/logs", () => {
       headers: authHeader,
     });
     assert.equal(res.statusCode, 400);
-    assert.deepEqual(res.json(), { ok: false, error: "invalid request" });
+    assert.deepEqual(res.json(), {
+      ok: false,
+      error: "invalid request",
+      details: "must be <= 5000",
+    });
     await app.close();
   });
 

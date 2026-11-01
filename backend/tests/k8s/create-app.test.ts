@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { V1Deployment } from "@kubernetes/client-node";
-import { createApp, AppExistsError, HostInUseError } from "../../src/k8s/create-app.js";
+import {
+  createApp,
+  createAppSerialized,
+  AppExistsError,
+  CreateTimeoutError,
+  HostInUseError,
+  resetCreateMutexTimeoutForTests,
+  setCreateMutexTimeoutForTests,
+} from "../../src/k8s/create-app.js";
 import type { CreateAppInput } from "../../src/k8s/manifests/index.js";
 import { FakeApiError } from "../helpers/fake-clients.js";
 
@@ -376,5 +384,73 @@ describe("createApp", () => {
     assert.equal(app.port, 8080);
     assert.equal("host" in app, false);
     assert.equal("url" in app, false);
+  });
+});
+
+describe("createAppSerialized", () => {
+  it("rejects hung creates after the mutex timeout and allows the next create", async () => {
+    setCreateMutexTimeoutForTests(50);
+    const hangClients = {
+      apps: {
+        readNamespacedDeployment: () => new Promise<never>(() => {
+          /* never resolves */
+        }),
+      },
+      core: {},
+      networking: {},
+    } as never;
+
+    const quickClients = {
+      apps: {
+        readNamespacedDeployment: async () => {
+          throw new FakeApiError(404);
+        },
+        createNamespacedDeployment: async () => ({
+          metadata: { name: "world", labels: { "pier.app": "world" } },
+          spec: {
+            replicas: 1,
+            selector: { matchLabels: { "pier.app": "world" } },
+            template: {
+              spec: {
+                containers: [
+                  { name: "app", image: "nginx:1.27", ports: [{ name: "http", containerPort: 8080 }] },
+                ],
+              },
+            },
+          },
+          status: { readyReplicas: 1, updatedReplicas: 1, observedGeneration: 1 },
+        }),
+        deleteNamespacedDeployment: async () => {
+          /* noop */
+        },
+      },
+      core: {
+        createNamespacedService: async () => ({}),
+        deleteNamespacedService: async () => {
+          /* noop */
+        },
+      },
+      networking: {
+        listNamespacedIngress: async () => ({ items: [] }),
+        deleteNamespacedIngress: async () => {
+          /* noop */
+        },
+      },
+    } as never;
+
+    try {
+      await assert.rejects(
+        createAppSerialized(hangClients, "pier-apps", baseInput),
+        (err: unknown) => err instanceof CreateTimeoutError,
+      );
+
+      const second = await createAppSerialized(quickClients, "pier-apps", {
+        ...baseInput,
+        name: "world",
+      });
+      assert.equal(second.name, "world");
+    } finally {
+      resetCreateMutexTimeoutForTests();
+    }
   });
 });

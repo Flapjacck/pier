@@ -186,6 +186,19 @@ export async function createApp(
  */
 let createMutex: Promise<void> = Promise.resolve();
 
+/** Mutex timeout used by createAppSerialized (overridable in tests). */
+let createMutexTimeoutMs = CREATE_APP_MUTEX_TIMEOUT_MS;
+
+/** @internal Tests only — restore with resetCreateMutexTimeoutForTests(). */
+export function setCreateMutexTimeoutForTests(ms: number): void {
+  createMutexTimeoutMs = ms;
+}
+
+/** @internal Tests only. */
+export function resetCreateMutexTimeoutForTests(): void {
+  createMutexTimeoutMs = CREATE_APP_MUTEX_TIMEOUT_MS;
+}
+
 /**
  * Acquire and release the creation mutex.
  * Each createApp call chains off the tail of this promise.
@@ -213,7 +226,7 @@ export async function createAppSerialized(
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new CreateTimeoutError()),
-            CREATE_APP_MUTEX_TIMEOUT_MS,
+            createMutexTimeoutMs,
           );
         }),
       ]);

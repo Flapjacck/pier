@@ -78,6 +78,16 @@ describe("setupAuth", () => {
       assert.deepEqual(res.json(), { ok: true, service: "pier-backend" });
     });
 
+    it("allows /health with a query string without authorization", async () => {
+      const res = await get(TEST_TOKEN, "/health?x=1");
+      assert.equal(res.statusCode, 200);
+    });
+
+    it("accepts case-insensitive bearer tokens with surrounding whitespace", async () => {
+      const res = await get(TEST_TOKEN, "/api/cluster/health", `  bearer   ${TEST_TOKEN} `);
+      assert.equal(res.statusCode, 200);
+    });
+
     it("allows /api/health without authorization", async () => {
       const res = await get(TEST_TOKEN, "/api/health");
       assert.equal(res.statusCode, 200);
@@ -104,6 +114,19 @@ describe("setupAuth", () => {
       const res = await get(undefined, "/health");
       assert.equal(res.statusCode, 200);
       assert.deepEqual(res.json(), { ok: true, service: "pier-backend" });
+    });
+
+    it("rejects GET /api/apps without a configured token", async () => {
+      const res = await get(undefined, "/api/apps");
+      assert.equal(res.statusCode, 401);
+      assert.deepEqual(res.json(), UNAUTHORIZED);
+    });
+
+    it("allows GET /api/session without a configured token", async () => {
+      const res = await get(undefined, "/api/session");
+      assert.equal(res.statusCode, 200);
+      const body = res.json() as { authDisabled: boolean };
+      assert.equal(body.authDisabled, true);
     });
   });
 });
