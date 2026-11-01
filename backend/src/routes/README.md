@@ -12,12 +12,13 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 ## Common behaviour
 
 - **API Prefix**: All cluster and app routes are served under `/api`. Health endpoints are available at both `/health` (root) and `/api/health` (for consistency).
-- **Auth** (`../plugins/auth.ts`): Routes under `/api` require authentication when `PIER_API_TOKEN` is configured. Public routes: `/health`, `/api/health`, `POST /api/login`, `POST /api/logout`. Mutating endpoints always require auth, even on loopback (dev mode). Supported auth methods:
-  - **Bearer token** (`Authorization: Bearer $PIER_API_TOKEN`): takes precedence, no Origin check.
+- **Auth** (`../plugins/auth.ts`): Routes under `/api` require authentication when `PIER_API_TOKEN` is configured. Public routes: `/health`, `/api/health` (path only; query strings are ignored), `POST /api/login`, `POST /api/logout`, and `GET /api/session` when no token is configured. Supported auth methods:
+  - **Bearer token** (`Authorization: Bearer $PIER_API_TOKEN`): takes precedence, no Origin check. Scheme matching is case-insensitive with optional surrounding whitespace (e.g. `bearer <token>`).
   - **Session cookie** (`pier_session`): created by `POST /api/login`, requires Origin header check for mutating requests (CSRF protection).
   - A wrong, missing, or invalid token/cookie returns `401 { "ok": false, "error": "unauthorized" }`.
   - Cookie-authed mutations without a matching Origin header return `403 { "ok": false, "error": "forbidden origin" }`.
-  - With no token configured on loopback, read-only routes are allowed, mutating routes return `401`.
+  - With no token configured on loopback, every `/api/*` route returns `401` except `GET /api/session`, login, and logout. The dashboard should treat `authDisabled: true` as “set `PIER_API_TOKEN`”, not as signed-in access.
+- **Errors**: `errorSchema` responses may include optional `details` (validation messages, cluster rejection text). Fastify will not strip `details` when the route uses the shared schema.
 - **Cluster clients**: `buildApp()` in `../app.ts` calls `createK8sClients()` once and passes the result to each route factory. If the kubeconfig failed to load, routes return `503 { "ok": false, "error": "cluster unreachable" }`. The same `503` is returned when a Kubernetes call fails. The full error goes to the server log only, never to the client.
 - **Credentials**: `loadKubeConfig()` is called once at startup. Inside a pod it uses the ServiceAccount token (`in-cluster`); outside, `KUBECONFIG` (if set) or `~/.kube/config` (`kubeconfig`). Routes receive the mode from shared clients, so the response's `mode` field is always consistent for the lifetime of the app. A change to `KUBECONFIG` requires a restart.
 
@@ -139,7 +140,7 @@ Get the current session status and ingress domain. Requires authentication (bear
 { "ok": true, "authDisabled": false, "ingressDomain": "192.0.2.10.nip.io" }
 ```
 
-- `authDisabled` is `false` when a token is configured, `true` when auth is disabled (dev mode on loopback).
+- `authDisabled` is `false` when a token is configured, `true` when `PIER_API_TOKEN` is unset (loopback only). When `true`, other `/api/*` routes still require a token; only this endpoint is public.
 - `ingressDomain` is the wildcard suffix for ingress hosts (from `PIER_INGRESS_DOMAIN`), or `null` if not configured. The frontend uses this to prefill the host on deploy forms.
 
 **401 (unauthorized)**: Not authenticated (no bearer token or invalid session cookie).
@@ -274,7 +275,7 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 
 | Field | Type | Required | Constraints | Notes |
 |-------|------|----------|-------------|-------|
-| `name` | string | Yes | Pattern: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (1–63 chars) | DNS-1035 name (leading letter, lowercase, hyphens OK). |
+| `name` | string | Yes | DNS-1035 (`isValidAppName` / `APP_NAME_SCHEMA_PATTERN` in `names.ts`) | Lowercase, leading letter, hyphens OK, 1–63 chars. |
 | `image` | string | Yes | 1–255 chars, no whitespace | Container image URL, e.g. `nginx:1.27`, `gcr.io/my-project/app:v1.0.0`. |
 | `port` | integer | Yes | 1–65535 | Container port number. |
 | `replicas` | integer | No | 0–10, default 1 | Desired replicas. Use 0 to pause an app. |
@@ -615,7 +616,7 @@ kubectl -n pier-apps get deploy web -o jsonpath='{.spec.template.metadata.annota
 
 ## `DELETE /api/apps/:name`
 
-Delete an app (Deployment, Service, and Ingress). Idempotent: repeating the request returns 404 on the second call, which is correct behavior.
+Delete an app (Deployment, Service, and Ingress). Orphan-safe: if the Deployment is already gone, labelled Service and Ingress named like the app are still removed. Returns **204** when anything was deleted, **404** when nothing existed.
 
 ### Request
 
@@ -629,15 +630,15 @@ No body or parameters.
 
 **401 (unauthorized)**: missing or wrong bearer token.
 
-**404 (not found)**: app does not exist or is already being deleted (has `deletionTimestamp`). Also returned if all resources are already gone.
+**404 (not found)**: no live Deployment (missing, terminating, or without `pier.app=<name>`) and no labelled orphan Service/Ingress to remove.
 
 **503 (cluster unreachable)**: Kubernetes API unreachable or request failed.
 
 ### Semantics
 
-- **Idempotent**: `DELETE /apps/foo` twice returns 204 then 404. The second call is not a client error; the app is gone, which is the desired state.
-- **Terminating apps**: A Deployment with `deletionTimestamp` set is treated as deleted. POST /apps with that name returns 409 (name in use), but scale/restart/delete return 404. Terminating apps are also excluded from `GET /apps`.
-- **Foreground deletion**: The Deployment is deleted with `propagationPolicy: Foreground`, which blocks until the Deployment itself is gone (typically ~30s). Owned resources (Service, Ingress) are garbage-collected as dependents.
+- **Unified 404 rules**: pods, logs, scale, restart, and delete use `getLiveApp()` — missing, terminating, or unlabelled Deployments are “not found”.
+- **Orphans**: If only Service/Ingress remain (same name, `pier.app=<name>`), DELETE returns **204** and removes them so POST with that name can succeed again.
+- **Foreground deletion**: When a live Deployment exists, it is deleted with `propagationPolicy: Foreground`; Service and Ingress are deleted explicitly (404 tolerated per object).
 
 ### Examples
 

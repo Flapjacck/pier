@@ -51,7 +51,7 @@ pnpm --dir frontend build      # output in frontend/dist/
 
 - **Client:** `src/api/client.ts` exports typed functions for every backend route. Errors throw `ApiError` with `status`, `error`, `details?`, and a `kind` discriminator. JSON bodies are validated with small runtime guards in `src/api/guards.ts` (no `any`, no unchecked casts).
 - **Session:** `POST /api/login` with `{ token }` sets the HttpOnly `pier_session` cookie (path `/api`). The token is sent once in the POST body and is **not** stored in JavaScript (`localStorage`, `sessionStorage`, or JS-readable cookies). `GET /api/session` returns `{ ok, authDisabled, ingressDomain }` so the frontend knows the cluster's domain suffix for host prefill on deploy forms.
-- **Guard:** `AuthProvider` probes `GET /api/session` on load. `RequireAuth` sends anonymous users to `/login?next=…` (same-origin paths only). Any other `401` triggers the same redirect via a global handler registered from auth context.
+- **Guard:** `AuthProvider` probes `GET /api/session` on load. `RequireAuth` sends anonymous users to `/login?next=…` (same-origin paths only). When `authDisabled` is true (backend has no `PIER_API_TOKEN`), `TokenRequiredPage` is shown instead of login. Any other `401` triggers redirect to login unless auth is disabled.
 - **Data hook:** `useApi` is an in-house hook (no TanStack Query) to keep dependencies minimal and match Pier’s small surface area; it aborts on unmount and dependency changes.
 
 ## Local dev (frontend + backend)
