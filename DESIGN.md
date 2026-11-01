@@ -262,7 +262,11 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 
 ### Log viewer *(#47)*
 
-- Dark panel in **both** themes (`pier-gray-950` / deep status neutrals), monospace stream, scrollable region, clear timestamp column optional.
+- **LogViewer** component: reusable log viewer with dark panel in **both** themes (`pier-gray-950`), JetBrains Mono monospace stream, scrollable region with optional line numbers.
+- **Features:** live EventSource streaming or static plain-text fetch; auto-scroll that pauses on scroll-up; capped buffer (5000 lines, drop oldest); reconnection with backoff (1s → 30s ± 20% jitter); filter (case-insensitive substring, display-only); copy and download to `.log` file; ANSI escape stripping on ingest.
+- **Pod picker, tail size, follow toggle:** toolbar controls; status badge (dot + label: Live, Reconnecting _Ns_, Stream ended, Pod gone, Error, Static, Loading).
+- **Extracted components:** `LogPanel` (dark scrollable panel with line renders), `StatusBadge` (status indicator with action buttons), `useEventSourceManager` (EventSource lifecycle and reconnection), `LogBuffer` (capped line buffer with stable ids).
+- **Accessibility:** `role="log"` on panel, `aria-label` with pod name, `aria-live="polite"` on status (not per-line), keyboard-navigable (Tab through controls, scroll panel with arrow keys / Page Down).
 
 ### Toast
 
