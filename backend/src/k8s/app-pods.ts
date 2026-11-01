@@ -1,6 +1,5 @@
-import type { AppsV1Api, CoreV1Api, V1Pod } from "@kubernetes/client-node";
+import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import { appSelector } from "./labels.js";
-import { apiStatusCode } from "./api-errors.js";
 
 /** One app pod with waiting and termination reason information. */
 export type AppPod = {
@@ -14,28 +13,6 @@ export type AppPod = {
   waitingReason?: string;
   lastTerminationReason?: string;
 };
-
-/**
- * Check if an app (Deployment) exists in the namespace.
- * Returns true if found, false if 404, rethrows other errors.
- */
-export async function appExists(
-  apps: AppsV1Api,
-  namespace: string,
-  name: string,
-): Promise<boolean> {
-  try {
-    await apps.readNamespacedDeployment({ namespace, name });
-    return true;
-  } catch (err) {
-    const code = apiStatusCode(err);
-    if (code === 404) {
-      return false;
-    }
-    // Rethrow other errors (permissions, network, etc.)
-    throw err;
-  }
-}
 
 /**
  * Derive ready state from container statuses.

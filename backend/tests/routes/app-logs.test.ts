@@ -170,7 +170,9 @@ describe("GET /apps/:name/logs", () => {
 
   it("returns 404 when app has no pods", async () => {
     const fakeApps = {
-      readNamespacedDeployment: async () => ({}),
+      readNamespacedDeployment: async () => ({
+        metadata: { labels: { "pier.app": "hello" } },
+      }),
     };
     const fakeCore = {
       listNamespacedPod: async () => ({ items: [] }),
@@ -195,7 +197,9 @@ describe("GET /apps/:name/logs", () => {
 
   it("returns 404 for non-existent pod name", async () => {
     const fakeApps = {
-      readNamespacedDeployment: async () => ({}),
+      readNamespacedDeployment: async () => ({
+        metadata: { labels: { "pier.app": "hello" } },
+      }),
     };
     const fakeCore = {
       listNamespacedPod: async () => ({
@@ -246,7 +250,9 @@ describe("GET /apps/:name/logs", () => {
 
   it("returns 200 with text/plain for follow=false", async () => {
     const fakeApps = {
-      readNamespacedDeployment: async () => ({}),
+      readNamespacedDeployment: async () => ({
+        metadata: { labels: { "pier.app": "hello" } },
+      }),
     };
     const fakeCore = {
       listNamespacedPod: async () => ({

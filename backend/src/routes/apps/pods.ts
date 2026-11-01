@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
-import { appExists, listAppPods } from "../../k8s/app-pods.js";
+import { getLiveApp } from "../../k8s/app-lookup.js";
+import { listAppPods } from "../../k8s/app-pods.js";
+import { isValidAppName } from "../../k8s/names.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { errorSchema } from "../apps-schemas.js";
 
@@ -52,9 +54,7 @@ export function getAppPodsRoutesWithDeps(deps: PodsRouteDeps): FastifyPluginAsyn
 
         const { name } = req.params;
 
-        // Validate app name (DNS-1035).
-        const namePattern = /^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$/;
-        if (!namePattern.test(name)) {
+        if (!isValidAppName(name)) {
           return reply.status(400).send({
             ok: false,
             error: "invalid request",
@@ -63,8 +63,8 @@ export function getAppPodsRoutesWithDeps(deps: PodsRouteDeps): FastifyPluginAsyn
 
         try {
           // Check if app exists before listing pods.
-          const exists = await appExists(deps.k8s.clients.apps, deps.namespace, name);
-          if (!exists) {
+          const live = await getLiveApp(deps.k8s.clients.apps, deps.namespace, name);
+          if (!live) {
             return reply.status(404).send({
               ok: false,
               error: "app not found",

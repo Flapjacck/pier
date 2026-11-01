@@ -46,7 +46,9 @@ describe("GET /apps/:name/pods", () => {
 
   it("returns 200 with empty array when app has no pods (scaled to 0)", async () => {
     const fakeApps = {
-      readNamespacedDeployment: async () => ({}),
+      readNamespacedDeployment: async () => ({
+        metadata: { labels: { "pier.app": "hello" } },
+      }),
     };
     const fakeCore = {
       listNamespacedPod: async () => ({ items: [] }),
@@ -71,7 +73,9 @@ describe("GET /apps/:name/pods", () => {
 
   it("returns 200 with pods list", async () => {
     const fakeApps = {
-      readNamespacedDeployment: async () => ({}),
+      readNamespacedDeployment: async () => ({
+        metadata: { labels: { "pier.app": "hello" } },
+      }),
     };
     const fakeCore = {
       listNamespacedPod: async () => ({
