@@ -5,6 +5,7 @@ import { PierIcon } from "../components/icons/PierIcon";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { useSetPageActions } from "../context/PageActionsContext";
+import { formatRelativeTime } from "../lib/time";
 import { useApps } from "../hooks/useApps";
 import { useState, useMemo as useMemoReact } from "react";
 
@@ -160,7 +161,7 @@ export function AppsPage() {
             <>
               <span aria-hidden>•</span>
               <span>
-                Updated {formatRelativeTime(lastUpdated)} ago
+                Updated {formatRelativeTime(lastUpdated.toISOString())}
               </span>
             </>
           )}
@@ -178,21 +179,8 @@ export function AppsPage() {
 
       {/* Live region for refresh announcements */}
       <div aria-live="polite" aria-atomic className="sr-only">
-        {lastUpdated && `Last updated ${formatRelativeTime(lastUpdated)} ago`}
+        {lastUpdated && `Last updated ${formatRelativeTime(lastUpdated.toISOString())} ago`}
       </div>
     </div>
   );
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date();
-  const secs = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (secs < 60) return "now";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
 }
