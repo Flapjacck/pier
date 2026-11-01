@@ -284,6 +284,12 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 
 - `rounded-pier` blocks; `motion-safe:animate-pulse` only.
 
+### Login (`LoginPage`, #42)
+
+- Full-viewport centred card **outside** the app shell; optional subtle `pattern-waves-{light,dark}.svg` background at low opacity.
+- Stacked lockup SVG (`PierStackedLogo`, min 48px), `Field` + password `Input` with show/hide, primary **Sign in** submit.
+- Errors use `Field` alert wiring; copy states the failure and recovery (wrong token, rate limit, auth disabled, unreachable).
+
 ### Status pages
 
 - **404 (`NotFoundPage`):** `lost-at-sea-colour-{light,dark}` + link to `/apps`.
