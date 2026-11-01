@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { App } from "../../api/types";
+import { formatRelativeTime } from "../../lib/time";
 import {
   Table,
   TableBody,
@@ -9,25 +10,12 @@ import {
   TableHeaderCell,
   TableRow,
 } from "../ui/Table";
+import { ExternalLink } from "../ui/ExternalLink";
 import { StatusPill } from "./StatusPill";
 
 interface Props {
   apps: App[];
   isLoading?: boolean;
-}
-
-function formatRelativeTime(isoString: string): string {
-  const now = new Date();
-  const date = new Date(isoString);
-  const secs = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (secs < 60) return "now";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 /**
@@ -119,32 +107,9 @@ export function AppsTable({ apps, isLoading }: Props) {
             </TableCell>
             <TableCell>
               {app.url ? (
-                <a
-                  href={app.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-pier-accent hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus rounded-sm inline-flex items-center gap-1"
-                >
-                  <span className="text-[12.5px]">
-                    {new URL(app.url).hostname}
-                  </span>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="shrink-0"
-                    aria-hidden
-                  >
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    <polyline points="15 3 21 3 21 9" />
-                    <line x1="10" y1="14" x2="21" y2="3" />
-                  </svg>
-                </a>
+                <ExternalLink href={app.url} className="text-[12.5px]">
+                  {new URL(app.url).hostname}
+                </ExternalLink>
               ) : (
                 <span className="text-pier-muted">—</span>
               )}
