@@ -1,7 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
+
+/**
+ * Resolve the public directory path. Exported for testing.
+ * In production, import.meta.url is file:// to dist/index.js, so ../public is at /app/public.
+ * In dev/tests, it may be different based on publicDirArg.
+ */
+export function resolvePublicDir(publicDirArg?: string): string {
+  if (publicDirArg) {
+    return path.resolve(publicDirArg);
+  }
+  // __filename is the bundled dist/index.js (or src/plugins/static.ts in dev).
+  // ../public is one level above dist, which is /app/public in the container.
+  const __filename = fileURLToPath(import.meta.url);
+  return path.resolve(path.dirname(__filename), "../public");
+}
 
 /**
  * Security headers applied to HTML responses (index.html and SPA fallback).
@@ -22,23 +38,14 @@ const CSP_HEADER =
  * - `/assets/*` (hashed, immutable): 1 year cache, gzip, no 404→200 fallback
  * - `index.html`: no-cache (always revalidate)
  * - SPA routes (`GET /apps/*`, `/workspaces/*`, etc.): 200 with index.html
- * - Other public files: 1 hour cache
+ * - Other public files (illustrations, the theme script) get `public, max-age=3600`.
  * - Missing files: JSON 404 for API, plain 404 for other paths
  */
 export async function setupStaticServing(
   app: FastifyInstance,
   publicDirArg?: string,
 ): Promise<void> {
-  // Resolve the public directory to an absolute path.
-  // Default: ../public from the dist dir (production).
-  let publicDir: string;
-  if (publicDirArg) {
-    publicDir = path.resolve(publicDirArg);
-  } else {
-    // __dirname is dist/ in production; ../public is at repo root/public.
-    publicDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../public");
-  }
-
+  const publicDir = resolvePublicDir(publicDirArg);
   const indexPath = path.join(publicDir, "index.html");
 
   // If public dir or index.html is missing, skip registration (dev/test mode).
@@ -47,12 +54,36 @@ export async function setupStaticServing(
     return;
   }
 
+  // Read index.html once at registration; keep in memory for SPA fallback.
+  const indexContent = fs.readFileSync(indexPath, "utf-8");
+
   // Register @fastify/static to serve public dir at root.
   await app.register(fastifyStatic, {
     root: publicDir,
     prefix: "/",
     wildcard: false,
     index: false, // Disable auto-serving index.html; we handle it in setNotFoundHandler
+    setHeaders: (res, filePath) => {
+      const url = res.req.url?.split("?")[0] || "";
+
+      // /assets/* (hashed, immutable): cache for 1 year.
+      if (url.startsWith("/assets/")) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+      }
+      // index.html: no-cache (always revalidate).
+      else if (url === "/index.html") {
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Content-Security-Policy", CSP_HEADER);
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Referrer-Policy", "same-origin");
+      }
+      // Other public files: 1 hour cache.
+      else {
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+      }
+    },
   });
 
   // Root-level notFoundHandler: routes to index.html or returns a proper 404.
@@ -75,8 +106,6 @@ export async function setupStaticServing(
 
     if (isGetOrHead && (acceptsHtml || hasNoExtension)) {
       // Return index.html with SPA security headers and no-cache directive.
-      const indexContent = fs.readFileSync(indexPath, "utf-8");
-
       reply.header("Content-Type", "text/html; charset=utf-8");
       reply.header("Content-Security-Policy", CSP_HEADER);
       reply.header("X-Content-Type-Options", "nosniff");
@@ -88,25 +117,5 @@ export async function setupStaticServing(
 
     // Everything else (e.g. missing /assets/foo.js, requests without Accept: text/html): 404.
     return reply.status(404).send("Not Found");
-  });
-
-  // Hook: add cache headers to static assets before sending.
-  app.addHook("onSend", async (req, reply) => {
-    const urlPath = req.url.split("?")[0] || "/";
-
-    // /assets/* (hashed, immutable): cache for 1 year.
-    if (urlPath.startsWith("/assets/")) {
-      reply.header("Cache-Control", "public, max-age=31536000, immutable");
-      reply.header("X-Content-Type-Options", "nosniff");
-    }
-    // index.html: already set in notFoundHandler, but ensure it here too.
-    else if (urlPath === "/" || urlPath === "/index.html") {
-      reply.header("Cache-Control", "no-cache");
-    }
-    // Other public files (illustrations, favicons, theme-init.js): 1 hour cache.
-    else if (fs.existsSync(path.join(publicDir, urlPath))) {
-      reply.header("Cache-Control", "public, max-age=3600");
-      reply.header("X-Content-Type-Options", "nosniff");
-    }
   });
 }
