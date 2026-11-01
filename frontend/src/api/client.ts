@@ -127,3 +127,13 @@ export function appLogsUrl(
   const query = params.toString();
   return `/api/apps/${encodeURIComponent(name)}/logs${query ? `?${query}` : ""}`;
 }
+
+/** Fetch plain text logs for an app (follow=false). */
+export function getAppLogsText(
+  name: string,
+  opts: { pod?: string; tail?: number } = {},
+  options?: RequestOptions,
+): Promise<string> {
+  const url = appLogsUrl(name, { pod: opts.pod, tail: opts.tail });
+  return request(url, { ...withSignal(options), parseAsText: true });
+}

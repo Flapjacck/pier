@@ -44,12 +44,26 @@ async function parseJsonBody(res: Response): Promise<unknown> {
   }
 }
 
+async function parseTextBody(res: Response): Promise<string> {
+  return res.text();
+}
+
 /** Same-origin fetch with JSON bodies and typed error handling. */
 export async function request<T>(
   path: string,
   options: RequestOptions & { parse: (json: unknown) => T },
-): Promise<T> {
-  const { method = "GET", body, signal, skipAuthRedirect, parse } = options;
+): Promise<T>;
+export async function request(
+  path: string,
+  options: RequestOptions & { parse?: undefined; parseAsText: true },
+): Promise<string>;
+export async function request<T>(
+  path: string,
+  options: (RequestOptions & { parse: (json: unknown) => T }) | (RequestOptions & { parse?: undefined; parseAsText: true }),
+): Promise<T | string> {
+  const { method = "GET", body, signal, skipAuthRedirect } = options;
+  const parse = 'parse' in options ? options.parse : undefined;
+  const parseAsText = 'parseAsText' in options ? options.parseAsText : false;
 
   let res: Response;
   try {
@@ -74,6 +88,22 @@ export async function request<T>(
     throw new ApiError(204, { ok: false, error: "unexpected empty body" });
   }
 
+  if (parseAsText) {
+    const text = await parseTextBody(res);
+    if (!res.ok) {
+      maybeRedirectUnauthorized(res.status, skipAuthRedirect);
+      // Try to parse as JSON for error details
+      let errBody: unknown = null;
+      try {
+        errBody = JSON.parse(text);
+      } catch {
+        // Ignore, treat as plain error text
+      }
+      throw apiErrorFromResponse(res.status, isApiErrorBody(errBody) ? errBody : null);
+    }
+    return text;
+  }
+
   const json = await parseJsonBody(res);
 
   if (!res.ok) {
@@ -81,7 +111,7 @@ export async function request<T>(
     throw apiErrorFromResponse(res.status, isApiErrorBody(json) ? json : null);
   }
 
-  return parse(json);
+  return parse!(json);
 }
 
 export async function requestVoid(path: string, options: RequestOptions = {}): Promise<void> {
