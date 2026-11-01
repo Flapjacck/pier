@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.git
+**/.env*
+!backend/.env.example
+.impeccable
+pier-brand-kit
+.github
+CONTRIBUTING.md
+DESIGN.md
+PRODUCT.md
+README.md
+.gitignore
