@@ -15,6 +15,7 @@ interface Props {
   onRowChange: (row: EnvRow) => void;
   onRowRemove: (id: string) => void;
   onRowAdd: () => void;
+  onClearRowError: (id: string) => void;
 }
 
 /**
@@ -28,6 +29,7 @@ export function EnvRows({
   onRowChange,
   onRowRemove,
   onRowAdd,
+  onClearRowError,
 }: Props) {
   const [visibleValues, setVisibleValues] = useState<Set<string>>(new Set());
 
@@ -50,25 +52,31 @@ export function EnvRows({
         {rows.map((row) => (
           <div key={row.id} className="flex flex-col gap-1">
             <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <Input
-                  value={row.key}
-                  onChange={(e) =>
-                    onRowChange({ ...row, key: e.target.value })
+            <div className="flex-1">
+              <Input
+                value={row.key}
+                onChange={(e) => {
+                  onRowChange({ ...row, key: e.target.value });
+                  if (errors[row.id]) {
+                    onClearRowError(row.id);
                   }
-                  placeholder="KEY"
-                  invalid={Boolean(errors[row.id])}
-                  className="font-mono text-[12.5px]"
-                />
-              </div>
+                }}
+                placeholder="KEY"
+                invalid={Boolean(errors[row.id])}
+                className="font-mono text-[12.5px]"
+              />
+            </div>
               <div className="flex-1">
                 <div className="flex gap-1 items-center">
                   <Input
                     type={visibleValues.has(row.id) ? "text" : "password"}
                     value={row.value}
-                    onChange={(e) =>
-                      onRowChange({ ...row, value: e.target.value })
-                    }
+                    onChange={(e) => {
+                      onRowChange({ ...row, value: e.target.value });
+                      if (errors[row.id]) {
+                        onClearRowError(row.id);
+                      }
+                    }}
                     placeholder="value"
                     autoComplete="off"
                     spellCheck={false}
