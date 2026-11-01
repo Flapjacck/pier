@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { deleteApp, restartApp, scaleApp } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import { Button } from "../../components/ui/Button";
-import { ConfirmDialog, Dialog } from "../../components/ui/Dialog";
+import { ConfirmDialog } from "../../components/ui/Dialog";
 import { Field } from "../../components/ui/Field";
 import { Input } from "../../components/ui/Input";
 import { useToast } from "../../components/ui/Toast";
@@ -10,6 +10,7 @@ import { formatAbsoluteDate } from "../../lib/time";
 import { useAppDetail } from "./useAppDetail";
 import { useNavigate } from "react-router-dom";
 import { PierIcon } from "../../components/icons/PierIcon";
+import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 
 /**
  * Settings tab: scale, restart, and delete actions.
@@ -234,65 +235,5 @@ export function AppDetailSettings() {
         pending={deletePending}
       />
     </div>
-  );
-}
-
-interface DeleteConfirmDialogProps {
-  open: boolean;
-  appName: string;
-  nameInput: string;
-  onNameInputChange: (value: string) => void;
-  onClose: () => void;
-  onConfirm: () => void;
-  pending: boolean;
-}
-
-function DeleteConfirmDialog({
-  open,
-  appName,
-  nameInput,
-  onNameInputChange,
-  onClose,
-  onConfirm,
-  pending,
-}: DeleteConfirmDialogProps) {
-  const nameMatches = nameInput === appName;
-
-  return (
-    <Dialog open={open} onClose={onClose} title="Delete app?">
-      <p className="m-0 mb-4 text-sm text-pier-muted">
-        This will permanently delete <strong>{appName}</strong> and cannot be undone.
-      </p>
-      <p className="m-0 mb-4 text-sm text-pier-muted">
-        To confirm, type the app name:
-      </p>
-      <Field
-        id="delete-confirm-name"
-        label="App name"
-        className="mb-4"
-      >
-        <Input
-          type="text"
-          placeholder={appName}
-          value={nameInput}
-          onChange={(e) => onNameInputChange(e.currentTarget.value)}
-          disabled={pending}
-          autoFocus
-        />
-      </Field>
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" type="button" onClick={onClose} disabled={pending}>
-          Cancel
-        </Button>
-        <Button
-          variant="danger"
-          type="button"
-          onClick={onConfirm}
-          disabled={!nameMatches || pending}
-        >
-          {pending ? "Deleting…" : "Delete"}
-        </Button>
-      </div>
-    </Dialog>
   );
 }
