@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
 import { deleteApp } from "../../k8s/app-actions.js";
-import { getLiveApp } from "../../k8s/app-lookup.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { isValidAppName } from "../../k8s/names.js";
 import { errorSchema } from "../apps-schemas.js";
@@ -47,15 +46,13 @@ export function deleteAppRoutesWithDeps(deps: DeleteRouteDeps): FastifyPluginAsy
         }
 
         try {
-          const live = await getLiveApp(deps.k8s.clients.apps, deps.namespace, name);
-          if (!live) {
+          const result = await deleteApp(deps.k8s.clients, deps.namespace, name);
+          if (result.deleted.length === 0) {
             return reply.status(404).send({
               ok: false,
               error: "app not found",
             });
           }
-
-          await deleteApp(deps.k8s.clients, deps.namespace, name);
           return reply.status(204).send();
         } catch (err) {
           req.log.error({ err }, "delete app failed");

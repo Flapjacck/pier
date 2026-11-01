@@ -3,6 +3,53 @@ import { PatchStrategy, setHeaderOptions } from "@kubernetes/client-node";
 import { deploymentToApp, type App } from "./apps.js";
 import { getLiveApp } from "./app-lookup.js";
 import { apiStatusCode } from "./api-errors.js";
+import { APP_LABEL } from "./labels.js";
+
+export type DeletedAppResource = "deployment" | "service" | "ingress";
+
+export type DeleteAppResult = {
+  deleted: DeletedAppResource[];
+};
+
+type K8sClients = {
+  apps: AppsV1Api;
+  core: CoreV1Api;
+  networking: NetworkingV1Api;
+};
+
+async function deleteIfExists(
+  del: () => Promise<unknown>,
+): Promise<boolean> {
+  try {
+    await del();
+    return true;
+  } catch (err) {
+    if (apiStatusCode(err) === 404) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/** Delete a namespaced object only when its pier.app label matches the app name. */
+async function deleteLabeledResource(
+  read: () => Promise<{ metadata?: { labels?: Record<string, string> } }>,
+  del: () => Promise<unknown>,
+  appName: string,
+): Promise<boolean> {
+  try {
+    const resource = await read();
+    if (resource.metadata?.labels?.[APP_LABEL] !== appName) {
+      return false;
+    }
+    return deleteIfExists(del);
+  } catch (err) {
+    if (apiStatusCode(err) === 404) {
+      return false;
+    }
+    throw err;
+  }
+}
 
 /**
  * Scale an app to a specific number of replicas.
@@ -87,52 +134,61 @@ export async function restartApp(
   return { restartedAt };
 }
 
-type K8sClients = {
-  apps: AppsV1Api;
-  core: CoreV1Api;
-  networking: NetworkingV1Api;
-};
-
 /**
- * Delete an app and its Service and Ingress.
- * Deletes in order: Ingress, Service, Deployment (with Foreground propagation).
- * 404 errors are tolerated (already gone).
- * Throws on other errors.
+ * Delete an app and related Service/Ingress resources.
+ * When the Deployment is live, deletes Deployment then Service and Ingress (404 tolerated).
+ * When it is missing, removes orphaned Service/Ingress only if labelled pier.app=name.
  */
 export async function deleteApp(
   clients: K8sClients,
   namespace: string,
   name: string,
-): Promise<void> {
+): Promise<DeleteAppResult> {
   const { networking, core, apps } = clients;
+  const deleted: DeletedAppResource[] = [];
 
-  try {
-    await networking.deleteNamespacedIngress({ namespace, name });
-  } catch (err) {
-    if (apiStatusCode(err) !== 404) {
-      throw err;
+  const deployment = await getLiveApp(apps, namespace, name);
+
+  if (deployment) {
+    if (
+      await deleteIfExists(() =>
+        apps.deleteNamespacedDeployment({
+          namespace,
+          name,
+          body: { propagationPolicy: "Foreground" },
+        }),
+      )
+    ) {
+      deleted.push("deployment");
     }
+    if (await deleteIfExists(() => core.deleteNamespacedService({ namespace, name }))) {
+      deleted.push("service");
+    }
+    if (await deleteIfExists(() => networking.deleteNamespacedIngress({ namespace, name }))) {
+      deleted.push("ingress");
+    }
+    return { deleted };
   }
 
-  try {
-    await core.deleteNamespacedService({ namespace, name });
-  } catch (err) {
-    if (apiStatusCode(err) !== 404) {
-      throw err;
-    }
-  }
-
-  try {
-    await apps.deleteNamespacedDeployment({
-      namespace,
+  if (
+    await deleteLabeledResource(
+      () => core.readNamespacedService({ namespace, name }),
+      () => core.deleteNamespacedService({ namespace, name }),
       name,
-      body: {
-        propagationPolicy: "Foreground",
-      },
-    });
-  } catch (err) {
-    if (apiStatusCode(err) !== 404) {
-      throw err;
-    }
+    )
+  ) {
+    deleted.push("service");
   }
+
+  if (
+    await deleteLabeledResource(
+      () => networking.readNamespacedIngress({ namespace, name }),
+      () => networking.deleteNamespacedIngress({ namespace, name }),
+      name,
+    )
+  ) {
+    deleted.push("ingress");
+  }
+
+  return { deleted };
 }
