@@ -1,4 +1,4 @@
-import type { DeployStatus } from "../types/app";
+import type { AppStatus } from "../api/types";
 
 /** Tailwind utility classes for a deploy status (full literals for the compiler). */
 export interface StatusClasses {
@@ -8,7 +8,7 @@ export interface StatusClasses {
   label: string;
 }
 
-const STATUS_MAP: Record<DeployStatus, StatusClasses> = {
+const STATUS_MAP: Record<AppStatus, StatusClasses> = {
   running: {
     text: "text-pier-status-running",
     background: "bg-pier-status-running-bg",
@@ -35,6 +35,6 @@ const STATUS_MAP: Record<DeployStatus, StatusClasses> = {
   },
 };
 
-export function getStatusClasses(status: DeployStatus): StatusClasses {
+export function getStatusClasses(status: AppStatus): StatusClasses {
   return STATUS_MAP[status];
 }

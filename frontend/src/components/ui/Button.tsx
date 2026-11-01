@@ -3,7 +3,7 @@ import { cn } from "../../lib/cn";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "ghost" | "danger";
-  size?: "default" | "icon";
+  size?: "default" | "sm" | "icon";
   children: ReactNode;
 }
 
@@ -15,6 +15,7 @@ const base =
 
 const sizes = {
   default: "px-3.5 py-[7px] text-[13px]",
+  sm: "px-2.5 py-1.5 text-[12px]",
   icon: "p-2 text-[13px]",
 };
 
