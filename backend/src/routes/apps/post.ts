@@ -4,7 +4,6 @@ import type { K8sClientsResult } from "../../k8s/clients.js";
 import {
   appSchema,
   errorSchema,
-  errorWithDetailsSchema,
   postAppsBodySchema,
   type PostAppsBody,
 } from "../apps-schemas.js";
@@ -27,11 +26,11 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           body: postAppsBodySchema,
           response: {
             201: appSchema,
-            400: errorWithDetailsSchema,
+            400: errorSchema,
             401: errorSchema,
-            403: errorWithDetailsSchema,
+            403: errorSchema,
             409: errorSchema,
-            422: errorWithDetailsSchema,
+            422: errorSchema,
             503: errorSchema,
           },
         },

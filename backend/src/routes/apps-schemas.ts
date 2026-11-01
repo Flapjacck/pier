@@ -80,15 +80,6 @@ export const errorSchema = {
   properties: {
     ok: { type: "boolean" },
     error: { type: "string" },
-  },
-  required: ["ok", "error"],
-} as const;
-
-export const errorWithDetailsSchema = {
-  type: "object",
-  properties: {
-    ok: { type: "boolean" },
-    error: { type: "string" },
     details: { type: "string" },
   },
   required: ["ok", "error"],
