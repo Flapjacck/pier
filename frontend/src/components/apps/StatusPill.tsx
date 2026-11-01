@@ -1,10 +1,10 @@
 import { cn } from "../../lib/cn";
 import { getStatusClasses } from "../../lib/status";
-import type { DeployStatus } from "../../types/app";
+import type { AppStatus } from "../../api/types";
 import { StatusIcon } from "./StatusIcon";
 
 interface Props {
-  status: DeployStatus;
+  status: AppStatus;
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { DeployStatus } from "../../types/app";
+import type { AppStatus } from "../../api/types";
 
 const iconProps = {
   viewBox: "0 0 24 24",
@@ -14,7 +14,7 @@ const iconProps = {
   className: "block shrink-0",
 };
 
-const STATUS_ICONS: Record<DeployStatus, ReactNode> = {
+const STATUS_ICONS: Record<AppStatus, ReactNode> = {
   running: (
     <svg {...iconProps}>
       <circle cx="12" cy="12" r="9" />
@@ -43,7 +43,7 @@ const STATUS_ICONS: Record<DeployStatus, ReactNode> = {
 };
 
 interface Props {
-  status: DeployStatus;
+  status: AppStatus;
 }
 
 /** Inline deploy status glyph so `currentColor` follows status text tokens. */
