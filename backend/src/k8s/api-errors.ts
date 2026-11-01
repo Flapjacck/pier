@@ -28,6 +28,25 @@ export function apiStatusCode(err: unknown): number | undefined {
     }
   }
 
+  // Some clients nest the HTTP status in a parsed JSON body.
+  if (typeof err === "object" && "body" in err) {
+    const body = (err as Record<string, unknown>).body;
+    let parsed: unknown = body;
+    if (typeof body === "string") {
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        parsed = undefined;
+      }
+    }
+    if (parsed && typeof parsed === "object" && "code" in parsed) {
+      const code = (parsed as Record<string, unknown>).code;
+      if (typeof code === "number") {
+        return code;
+      }
+    }
+  }
+
   return undefined;
 }
 
