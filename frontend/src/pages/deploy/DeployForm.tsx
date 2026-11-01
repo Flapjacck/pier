@@ -58,7 +58,11 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
     }
     // Clear name error as user types
     if (errors.name) {
-      setErrors((prev) => ({ ...prev, name: undefined }));
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.name;
+        return next;
+      });
     }
   };
 
@@ -281,7 +285,11 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
           onChange={(e) => {
             setImage(e.target.value);
             if (errors.image) {
-              setErrors((prev) => ({ ...prev, image: undefined }));
+              setErrors((prev) => {
+                const next = { ...prev };
+                delete next.image;
+                return next;
+              });
             }
           }}
           onBlur={() => setTouched(true)}
@@ -305,7 +313,11 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
           onChange={(e) => {
             setPort(e.target.value);
             if (errors.port) {
-              setErrors((prev) => ({ ...prev, port: undefined }));
+              setErrors((prev) => {
+                const next = { ...prev };
+                delete next.port;
+                return next;
+              });
             }
           }}
           onBlur={() => setTouched(true)}
@@ -328,7 +340,11 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
           onChange={(e) => {
             setReplicas(e.target.value);
             if (errors.replicas) {
-              setErrors((prev) => ({ ...prev, replicas: undefined }));
+              setErrors((prev) => {
+                const next = { ...prev };
+                delete next.replicas;
+                return next;
+              });
             }
           }}
           onBlur={() => setTouched(true)}
@@ -361,7 +377,13 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
               subdomain={subdomain}
               ingressDomain={ingressDomain}
               onSubdomainChange={handleSubdomainChange}
-              onClearError={() => setErrors((prev) => ({ ...prev, host: undefined }))}
+              onClearError={() =>
+                setErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.host;
+                  return next;
+                })
+              }
               error={touched ? errors.host : undefined}
             />
           )}
