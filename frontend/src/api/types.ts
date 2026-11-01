@@ -6,6 +6,7 @@
  * - backend/src/k8s/cluster-health.ts (ClusterHealth)
  * - backend/src/k8s/client.ts (KubeConfigMode)
  * - backend/src/routes/apps-schemas.ts (PostAppsBody, error bodies)
+ * - backend/src/routes/apps/restart.ts (RestartResult)
  * - backend/src/routes/session.ts (SessionInfo)
  */
 
@@ -79,6 +80,11 @@ export type CreateAppBody = {
 
 export type ScaleBody = {
   replicas: number;
+};
+
+export type RestartResult = {
+  ok: true;
+  restartedAt: string;
 };
 
 export type ApiErrorBody = {
