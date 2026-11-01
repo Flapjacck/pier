@@ -43,7 +43,7 @@ pnpm --dir frontend build      # output in frontend/dist/
 ## API client and auth
 
 - **Client:** `src/api/client.ts` exports typed functions for every backend route. Errors throw `ApiError` with `status`, `error`, `details?`, and a `kind` discriminator. JSON bodies are validated with small runtime guards in `src/api/guards.ts` (no `any`, no unchecked casts).
-- **Session:** `POST /api/login` with `{ token }` sets the HttpOnly `pier_session` cookie (path `/api`). The token is sent once in the POST body and is **not** stored in JavaScript (`localStorage`, `sessionStorage`, or JS-readable cookies).
+- **Session:** `POST /api/login` with `{ token }` sets the HttpOnly `pier_session` cookie (path `/api`). The token is sent once in the POST body and is **not** stored in JavaScript (`localStorage`, `sessionStorage`, or JS-readable cookies). `GET /api/session` returns `{ ok, authDisabled, ingressDomain }` so the frontend knows the cluster's domain suffix for host prefill on deploy forms.
 - **Guard:** `AuthProvider` probes `GET /api/session` on load. `RequireAuth` sends anonymous users to `/login?next=…` (same-origin paths only). Any other `401` triggers the same redirect via a global handler registered from auth context.
 - **Data hook:** `useApi` is an in-house hook (no TanStack Query) to keep dependencies minimal and match Pier’s small surface area; it aborts on unmount and dependency changes.
 
@@ -64,6 +64,7 @@ Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigi
 - `/login` → public sign-in (no shell)
 - `/` → redirect to `/apps` (requires session)
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
+- `/apps/new` → Deploy form (create new app with validation and error mapping)
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
   - `/:name/pods` → Pods tab (list, refresh, reasons)

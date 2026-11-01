@@ -129,17 +129,18 @@ curl -X POST -b jar -c jar http://192.0.2.10.nip.io/api/logout
 
 ## `GET /api/session`
 
-Get the current session status. Requires authentication (bearer token or session cookie).
+Get the current session status and ingress domain. Requires authentication (bearer token or session cookie).
 
 ### Response
 
 **200 (success)**:
 
 ```json
-{ "ok": true, "authDisabled": false }
+{ "ok": true, "authDisabled": false, "ingressDomain": "192.0.2.10.nip.io" }
 ```
 
 - `authDisabled` is `false` when a token is configured, `true` when auth is disabled (dev mode on loopback).
+- `ingressDomain` is the wildcard suffix for ingress hosts (from `PIER_INGRESS_DOMAIN`), or `null` if not configured. The frontend uses this to prefill the host on deploy forms.
 
 **401 (unauthorized)**: Not authenticated (no bearer token or invalid session cookie).
 
