@@ -79,9 +79,9 @@ function getOriginFromHeaders(req: FastifyRequest): string | null {
  * - Bearer token in Authorization header takes precedence.
  * - Cookie-authenticated requests require an Origin header check (CSRF protection).
  *
- * Without apiToken (dev on loopback):
- * - Mutating requests are rejected.
- * - GET requests are allowed (dev mode).
+ * Without apiToken configured:
+ * - Every /api/* request is rejected with 401 except GET /api/session,
+ *   POST /api/login, and POST /api/logout (so the UI can show token setup).
  *
  * Must be called before registering routes so the hook applies to all route handlers.
  */
@@ -164,16 +164,14 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
     }
 
     // Token is configured. Try Authorization header first (Bearer token takes precedence).
-    const authHeader = req.headers.authorization || "";
+    const authHeader = req.headers.authorization ?? "";
+    const bearerMatch = /^\s*bearer\s+(\S+)\s*$/i.exec(authHeader);
     if (authHeader) {
-      const parts = authHeader.split(" ");
-
-      // Validate header format: "Bearer <token>"
-      if (parts.length !== 2 || parts[0] !== "Bearer") {
+      if (!bearerMatch) {
         throw new UnauthorizedError();
       }
 
-      const providedToken = parts[1];
+      const providedToken = bearerMatch[1]!;
       if (!tokensMatch(providedToken, apiToken)) {
         throw new UnauthorizedError();
       }
