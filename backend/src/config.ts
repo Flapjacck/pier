@@ -7,6 +7,9 @@ export type Config = {
   kubeconfig: string | undefined;
   namespace: string;
   ingressDomain: string | undefined;
+  publicDir: string | undefined;
+  trustProxy: boolean;
+  dashboardHost: string | undefined;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -32,6 +35,15 @@ function parsePort(raw: string | undefined): number {
 function optionalNonEmpty(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed === "" || trimmed === undefined ? undefined : trimmed;
+}
+
+/**
+ * Parse a boolean flag from a string.
+ * "true" or "1" → true, anything else → false (no error).
+ */
+function parseBoolean(raw: string | undefined): boolean {
+  const trimmed = raw?.trim().toLowerCase();
+  return trimmed === "true" || trimmed === "1";
 }
 
 /**
@@ -106,6 +118,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ingressDomain = parsed === "" ? undefined : parsed;
   }
 
+  // Parse dashboard host (optional, must be DNS-1123 if provided).
+  const dashboardHostRaw = optionalNonEmpty(env.PIER_DASHBOARD_HOST);
+  let dashboardHost: string | undefined;
+  if (dashboardHostRaw) {
+    const dnsPattern = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+    if (!dnsPattern.test(dashboardHostRaw.toLowerCase())) {
+      throw new Error(
+        `Invalid PIER_DASHBOARD_HOST "${dashboardHostRaw}": must be a valid DNS-1123 hostname`,
+      );
+    }
+    dashboardHost = dashboardHostRaw.toLowerCase();
+  }
+
   return {
     port: parsePort(env.PORT),
     host,
@@ -113,5 +138,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     kubeconfig: optionalNonEmpty(env.KUBECONFIG),
     namespace: env.PIER_NAMESPACE?.trim() || "pier-apps",
     ingressDomain,
+    publicDir: optionalNonEmpty(env.PIER_PUBLIC_DIR),
+    trustProxy: parseBoolean(env.PIER_TRUST_PROXY),
+    dashboardHost,
   };
 }
