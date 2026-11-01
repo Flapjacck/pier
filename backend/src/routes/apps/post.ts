@@ -14,6 +14,7 @@ type PostAppsRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
   ingressDomain: string | undefined;
+  dashboardHost: string | undefined;
 };
 
 /** POST /apps — create a new Deployment, Service, and optionally Ingress. */
@@ -47,6 +48,14 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
 
         // Normalize host to lowercase (case-insensitive matching in Ingress rules).
         const hostNorm = host?.toLowerCase();
+
+        // Check if host conflicts with dashboard host (reserved).
+        if (hostNorm && deps.dashboardHost && hostNorm === deps.dashboardHost) {
+          return reply.status(409).send({
+            ok: false,
+            error: "host already in use",
+          });
+        }
 
         // Validate host if provided (DNS-1123, wildcard, ingress config, suffix).
         if (hostNorm) {

@@ -13,6 +13,7 @@ export type AppsRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
   ingressDomain: string | undefined;
+  dashboardHost: string | undefined;
 };
 
 /** Factory keeps apps routes testable without a live cluster. */
