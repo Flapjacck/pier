@@ -94,6 +94,12 @@
   --pier-status-stopped-icon: var(--pier-stopped);
   --pier-status-stopped-bg: var(--pier-stopped-soft);
 
+  /* Log viewer surface */
+  --pier-log-bg: var(--pier-gray-950);
+  --pier-log-fg: #E0E0E0;
+  --pier-log-muted: var(--pier-gray-600);
+  --pier-log-border: var(--pier-gray-800);
+
   color-scheme: light;
 }
 
