@@ -289,7 +289,7 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
 - **Columns:** Name (link), Status (pill), Ready (ready/replicas, tabular numbers), Image (mono, truncated with full value in `title`), URL (external link with icon when present, else em dash), Created (relative time in `<time dateTime>` with full ISO in `title`).
 - **Loading state (first load):** 4 skeleton rows in the table, not a full-page spinner.
 - **Error state:** Inline error panel with `error.message` or cluster-unreachable copy (network/unavailable kinds); Retry button refetches.
-- **Empty state:** `ThemeIllustration` (empty-dock), headline and subheadline, "Deploy an app" button linked to `/apps/new` (disabled with `title="Coming soon"` until #46, `TODO(#46)` comment).
+- **Empty state:** `ThemeIllustration` (empty-dock), headline and subheadline, "Deploy an app" button linked to `/apps/new`.
 - **Data state:** Search input (type="search", case-insensitive by name), manual Refresh button with pending spinner, "Updated Xs ago" note, app count (e.g. "3 apps"). Search showing zero results renders "No apps match …" row via `TableEmpty`.
 - **Auto-refresh:** Every 10s while `document.visibilityState === "visible"` and no request in flight; old data stays visible while background refetch proceeds (no skeleton flash). Announce refresh results to `aria-live="polite"` without repeating on each auto-refresh tick.
 
@@ -318,6 +318,20 @@ Shadows are **rare**—reserved for overlays (dialog, dropdown, menu, toast) at 
   - **Restart:** Button opens `ConfirmDialog` ("Restart <app>? Pods are replaced one by one."). Success toast shows `restartedAt` timestamp; Refetch app and pods. Button shows pending state.
   - **Danger zone (delete):** Red border, `delete` icon (the only red icon). Opens `ConfirmDialog` (danger variant) with a text field where you must type the exact app name to enable Delete. Success toast; navigates to `/apps` with `replace`. Treat 404 as success (already gone).
   - All actions: no double-submits, focus returns sensibly, results announced via toast `aria-live`.
+
+### Deploy form (`DeployPage`, #46)
+
+- **Layout:** Page title "Deploy an app", form card with fields: name (with DNS-1035 hint), image (mono, placeholder `nginx:1.27`), port (1–65535), replicas (0–10, default 1), Public URL checkbox, host (Vercel-style fixed suffix when ingress is set).
+- **Host field:** 
+  - When `ingressDomain` is set: subdomain input + fixed `.domain` text, hint showing resolved URL (`http://demo.192.0.2.10.nip.io`).
+  - When `ingressDomain` is `null`: disabled input with hint "Public URLs are off: PIER_INGRESS_DOMAIN isn't set on the backend."
+  - Subdomain auto-follows the app name until manually edited.
+- **Environment:** Rows with key/value `Input`s (both have placeholders), value is masked (`type="password"`, `autocomplete="off"`, `spellCheck={false}`) with show/hide toggle (circle symbol ● or ○, no icon). Add/Remove buttons per row.
+- **Validation:** Inline errors appear after blur or first submit. Submit is disabled while there are validation errors or pending. On submit, first error field receives focus.
+- **Error mapping:** `409 app already exists` → name field; `409 host already in use` → host field. `400` with details mentioning a field → that field. `403` and `422` → form alert with `error` + `details`. `503` / network → form alert "Cluster unreachable. Try again" (keep form values).
+- **Success state:** `deployed` illustration via `ThemeIllustration`, message "{app} is deploying", success toast, auto-navigate to `/apps/{app}` after 1.5s (0ms under `prefers-reduced-motion`).
+- **Form alert:** Uses `role="alert"`, `bg-pier-status-failed/10` border and background, matches Field error styling.
+- **Actions:** Primary "Deploy" submit, secondary "Cancel" (link to `/apps`).
 
 ### Status pages
 
