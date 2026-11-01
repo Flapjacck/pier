@@ -1,33 +1,34 @@
-import type { PierTheme } from "../hooks/usePierTheme";
-import { MainLayout } from "../components/layout/MainLayout";
-import { PageHeader } from "../components/layout/PageHeader";
+import { useMemo } from "react";
 import { AppsTable } from "../components/apps/AppsTable";
-import { Button } from "../components/ui/Button";
 import { PierIcon } from "../components/icons/PierIcon";
+import { Button } from "../components/ui/Button";
+import { useSetPageActions } from "../context/PageActionsContext";
 import { MOCK_APPS } from "../data/mockApps";
 
 /**
  * Apps list — landing view after login.
- * Content floats as a card over the slats pattern background.
  */
-export function AppsPage({ theme, toggle }: PierTheme) {
+export function AppsPage() {
+  const headerActions = useMemo(
+    () => (
+      <Button disabled title="Coming soon">
+        <PierIcon name="deploy" size={14} />
+        Deploy
+      </Button>
+    ),
+    [],
+  );
+  useSetPageActions(headerActions);
+
   return (
-    <MainLayout theme={theme} toggle={toggle}>
-      {/* Card floating over pattern */}
-      <div className="bg-pier-bg border border-pier-border rounded-xl p-6 shadow-sm">
-        <PageHeader
-          title="Apps"
-          description="All services running on your cluster"
-          actions={
-            // TODO(#46): wire Deploy to create-app flow
-            <Button disabled title="Coming soon">
-              <PierIcon name="deploy" size={14} />
-              Deploy
-            </Button>
-          }
-        />
+    <div className="max-w-6xl">
+      <header className="mb-6">
+        <h1 className="m-0 text-[21px] font-bold text-pier-fg">Apps</h1>
+        <p className="mt-1 mb-0 text-sm text-pier-muted">All services running on your cluster</p>
+      </header>
+      <div className="border border-pier-border rounded-pier-lg bg-pier-bg p-4 md:p-6">
         <AppsTable apps={MOCK_APPS} />
       </div>
-    </MainLayout>
+    </div>
   );
 }

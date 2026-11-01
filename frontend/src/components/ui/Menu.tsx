@@ -125,7 +125,7 @@ export function Menu({ trigger, options, selectedId, onSelect, className }: Prop
             "focus-visible:outline-none",
           )}
         >
-          {options.map((opt, i) => {
+          {options.map((opt) => {
             const enabledIdx = enabledOptions.findIndex((e) => e.id === opt.id);
             const isActive = enabledIdx === activeIndex;
             const isSelected = opt.id === selectedId;
