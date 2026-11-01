@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { CoreV1Api, AppsV1Api, V1Pod } from "@kubernetes/client-node";
+import type { CoreV1Api, V1Pod } from "@kubernetes/client-node";
 import {
-  appExists,
   listAppPods,
   podToAppPod,
 } from "../../src/k8s/app-pods.js";
@@ -124,53 +123,6 @@ describe("podToAppPod", () => {
     assert.equal(appPod.ready, false);
     assert.equal(appPod.readyContainers, "0/0");
     assert.equal(appPod.restarts, 0);
-  });
-});
-
-describe("appExists", () => {
-  it("returns true when deployment exists", async () => {
-    const fakeApps = {
-      readNamespacedDeployment: async () => ({
-        metadata: { name: "hello" },
-      }),
-    } as unknown as AppsV1Api;
-
-    const exists = await appExists(fakeApps, "pier-apps", "hello");
-    assert.equal(exists, true);
-  });
-
-  it("returns false when deployment 404s", async () => {
-    interface ApiError extends Error {
-      code?: number;
-    }
-    const fakeApps = {
-      readNamespacedDeployment: async () => {
-        const err = new Error("Not Found") as ApiError;
-        err.code = 404;
-        throw err;
-      },
-    } as unknown as AppsV1Api;
-
-    const exists = await appExists(fakeApps, "pier-apps", "nope");
-    assert.equal(exists, false);
-  });
-
-  it("rethrows other errors", async () => {
-    interface ApiError extends Error {
-      code?: number;
-    }
-    const fakeApps = {
-      readNamespacedDeployment: async () => {
-        const err = new Error("Forbidden") as ApiError;
-        err.code = 403;
-        throw err;
-      },
-    } as unknown as AppsV1Api;
-
-    await assert.rejects(
-      () => appExists(fakeApps, "pier-apps", "hello"),
-      /Forbidden/,
-    );
   });
 });
 

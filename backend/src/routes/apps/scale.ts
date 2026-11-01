@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { scaleApp } from "../../k8s/app-actions.js";
+import { isValidAppName } from "../../k8s/names.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { errorSchema } from "../apps-schemas.js";
 
@@ -56,9 +57,7 @@ export function scaleAppRoutesWithDeps(deps: ScaleRouteDeps): FastifyPluginAsync
         const { name } = req.params;
         const { replicas } = req.body;
 
-        // Validate app name (DNS-1035).
-        const namePattern = /^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$/;
-        if (!namePattern.test(name)) {
+        if (!isValidAppName(name)) {
           return reply.status(400).send({
             ok: false,
             error: "invalid request",

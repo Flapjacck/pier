@@ -1,3 +1,5 @@
+import { APP_NAME_SCHEMA_PATTERN } from "../k8s/names.js";
+
 /** Schemas and types for POST /apps route validation. */
 
 export type PostAppsBody = {
@@ -15,7 +17,7 @@ export const postAppsBodySchema = {
   properties: {
     name: {
       type: "string",
-      pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
+      pattern: APP_NAME_SCHEMA_PATTERN,
     },
     image: {
       type: "string",
