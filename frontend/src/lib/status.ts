@@ -4,7 +4,6 @@ import type { DeployStatus } from "../types/app";
 export interface StatusClasses {
   text: string;
   background: string;
-  /** Path under /status/ in public */
   icon: string;
   label: string;
 }
@@ -13,25 +12,25 @@ const STATUS_MAP: Record<DeployStatus, StatusClasses> = {
   running: {
     text: "text-pier-status-running",
     background: "bg-pier-status-running-bg",
-    icon: "/status/status-running.svg",
+    icon: "text-pier-status-running-icon",
     label: "running",
   },
   building: {
     text: "text-pier-status-building",
     background: "bg-pier-status-building-bg",
-    icon: "/status/status-building.svg",
+    icon: "text-pier-status-building-icon",
     label: "building",
   },
   failed: {
     text: "text-pier-status-failed",
     background: "bg-pier-status-failed-bg",
-    icon: "/status/status-failed.svg",
+    icon: "text-pier-status-failed-icon",
     label: "failed",
   },
   stopped: {
     text: "text-pier-status-stopped",
     background: "bg-pier-status-stopped-bg",
-    icon: "/status/status-stopped.svg",
+    icon: "text-pier-status-stopped-icon",
     label: "stopped",
   },
 };
