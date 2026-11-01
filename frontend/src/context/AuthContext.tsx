@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useMemo,
   useState,
   type ReactNode,
@@ -40,6 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("checking");
   const [authDisabled, setAuthDisabled] = useState(false);
   const [ingressDomain, setIngressDomain] = useState<string | null>(null);
+  const authDisabledRef = useRef(false);
+
+  useEffect(() => {
+    authDisabledRef.current = authDisabled;
+  }, [authDisabled]);
   const loadSession = useCallback(async (signal?: AbortSignal) => {
     setStatus("checking");
     try {
@@ -67,6 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setStatus("anonymous");
+      if (authDisabledRef.current) {
+        return;
+      }
       const next = safeNext(`${location.pathname}${location.search}`);
       navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
     });
