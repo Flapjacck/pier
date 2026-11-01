@@ -1,17 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { listAppPods } from "../../api/client";
-import { LogViewer } from "../../components/ui/LogViewer";
-import { Button } from "../../components/ui/Button";
-import { Select } from "../../components/ui/Select";
+import { LogsCard } from "../../components/ui/LogsCard";
 import { useApi } from "../../hooks/useApi";
 import { useLogStream } from "../../hooks/useLogStream";
 import { useAppDetail } from "./useAppDetail";
 
-const TAIL_OPTIONS = [100, 200, 1000];
-
 /**
- * Logs tab: live log viewer with pod/tail picker, filter, copy, and download.
- * Uses EventSource for streaming or plain fetch for static mode.
+ * Logs tab: live log streaming with pod selection and follow toggle.
+ * All UI logic is in LogsCard for reusability.
  */
 export function AppDetailLogs() {
   const { app } = useAppDetail();
@@ -24,25 +20,21 @@ export function AppDetailLogs() {
     (signal: AbortSignal) => listAppPods(app.name, { signal }),
     [app.name],
   );
-  const { data: pods = [], loading: podsLoading } = useApi(podFetcher, [app.name]);
+  const { data: pods = [] } = useApi(podFetcher, [app.name]);
 
   // Default to newest pod
-  const newestPod = useMemo(() => pods[0]?.name, [pods]);
-  const activePod = selectedPod ?? newestPod;
+  const newestPodName = pods[0]?.name;
+  const activePod = selectedPod ?? newestPodName;
 
-  // Stream logs for selected pod
-  const { lines, status, droppedCount, clear, reconnectNow } = useLogStream({
+  // Stream logs
+  const logStream = useLogStream({
     name: app.name,
-    pod: activePod,
+    pod: activePod, // undefined until pods load, so stream waits
     tail: selectedTail,
     follow,
   });
 
-  if (podsLoading) {
-    return <div className="p-6 text-center text-pier-muted">Loading pods…</div>;
-  }
-
-  if (!pods || pods.length === 0) {
+  if (pods.length === 0) {
     return (
       <div className="p-6 border border-pier-border rounded-pier-lg bg-pier-surface text-center">
         <p className="text-sm text-pier-muted m-0">
@@ -53,63 +45,16 @@ export function AppDetailLogs() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* Toolbar */}
-      <div className="flex gap-3 items-end flex-wrap">
-        <div className="flex-1 min-w-max">
-          <label htmlFor="pod-select" className="block text-[12px] font-medium text-pier-fg mb-1">
-            Pod
-          </label>
-          <Select
-            id="pod-select"
-            value={activePod || ""}
-            onChange={(e) => setSelectedPod(e.currentTarget.value || undefined)}
-          >
-            {pods.map((pod) => (
-              <option key={pod.name} value={pod.name}>
-                {pod.name} ({pod.phase})
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="flex-1 min-w-max">
-          <label htmlFor="tail-select" className="block text-[12px] font-medium text-pier-fg mb-1">
-            Tail
-          </label>
-          <Select
-            id="tail-select"
-            value={selectedTail}
-            onChange={(e) => setSelectedTail(Number(e.currentTarget.value))}
-          >
-            {TAIL_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n} lines
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <Button
-          variant={follow ? "primary" : "secondary"}
-          size="sm"
-          onClick={() => setFollow(!follow)}
-        >
-          Follow
-        </Button>
-      </div>
-
-      {/* Log viewer */}
-      <div className="flex-1 min-h-0 border border-pier-border rounded-pier-lg overflow-hidden">
-        <LogViewer
-          podName={activePod || ""}
-          lines={lines}
-          status={status}
-          droppedCount={droppedCount}
-          onClear={clear}
-          onReconnectNow={reconnectNow}
-        />
-      </div>
-    </div>
+    <LogsCard
+      appName={app.name}
+      pods={pods}
+      selectedPod={activePod || ""}
+      onSelectPod={setSelectedPod}
+      selectedTail={selectedTail}
+      onSelectTail={setSelectedTail}
+      follow={follow}
+      onToggleFollow={setFollow}
+      {...logStream}
+    />
   );
 }

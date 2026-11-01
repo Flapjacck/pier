@@ -1,11 +1,10 @@
 /**
- * Capped line buffer for logs with stable incrementing ids.
+ * Capped line buffer for logs with line numbers and ANSI stripping.
  * Stores up to `maxLines` (default 5000), dropping oldest lines when exceeded.
- * Applies ANSI/OSC escape stripping on ingest.
  */
 
-interface LogLine {
-  id: number;
+export interface LogLine {
+  n: number; // Line number (stable, incremental)
   text: string;
 }
 
@@ -24,27 +23,31 @@ function stripAnsi(line: string): string {
 
 export class LogBuffer {
   private lines: LogLine[] = [];
-  private nextId = 0;
+  private nextN = 1; // Line numbers start at 1
   private readonly maxLines: number;
 
   constructor(maxLines = 5000) {
     this.maxLines = maxLines;
   }
 
-  /** Add lines, stripping ANSI escapes. Return the count of lines dropped. */
-  append(newLines: string[]): number {
+  /**
+   * Add lines, stripping ANSI escapes.
+   * Returns a new array and the count of lines dropped.
+   */
+  append(newLines: string[]): { lines: LogLine[]; dropped: number } {
     const cleaned = newLines.map((line) => ({
-      id: this.nextId++,
+      n: this.nextN++,
       text: stripAnsi(line),
     }));
     this.lines.push(...cleaned);
 
     let dropped = 0;
-    while (this.lines.length > this.maxLines) {
-      this.lines.shift();
-      dropped++;
+    // Drop oldest lines efficiently if over capacity
+    if (this.lines.length > this.maxLines) {
+      dropped = this.lines.length - this.maxLines;
+      this.lines = this.lines.slice(-this.maxLines);
     }
-    return dropped;
+    return { lines: this.getLines(), dropped };
   }
 
   /** Clear all lines. */
@@ -52,14 +55,9 @@ export class LogBuffer {
     this.lines = [];
   }
 
-  /** Get all lines (for rendering). */
+  /** Get all lines as a fresh array. */
   getLines(): LogLine[] {
-    return this.lines;
-  }
-
-  /** Get the count of stored lines. */
-  getLength(): number {
-    return this.lines.length;
+    return [...this.lines];
   }
 
   /** Export as plain text. */
