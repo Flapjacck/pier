@@ -13,6 +13,17 @@ export class AppExistsError extends Error {
   }
 }
 
+/** Default max time a serialized create may hold the mutex. */
+export const CREATE_APP_MUTEX_TIMEOUT_MS = 30_000;
+
+/** Thrown when a serialized create exceeds {@link CREATE_APP_MUTEX_TIMEOUT_MS}. */
+export class CreateTimeoutError extends Error {
+  constructor() {
+    super("create timed out");
+    this.name = "CreateTimeoutError";
+  }
+}
+
 /** Thrown when a host is already in use by another app. */
 export class HostInUseError extends Error {
   constructor(message: string) {
@@ -179,32 +190,41 @@ let createMutex: Promise<void> = Promise.resolve();
  * Acquire and release the creation mutex.
  * Each createApp call chains off the tail of this promise.
  */
-export async function createAppSeralized(
+export async function createAppSerialized(
   clients: K8sClients,
   namespace: string,
   input: CreateAppInput,
   logger?: Pick<FastifyBaseLogger, "warn">,
 ): Promise<App> {
-  let result: App;
+  let result: App | undefined;
   let thrownErr: Error | undefined;
 
-  createMutex = createMutex.then(
-    async () => {
-      try {
-        result = await createApp(clients, namespace, input, logger);
-      } catch (err) {
-        thrownErr = err instanceof Error ? err : new Error(String(err));
+  const runWithTimeout = async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        (async () => {
+          try {
+            result = await createApp(clients, namespace, input, logger);
+          } catch (err) {
+            thrownErr = err instanceof Error ? err : new Error(String(err));
+          }
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new CreateTimeoutError()),
+            CREATE_APP_MUTEX_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
       }
-    },
-    async () => {
-      // If the previous call failed, continue anyway (don't let one poison the chain).
-      try {
-        result = await createApp(clients, namespace, input, logger);
-      } catch (err) {
-        thrownErr = err instanceof Error ? err : new Error(String(err));
-      }
-    },
-  );
+    }
+  };
+
+  createMutex = createMutex.then(runWithTimeout, runWithTimeout);
 
   await createMutex;
 
@@ -212,6 +232,5 @@ export async function createAppSeralized(
     throw thrownErr;
   }
 
-  // result will be assigned if no error
   return result!;
 }
