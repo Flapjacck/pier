@@ -27,6 +27,16 @@ describe("apiStatusCode", () => {
     const err = { statusCode: "404" };
     assert.equal(apiStatusCode(err), undefined);
   });
+
+  it("returns code from a parsed JSON body", () => {
+    const err = { body: JSON.stringify({ code: 404, message: "not found" }) };
+    assert.equal(apiStatusCode(err), 404);
+  });
+
+  it("returns code from an object body", () => {
+    const err = { body: { code: 503 } };
+    assert.equal(apiStatusCode(err), 503);
+  });
 });
 
 describe("apiErrorMessage", () => {
