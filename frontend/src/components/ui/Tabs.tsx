@@ -24,10 +24,10 @@ export function Tabs({ items, className, "aria-label": ariaLabel }: Props) {
           end={item.end}
           className={({ isActive }) =>
             cn(
-              "px-3 py-2 text-[13px] font-medium rounded-t-pier -mb-px border-b-2 transition-colors",
+              "px-3 py-2 text-[13px] font-medium -mb-px border-b-2 transition-colors",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus",
               isActive
-                ? "border-pier-accent text-pier-fg aria-current-page"
+                ? "border-pier-accent text-pier-fg"
                 : "border-transparent text-pier-muted hover:text-pier-fg hover:border-pier-border",
             )
           }
