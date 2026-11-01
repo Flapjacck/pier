@@ -28,14 +28,18 @@ pnpm --dir frontend build      # output in frontend/dist/
 | `src/api/` | Typed API client (`types.ts`, `client.ts`, `request.ts`, `errors.ts`) |
 | `src/context/` | `AuthContext`, `ThemeContext`, `ShellContext`, `PageActionsContext` |
 | `src/hooks/useApi.ts` | Small fetch hook (loading, error, data, refetch, abort on unmount) |
-| `src/hooks/useLogStream.ts` | Live log streaming (EventSource with backoff/reconnect or static fetch) (#47) |
-| `src/components/ui/LogsCard.tsx` | Complete log viewer card with header, controls, and scrollable panel (#47) |
+| `src/hooks/useLogStream.ts` | Live log streaming (EventSource with exponential backoff or static fetch) (#47, #65) |
+| `src/components/ui/LogsCard.tsx` | Composed log viewer card: header, menu, and panel (#65) |
+| `src/components/logs/LogsHeader.tsx` | Log viewer header bar with status, search, pod/tail selectors, and menu trigger (#65) |
+| `src/components/logs/LogsActionsMenu.tsx` | Copy/Download menu using shared Menu component (#65) |
+| `src/components/logs/LogsPanel.tsx` | Scrollable logs display with line numbers and "new lines" pill (#65) |
 | `src/hooks/useApps.ts` | Apps list fetcher with 10s auto-refresh (visible-tab only, no overlapping requests) |
 | `src/styles/tokens.css` | Pier semantic CSS variables (light/dark via `data-theme`) |
 | `src/styles/tailwind.theme.css` | Tailwind v4 `@theme` aliases → utilities |
 | `src/styles/index.css` | Tailwind import, token imports, base resets |
 | `src/components/layout/` | `AppShell`, `Sidebar`, `Header`, mobile drawer |
-| `src/components/ui/` | Shared primitives (Button, Dialog, Toast, Table, LogViewer, LogPanel, StatusBadge, …) |
+| `src/components/ui/` | Shared primitives (Button, Dialog, Toast, Table, Menu, StatusBadge, …) |
+| `src/components/ui/Menu.tsx` | Keyboard-navigable listbox dropdown (Escape, arrow keys, Enter) with focus management (#65) |
 | `src/lib/logBuffer.ts` | Capped line buffer with ANSI stripping, stable ids (#47) |
 | `src/components/` | Apps, brand, icons, auth guards |
 | `src/pages/` | Route-level views (including `LoginPage`) |
@@ -87,12 +91,16 @@ Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigi
 
 Copy only what the app references from the gitignored **`pier-brand-kit/`** tree into `public/`.
 
-## Log streaming (#47)
+## Log streaming (#47, #65)
 
-- **Live logs:** `useLogStream` hook opens `EventSource` to `/api/apps/:name/logs?follow=true&pod=…&tail=…` and streams lines. On connection error, it probes with one-line fetch to classify (pod gone, cluster down, transient), then reconnects with backoff (1s → 30s ± 20% jitter). Stream closes on unmount, pod/tail/follow change, or backend `end` event. Pushes divider line on reconnect.
-- **Static mode:** When `follow=false`, one `getAppLogsText` fetch returns tail lines as plain text. Status is "Paused".
-- **Buffer:** `LogBuffer` stores `.n` (line number, stable incremental) and `.text` (ANSI-stripped). Returns fresh arrays via `getLines()` and tracks drops via `append()` result. Capped at 5000 lines with efficient `slice()` not `shift()`.
-- **Display:** `LogsCard` renders a card with header bar (status dot + label, action buttons, pod/tail/follow selectors, ⋯ menu) and scrollable log body (JetBrains Mono 12px). Auto-scroll sticks to bottom; scroll-up shows line count pill. Copy and Download in menu. No filter or Clear (simplified UI).
+- **Live logs:** `useLogStream` hook opens `EventSource` to `/api/apps/:name/logs?follow=true&pod=…&tail=…` and streams lines. On connection error, it probes with one-line fetch to classify (pod gone, cluster down, transient), then reconnects with exponential backoff (1s, 2s, 4s… up to 30s ± 20% jitter; attempt counter resets on successful open). Stream closes on unmount, pod/tail/follow change, or backend `end` event. Pushes divider line on reconnect showing dropped line count.
+- **Static mode:** When `follow=false`, one `getAppLogsText` fetch clears the buffer first, then returns tail lines as plain text. Status is "Paused".
+- **Buffer:** `LogBuffer` stores `.n` (line number, stable incremental) and `.text` (ANSI-stripped). Returns fresh arrays via `getLines()` and tracks drops via `append()` result. Capped at 5000 lines with efficient `slice()` not `shift()`. `clear()` resets the line counter.
+- **UI:** `LogsCard` composes three sub-components for ≤250 lines each:
+  - `LogsHeader`: status dot + label, search, pod/tail/follow selectors, retry buttons, ⋯ menu trigger
+  - `LogsActionsMenu`: Copy/Download options using the shared `Menu` component (keyboard accessible, Escape closes, focus returns to trigger)
+  - `LogsPanel`: scrollable pre with line numbers, "new lines" pill inside the card (tracks `lastSeenNRef` for accuracy past 5000 lines)
+- **Pod fallback:** If selected pod is removed (e.g., after restart), falls back to newest pod from list. Pod error state is shown instead of skeleton.
 
 ## No hex in components
 
