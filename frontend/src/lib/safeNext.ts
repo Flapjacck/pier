@@ -1,6 +1,6 @@
 /** Accept only same-app relative paths to block open redirects. */
 export function safeNext(raw: string | null | undefined, fallback = "/apps"): string {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\") || raw.includes("\\")) {
     return fallback;
   }
   return raw;

@@ -50,9 +50,10 @@ export class LogBuffer {
     return { lines: this.getLines(), dropped };
   }
 
-  /** Clear all lines. */
+  /** Clear all lines and reset line numbering. */
   clear(): void {
     this.lines = [];
+    this.nextN = 1;
   }
 
   /** Get all lines as a fresh array. */
