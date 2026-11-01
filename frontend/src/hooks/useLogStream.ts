@@ -49,6 +49,12 @@ export function useLogStream({
   const bufferRef = useRef(new LogBuffer());
   const reconnectNowRef = useRef<(() => void) | null>(null);
 
+  // Track dropped count in a ref so pushDivider reads current value
+  const droppedCountRef = useRef(0);
+  useEffect(() => {
+    droppedCountRef.current = droppedCount;
+  }, [droppedCount]);
+
   useEffect(() => {
     // Don't start until pod is known
     if (!pod) {
@@ -61,6 +67,7 @@ export function useLogStream({
     let reconnectTimer: number | null = null;
     let rafPending: number | null = null;
     let pendingLines: string[] = [];
+    let currentAttempt = 0; // Local variable, not state
     const abortController = new AbortController();
 
     // Flush pending lines to state (once per rAF)
@@ -92,7 +99,7 @@ export function useLogStream({
 
     const pushDivider = () => {
       // Add a visual divider line on reconnect
-      const droppedText = droppedCount > 0 ? ` (${droppedCount} lines dropped)` : '';
+      const droppedText = droppedCountRef.current > 0 ? ` (${droppedCountRef.current} lines dropped)` : '';
       pendingLines.push(`[Reconnected, showing last ${bufferRef.current.getLines().length} lines${droppedText}]`);
       scheduleFlush();
     };
@@ -122,21 +129,25 @@ export function useLogStream({
         reconnectTimer = null;
         if (!cancelled) {
           pushDivider();
-          open(attempt + 1);
+          open(attempt);
         }
       }, nextRetryMs) as unknown as number;
     };
 
     // Open EventSource or static fetch
-    const open = (_attempt: number) => {
+    const open = (attempt: number) => {
       if (cancelled) return;
+      currentAttempt = attempt;
 
       if (follow) {
         closeEventSource();
         es = new EventSource(appLogsUrl(name, { follow: true, pod, tail }));
 
         es.addEventListener("open", () => {
-          if (!cancelled) setStatus({ kind: "live" });
+          if (!cancelled) {
+            currentAttempt = 0; // Reset on successful open
+            setStatus({ kind: "live" });
+          }
         });
 
         es.addEventListener("message", (event: MessageEvent) => {
@@ -156,7 +167,7 @@ export function useLogStream({
           if (event instanceof MessageEvent) {
             closeEventSource();
             flushLines();
-            retry(0);
+            retry(currentAttempt + 1);
             return;
           }
 
@@ -168,7 +179,7 @@ export function useLogStream({
               if (isPodGone) {
                 setStatus({ kind: "pod-gone" });
               } else {
-                retry(0);
+                retry(currentAttempt + 1);
               }
             }
           });
@@ -183,7 +194,10 @@ export function useLogStream({
           }
         });
       } else {
-        // Static mode: one fetch
+        // Static mode: one fetch; clear buffer before fetching
+        bufferRef.current.clear();
+        setDroppedCount(0);
+        setLines([]);
         setStatus({ kind: "loading" });
         getAppLogsText(name, { pod, tail }, { signal: abortController.signal })
           .then((text) => {
@@ -213,6 +227,7 @@ export function useLogStream({
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      currentAttempt = 0;
       open(0);
     };
 
@@ -228,7 +243,6 @@ export function useLogStream({
       if (rafPending !== null) cancelAnimationFrame(rafPending);
       abortController.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- droppedCount is state, not a dep
   }, [name, pod, tail, follow]);
 
   return {
