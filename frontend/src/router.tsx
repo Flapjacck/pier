@@ -1,5 +1,8 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
+import { LoginRoute } from "./components/auth/LoginRoute";
+import { RequireAuth } from "./components/auth/RequireAuth";
 import { AppShell } from "./components/layout/AppShell";
+import { AuthProvider } from "./context/AuthContext";
 import { AppDetailPage } from "./pages/AppDetailPage";
 import { AppsPage } from "./pages/AppsPage";
 import { BoomPage } from "./pages/BoomPage";
@@ -14,16 +17,27 @@ export const router = createBrowserRouter([
   {
     path: "/",
     errorElement: <ErrorPage />,
+    element: (
+      <AuthProvider>
+        <Outlet />
+      </AuthProvider>
+    ),
     children: [
-      { index: true, element: <Navigate to="/apps" replace /> },
+      { path: "login", element: <LoginRoute /> },
       {
-        element: <AppShell />,
-        errorElement: <ErrorPage />,
+        element: <RequireAuth />,
         children: [
-          { path: "apps", element: <AppsPage /> },
-          { path: "apps/:name", element: <AppDetailPage /> },
-          ...devRoutes,
-          { path: "*", element: <NotFoundPage /> },
+          { index: true, element: <Navigate to="/apps" replace /> },
+          {
+            element: <AppShell />,
+            errorElement: <ErrorPage />,
+            children: [
+              { path: "apps", element: <AppsPage /> },
+              { path: "apps/:name", element: <AppDetailPage /> },
+              ...devRoutes,
+              { path: "*", element: <NotFoundPage /> },
+            ],
+          },
         ],
       },
     ],
