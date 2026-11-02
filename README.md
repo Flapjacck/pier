@@ -29,6 +29,125 @@ Pier is a lightweight control plane for k3s: a self-hosted dashboard for deployi
 
 I wanted to actually learn Kubernetes, clusters, and how cloud platforms work under the hood, not just read about them. My home lab runs on Proxmox, and every time I wanted to test or deploy something I'd spin up yet another LXC container by hand. A cluster gives you all of that in one place (scheduling, restarts, networking, routing, scaling), so Pier is my way of building the "push an app, get a URL" experience on hardware I own.
 
+## What it does
+
+- **Deploy apps:** Push a Docker image, get a URL instantly via HTTP ingress
+- **Logs & monitoring:** Stream live logs, check pod status, see resource usage
+- **Scaling:** Scale replicas up/down, pause with zero replicas
+- **Restart:** Trigger pod rollouts for live reload or recovery
+- **Networking:** Apps reach public internet; isolated from each other and from the host LAN by default (configurable)
+- **Cluster health:** Check API server status and node readiness
+
+## Architecture
+
+```mermaid
+graph TB
+    Browser["🌐 Browser"]
+    Traefik["Traefik Ingress<br/>pier.example.internal"]
+    PierBackend["pier-backend pod<br/>default namespace"]
+    K8sAPI["Kubernetes API"]
+    App["App deployment<br/>pier-apps namespace"]
+    
+    Browser -->|HTTP| Traefik
+    Traefik -->|Route to pier.* | PierBackend
+    Traefik -->|Route to app.*| App
+    PierBackend -->|kubectl API| K8sAPI
+    K8sAPI -->|Create/Delete/Scale| App
+    
+    PierBackend -->|"Dashboard SPA"| Browser
+    App -->|"HTTP port"| Traefik
+```
+
+**Backend:** Single Fastify pod in `default` namespace with ServiceAccount granting cluster-wide health read and namespace-scoped app management in `pier-apps`.
+
+**Apps:** Run in isolated `pier-apps` namespace with:
+- **Pod Security:** enforced `baseline`, warned `restricted`
+- **NetworkPolicies:** default-deny ingress/egress, allows Traefik ingress and DNS; optional rules for private networks
+- **ResourceQuota:** 2 CPU / 4Gi memory request/limit per namespace
+- **Service type policy:** ClusterIP only (no NodePort/LoadBalancer)
+
+## Prerequisites
+
+Before you start, ensure your k3s node has:
+
+- **k3s** ≥ v1.36 with **Traefik** ingress controller (default in k3s)
+- **kubectl** pointed at the cluster (via `KUBECONFIG`)
+- **Docker** on your local machine (to build and push images to the cluster)
+- **SSH key access** to the k3s node with passwordless `sudo k3s ctr` (for image import)
+- **Node.js** ≥ 22, **pnpm** ≥ 9 (for local development)
+- **Wildcard DNS** (e.g. `*.192.0.2.10.nip.io` or your own resolver; apps use `<name>.<domain>`)
+
+## Setup from a blank k3s node
+
+1. **Copy the kubeconfig** from the node to your local machine:
+   ```bash
+   scp your-ssh-user@192.0.2.10:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+   kubectl config set clusters.k3s.server https://192.0.2.10:6443
+   # Edit ~/.kube/config and replace 127.0.0.1 with the node IP
+   kubectl get nodes  # verify connection
+   ```
+
+2. **Clone pier and set env vars:**
+   ```bash
+   git clone <pier-repo>
+   cd pier/backend
+   cp .env.example .env
+   ```
+   Edit `backend/.env`:
+   ```bash
+   PIER_API_TOKEN=$(openssl rand -hex 32)
+   K3S_HOST=192.0.2.10
+   K3S_SSH_USER=your-ssh-user
+   PIER_INGRESS_DOMAIN=192.0.2.10.nip.io
+   PIER_DASHBOARD_HOST=pier.192.0.2.10.nip.io  # optional; derived if omitted
+   ```
+
+3. **Add SSH key to agent and deploy:**
+   ```bash
+   ssh-add ~/.ssh/id_ed25519  # or your key
+   ./scripts/deploy-local.sh
+   ```
+   Wait for the rollout (up to 2 min).
+
+4. **Open the dashboard:**
+   ```
+   http://pier.192.0.2.10.nip.io
+   ```
+   Log in with the token from `backend/.env`.
+
+5. **Deploy your first app:**
+   - Create a new app: name=`myapp`, image=`nginx:alpine`, port=`80`
+   - Set host: `myapp.192.0.2.10.nip.io`
+   - Open `http://myapp.192.0.2.10.nip.io` — Nginx is running
+
+## Upgrading
+
+```bash
+git pull origin main
+./backend/scripts/deploy-local.sh
+```
+
+The script rebuilds the image, imports it, and rolls out the updated pod.
+
+## Troubleshooting
+
+- **Dashboard shows login screen (401):** bearer token is missing or wrong, or session expired. Log in again with the token from `PIER_API_TOKEN`.
+- **Dashboard returns 404 via Traefik:** check that `PIER_INGRESS_DOMAIN` is set and the Ingress was created:
+  ```bash
+  kubectl get ingress -n default
+  kubectl describe ingress pier-backend -n default
+  ```
+- **App stuck in "building" / ImagePullBackOff:** Pod wasn't created due to Pod Security or quota rejection. Debug with:
+  ```bash
+  kubectl get events -n pier-apps --sort-by=.lastTimestamp
+  kubectl describe pod -n pier-apps
+  ```
+- **App can't reach your LAN (times out):** NetworkPolicy blocks private ranges. See [backend/k8s/README.md](backend/k8s/README.md#network-isolation-pier-apps) for custom rules.
+
+For more details, see:
+- [backend/README.md](backend/README.md#deploy-to-k3s) — Deploy script, token rotation, debugging
+- [backend/k8s/README.md](backend/k8s/README.md) — Manifests, RBAC, Pod Security, quotas, network policies
+
 ## Development
 
 [![CI](https://github.com/Flapjacck/pier/actions/workflows/ci.yml/badge.svg)](https://github.com/Flapjacck/pier/actions/workflows/ci.yml)

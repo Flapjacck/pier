@@ -1,10 +1,14 @@
 # deployment.yaml.tmpl
-# Rendered by deploy-local.sh: __IMAGE__, __TOKEN_SHA256__, and __DASHBOARD_HOST__ are substituted.
+# Rendered by deploy-local.sh with these placeholder substitutions:
+#   __IMAGE__ - Docker image tag (e.g. pier-backend:abc123def)
+#   __TOKEN_SHA256__ - SHA256 hash of PIER_API_TOKEN (for token rotation detection)
+#   __INGRESS_DOMAIN__ - Wildcard DNS suffix (e.g. 192.0.2.10.nip.io)
+#   __DASHBOARD_HOST__ - Dashboard hostname (e.g. pier.192.0.2.10.nip.io)
 # Do not kubectl apply this template directly; use deploy-local.sh instead.
-# 
+#
 # The pod-template annotation pier.dev/token-sha256 ensures that when PIER_API_TOKEN
 # changes, the pod template hash changes, triggering a rollout without needing
-# kubectl set image or manual intervention.
+# manual kubectl set image intervention.
 
 apiVersion: apps/v1
 kind: Deployment

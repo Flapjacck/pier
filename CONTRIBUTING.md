@@ -23,32 +23,43 @@ Optional body explaining the change.
 
 ```
 feat(k8s): add pier-apps namespace (#2)
-fix(auth): correct bearer token validation timing (#5)
-docs: clarify kubeconfig requirements in README (#9)
-chore(backend): upgrade TypeScript to 5.8 (#9)
+
+Build namespace with Pod Security labels.
+Refs #2
 ```
 
-Each commit should be **one logical change** and should build/test successfully on its own. The full feature or fix may span multiple commits.
+```
+docs: update deployment README (#37)
+
+Clarify token rotation and manifest apply order.
+Refs #37
+```
+
+**Rules:**
+- Each commit should be **one logical change** and should build/test successfully on its own.
+- Use `Refs #<number>` in commit bodies (never `Closes` — only PR bodies use `Closes`).
+- The full feature or fix may span multiple commits.
+- Never push directly to `main`; all changes go through pull requests.
 
 ## Branch naming
 
-Feature branches should follow this pattern:
+Work on features and fixes should use `issue-<number>` pattern:
 
 ```
-<type>/<issue-number>-<slug>
+issue-<number>
 ```
 
 Examples:
-- `feat/2-k8s-namespace`
-- `fix/5-auth-timing`
-- `chore/9-dx-lint-ci`
+- `issue-37`
+- `issue-50`
+- `issue-42`
 
 ## Workflow
 
-1. **Create a feature branch** from `main`:
+1. **Create a branch** from `main`:
    ```bash
    git pull origin main
-   git switch -c feat/<number>-<slug>
+   git switch -c issue-<number>
    ```
 
 2. **Make your changes**, following the patterns in existing code. Commits should be conventional-style and build successfully.

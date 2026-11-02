@@ -9,28 +9,32 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 | [namespace.yaml](namespace.yaml) | Namespace `pier-apps`, with Pod Security labels: enforce `baseline`, warn and audit `restricted`, all at version `latest`. |
 | [rbac.yaml](rbac.yaml) | ServiceAccount `default/pier-backend`; ClusterRole and ClusterRoleBinding `pier-backend-cluster-health`. |
 | [rbac-apps.yaml](rbac-apps.yaml) | Role and RoleBinding `pier-app-manager` in `pier-apps`, bound to `default/pier-backend`. |
-| [quota.yaml](quota.yaml) | ResourceQuota `pier-apps-quota` and LimitRange `pier-apps-limits` in `pier-apps`. |
-| [networkpolicies.yaml](networkpolicies.yaml) | Four NetworkPolicies in `pier-apps`: default-deny, allow-ingress-from-traefik, allow-dns-egress, allow-internet-egress. |
-| [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps`. |
-| [deployment.yaml](deployment.yaml) | Deployment and ClusterIP Service `pier-backend` in `default`. |
+| [quota.yaml](quota.yaml) | ResourceQuota `pier-apps-quota` and LimitRange `pier-apps-limits` in `pier-apps` (optional, applied if present). |
+| [networkpolicies.yaml](networkpolicies.yaml) | Four NetworkPolicies in `pier-apps`: default-deny, allow-ingress-from-traefik, allow-dns-egress, allow-internet-egress (optional, applied if present). |
+| [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps` (optional, applied if present). |
+| [service.yaml](service.yaml) | ClusterIP Service `pier-backend` in `default`. |
+| [deployment.yaml.tmpl](deployment.yaml.tmpl) | Deployment `pier-backend` in `default` (template; rendered with `__IMAGE__`, `__TOKEN_SHA256__`, `__INGRESS_DOMAIN__`, `__DASHBOARD_HOST__`). |
+| [ingress.yaml.tmpl](ingress.yaml.tmpl) | Ingress `pier-backend-dashboard` for the dashboard (template; rendered with `__DASHBOARD_HOST__`; applied only if dashboard host is set). |
 
 ## Apply order
 
-`../scripts/deploy-local.sh` applies the files in this order, renders `deployment.yaml.tmpl` substituting `__IMAGE__`, `__TOKEN_SHA256__`, and `__INGRESS_DOMAIN__` (from `PIER_INGRESS_DOMAIN` env var), and applies the result (see [backend README](../README.md#deploy-to-k3s)):
+`../scripts/deploy-local.sh` applies manifests and templates in this order (see [backend README deploy section](../README.md#deploy-to-k3s)):
 
-```bash
-kubectl apply -f backend/k8s/namespace.yaml
-kubectl apply -f backend/k8s/rbac.yaml
-kubectl apply -f backend/k8s/rbac-apps.yaml
-kubectl apply -f backend/k8s/quota.yaml
-kubectl apply -f backend/k8s/networkpolicies.yaml
-kubectl apply -f backend/k8s/policy-services.yaml
-kubectl apply -f backend/k8s/deployment.yaml
-```
+1. `namespace.yaml` — creates `pier-apps` namespace with Pod Security labels
+2. `rbac.yaml` — ServiceAccount and ClusterRole for cluster health check
+3. `rbac-apps.yaml` — Role for app management in `pier-apps`
+4. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
+5. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
+6. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
+7. `service.yaml` — Service for pier-backend
+8. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
+   - `__IMAGE__` → `pier-backend:$TAG` (the built image)
+   - `__TOKEN_SHA256__` → SHA256 hash of `PIER_API_TOKEN` (for restart detection)
+   - `__INGRESS_DOMAIN__` → `PIER_INGRESS_DOMAIN` env var
+   - `__DASHBOARD_HOST__` → `PIER_DASHBOARD_HOST` or derived value
+9. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if `PIER_DASHBOARD_HOST` is set), rendered with `__DASHBOARD_HOST__`
 
-The namespace has to exist before anything namespaced in `pier-apps` is applied. The ServiceAccount should exist before the Deployment.
-
-`deployment.yaml` carries the placeholder image `pier-backend:dev`, which has no matching image anywhere. Applying it by hand resets the live image and starts a rollout that fails with `ImagePullBackOff`. Follow it with `kubectl -n default set image deploy/pier-backend api=pier-backend:<tag>`, or use the script. [#19](https://github.com/Flapjacck/pier/issues/19) tracks fixing this.
+Namespace and RBAC must exist before namespaced objects. The script uses `kubectl apply --dry-run=server` with `--dry-run` flag for validation without mutation.
 
 ## RBAC
 
@@ -127,11 +131,19 @@ Four NetworkPolicies enforce network segmentation:
 | `default-deny` | Blocks all ingress and egress by default. Apps must explicitly allow needed traffic. |
 | `allow-ingress-from-traefik` | Allows ingress from Traefik pod (`app.kubernetes.io/name=traefik` in `kube-system`) to all app pods, enabling HTTP/HTTPS access via the ingress controller. |
 | `allow-dns-egress` | Allows egress from app pods to kube-dns (`k8s-app=kube-dns` in `kube-system`) on TCP/UDP 53, enabling service name and external domain resolution. |
-| `allow-internet-egress` | Allows egress to public internet (`0.0.0.0/0`), but blocks private address ranges: RFC1918 private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), and shared address space (`100.64.0.0/10`). Prevents app-to-app communication, access to pier-backend in `default`, and cluster service discovery on the private LAN. |
+| `allow-internet-egress` | Allows outbound HTTP/HTTPS (TCP 80/443, UDP 443 for QUIC) to public addresses (`0.0.0.0/0`), but blocks RFC1918 private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), and shared address space CGNAT (`100.64.0.0/10`). Prevents app-to-app communication, access to pier-backend in `default`, and LAN address access. |
 
 **Blocked by design:** Other app pods, pier-backend, and LAN/private networks.
 
-**Optional:** To allow app-a to reach app-b on a specific port, add a NetworkPolicy like the example in `networkpolicies.yaml` (commented out). Apps communicate only through public internet (e.g., over ingress or explicit external proxies), not directly via private networks.
+**Optional: Widening egress rules**
+
+To allow an app to reach a specific private network or additional port, add a custom NetworkPolicy in `pier-apps`. Examples:
+
+- **App-to-app communication:** add an egress rule from app-a's pod selector to app-b's pod selector (egress, no ingress needed due to stateful firewall)
+- **Private LAN access (e.g., database):** add egress to a specific CIDR and port(s), e.g. `10.0.5.0/24:5432` for a database
+- **Extra port to public internet:** add egress on a non-standard port (e.g. TCP 8080) to `0.0.0.0/0`
+
+See `networkpolicies.yaml` for commented examples. Apps communicate only through public internet (ingress/egress) or explicit private rules, never directly via LAN discovery.
 
 ```bash
 kubectl get netpol -n pier-apps

@@ -24,10 +24,10 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 
 ## Adding a route
 
-New cluster routes (#4 deploy, #5 pods and logs, #6 scale, restart and delete) should follow `apps.ts`:
+New routes for cluster or app operations should follow the pattern of existing routes (apps.ts, cluster.ts, etc.):
 
-1. Put the Kubernetes calls in a function in `../k8s/` that takes the API client it needs and throws on error.
-2. Export a `*RoutesWithDeps(deps)` factory that takes `k8s: K8sClientsResult`, plus any config it needs, such as `namespace`.
+1. Put the Kubernetes calls in a function in `../k8s/` that takes the API clients it needs and throws on error.
+2. Export a `*RoutesWithDeps(deps)` factory that takes `k8s: K8sClientsResult`, plus any config it needs, such as `namespace` or `ingressDomain`.
 3. Return `503` with the generic body when `deps.k8s.ok` is false or the call throws, and log the error with `req.log.error`.
 4. Register it in `buildApp()` with the shared `k8sResult`. Don't call `loadKubeConfig()` or `createK8sClients()` in a route.
 5. Test through `buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult({ ... }) })` so auth and registration are covered too.
@@ -256,6 +256,42 @@ curl -si "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps/Hello | head -1
 # HTTP/1.1 400 Bad Request
 ```
 
+## `GET /api/apps/:name/pods`
+
+List pods for an app Deployment. Returns the pod summary list with status and ready count.
+
+### Response
+
+**200 (success)**: Array of pod summaries:
+
+```json
+[
+  { "name": "hello-5b8c6d4c9-abc12", "namespace": "pier-apps", "phase": "Running", "ready": "1/1", "nodeName": "k3s-node", "startedAt": "2026-10-31T15:00:00.000Z" },
+  { "name": "hello-5b8c6d4c9-def34", "namespace": "pier-apps", "phase": "Running", "ready": "1/1", "nodeName": "k3s-node", "startedAt": "2026-10-31T15:00:05.000Z" }
+]
+```
+
+- `name`: pod name
+- `namespace`: pod namespace (`pier-apps`)
+- `phase`: pod phase (`Pending`, `Running`, `Succeeded`, `Failed`, `Unknown`)
+- `ready`: X/Y ready containers
+- `nodeName` (optional): node name if scheduled
+- `startedAt` (optional): container start time if set
+
+| Status | Error | Reason |
+|--------|-------|--------|
+| **400** | `invalid request` | `name` fails DNS-1035 validation. |
+| **401** | `unauthorized` | Missing or wrong Bearer token. |
+| **404** | `app not found` | Deployment does not exist, is terminating, or lacks the `pier.app=<name>` label. |
+| **503** | `cluster unreachable` | Kubernetes API unreachable or read fails. Full error logged server-side. |
+
+### Example
+
+```bash
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+curl -s "${AUTH[@]}" http://192.0.2.10.nip.io/api/apps/hello/pods | jq
+```
+
 ## `POST /api/apps`
 
 Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orchestrates creation in order, with pre-checks for conflicts and rollback on failure.
@@ -353,7 +389,7 @@ If `host` is provided:
 Apps deployed via POST /apps run in the `pier-apps` namespace, which is protected by **NetworkPolicies** that enforce network segmentation:
 
 - **Incoming:** Apps can only receive traffic from Traefik (ingress controller in `kube-system`). Other apps cannot reach each other; internal communication requires going through Traefik (HTTP/HTTPS ingress).
-- **Outgoing:** Apps can reach DNS for name resolution (kube-dns in `kube-system`) and public internet (`0.0.0.0/0`), but NOT private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), or shared address space (`100.64.0.0/10`). This blocks access to other apps, pier-backend, and the home LAN.
+- **Outgoing:** Apps can reach DNS (TCP/UDP 53) and outbound HTTP/HTTPS (TCP 80/443, UDP 443 for QUIC), but NOT private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`), or CGNAT (`100.64.0.0/10`). This blocks app-to-app communication, access to pier-backend, and LAN access.
 
 **Troubleshooting:** If an app attempts to reach a cluster service (e.g., pier-backend), another app, or a private LAN address and the connection times out, this is by design. Check the NetworkPolicy rules:
 

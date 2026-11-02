@@ -54,6 +54,16 @@ pnpm --dir frontend build      # output in frontend/dist/
 - **Guard:** `AuthProvider` probes `GET /api/session` on load. `RequireAuth` sends anonymous users to `/login?next=…` (same-origin paths only). When `authDisabled` is true (backend has no `PIER_API_TOKEN`), `TokenRequiredPage` is shown instead of login. Any other `401` triggers redirect to login unless auth is disabled.
 - **Data hook:** `useApi` is an in-house hook (no TanStack Query) to keep dependencies minimal and match Pier’s small surface area; it aborts on unmount and dependency changes.
 
+## Stack versions
+
+From `frontend/package.json`:
+
+- **React** 19.3 + React Router
+- **Vite** 8.3 (dev server, build, HMR)
+- **Tailwind CSS** 4.3
+- **TypeScript** 5.8 (strict mode)
+- **ESLint** with React Hooks plugin
+
 ## Local dev (frontend + backend)
 
 **Required:** Backend must be running for the apps list and detail endpoints to work.
@@ -65,6 +75,17 @@ pnpm --dir frontend build      # output in frontend/dist/
 ### Dev proxy and cookies
 
 Vite proxies `/api` and `/health` to `http://127.0.0.1:3000` with **`changeOrigin: false`** so the proxied request keeps `Host: localhost:5173`, matching the browser `Origin` on cookie-authenticated POST/PUT/PATCH/DELETE. With `changeOrigin: true`, the backend’s Origin check returns `403 forbidden origin` during local login and mutations.
+
+### In-cluster serving (production)
+
+In the Docker image, the built SPA (`frontend/dist/`) is copied into the pier-backend container at `public/`. Nginx serves this as static files via the Traefik ingress (pier.example.com):
+
+- **`PIER_PUBLIC_DIR`** env var (optional): path to serve static files from (defaults to `../public` relative to dist)
+- **SPA fallback:** requests to missing paths fall back to `index.html` so React Router handles navigation
+- **CSP:** Traefik should set `Content-Security-Policy` headers; review in production
+- **Theme init:** `public/theme-init.js` runs inline before CSS loads (avoids flash of wrong theme on page reload)
+
+See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_DIR` variable documentation.
 
 ## Routing
 
