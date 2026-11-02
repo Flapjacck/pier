@@ -10,15 +10,20 @@
 #   RENDER_TOKEN_SHA256    sha256 of the real token (restart-on-rotate annotation)
 #   RENDER_INGRESS_DOMAIN  may be empty
 #   RENDER_DASHBOARD_HOST  may be empty; the dashboard ingress is skipped if so
+#   RENDER_TLS_ISSUER      may be empty; no tls manifest and no dashboard TLS if so
 
 # manifest_names: prints the manifests to apply, in order, one per line.
-# Optional files are listed only if they exist; the ingress only with a host.
+# Optional files are listed only if they exist; tls only with an issuer; the
+# ingress only with a host.
 manifest_names() {
   local name
-  for name in namespace rbac rbac-apps quota networkpolicies policy-services service; do
+  for name in namespace rbac rbac-apps quota networkpolicies policy-services tls service; do
     case "$name" in
       quota | networkpolicies | policy-services)
         [[ -f "$K8S_DIR/$name.yaml" ]] || continue
+        ;;
+      tls)
+        [[ -n "$RENDER_TLS_ISSUER" && -f "$K8S_DIR/$name.yaml" ]] || continue
         ;;
     esac
     echo "$name"
@@ -43,6 +48,17 @@ render_secret() {
       -o yaml
 }
 
+# render_tls_lines: filters a template on stdin. Lines ending in "# tls-only"
+# keep their content (marker stripped) when RENDER_TLS_ISSUER is set, and are
+# dropped otherwise.
+render_tls_lines() {
+  if [[ -n "$RENDER_TLS_ISSUER" ]]; then
+    sed -e 's/ *# tls-only$//'
+  else
+    sed -e '/# tls-only$/d'
+  fi
+}
+
 # render_manifest <name>: prints one rendered manifest to stdout.
 render_manifest() {
   case "$1" in
@@ -54,11 +70,13 @@ render_manifest() {
         -e "s|__TOKEN_SHA256__|$RENDER_TOKEN_SHA256|g" \
         -e "s|__INGRESS_DOMAIN__|$RENDER_INGRESS_DOMAIN|g" \
         -e "s|__DASHBOARD_HOST__|$RENDER_DASHBOARD_HOST|g" \
+        -e "s|__TLS_ISSUER__|$RENDER_TLS_ISSUER|g" \
         "$K8S_DIR/deployment.yaml.tmpl"
       ;;
     ingress)
-      sed -e "s|__DASHBOARD_HOST__|$RENDER_DASHBOARD_HOST|g" \
-        "$K8S_DIR/ingress.yaml.tmpl"
+      render_tls_lines <"$K8S_DIR/ingress.yaml.tmpl" |
+        sed -e "s|__DASHBOARD_HOST__|$RENDER_DASHBOARD_HOST|g" \
+          -e "s|__TLS_ISSUER__|$RENDER_TLS_ISSUER|g"
       ;;
     *)
       cat "$K8S_DIR/$1.yaml"
@@ -66,11 +84,11 @@ render_manifest() {
   esac
 }
 
-# render_to_dir <dir>: writes every manifest as NN-<name>.yaml in apply order.
+# render_to_dir <dir>: writes every manifest as NNN-<name>.yaml in apply order.
 render_to_dir() {
   local dir="$1" i=0 name
   while IFS= read -r name; do
-    render_manifest "$name" >"$dir/$(printf '%02d' "$i")-$name.yaml"
+    render_manifest "$name" >"$dir/$(printf '%03d' "$i")-$name.yaml"
     i=$((i + 10))
   done < <(manifest_names)
 }

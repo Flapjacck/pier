@@ -4,6 +4,7 @@
 #   __TOKEN_SHA256__ - SHA256 hash of PIER_API_TOKEN (for token rotation detection)
 #   __INGRESS_DOMAIN__ - Wildcard DNS suffix (e.g. 192.0.2.10.nip.io)
 #   __DASHBOARD_HOST__ - Dashboard hostname (e.g. pier.192.0.2.10.nip.io)
+#   __TLS_ISSUER__     - cert-manager ClusterIssuer for app Ingresses; empty = no TLS
 # Do not kubectl apply this template directly; use deploy-local.sh instead.
 #
 # The pod-template annotation pier.dev/token-sha256 ensures that when PIER_API_TOKEN
@@ -62,6 +63,8 @@ spec:
               value: "true"
             - name: PIER_DASHBOARD_HOST
               value: "__DASHBOARD_HOST__"
+            - name: PIER_TLS_ISSUER
+              value: "__TLS_ISSUER__"
             - name: PIER_API_TOKEN
               valueFrom:
                 secretKeyRef:

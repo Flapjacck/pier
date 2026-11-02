@@ -68,7 +68,7 @@ if [[ -n "$OUT_DIR" && "$MODE" != render ]]; then
   die "--out only works with --render."
 fi
 
-# Load environment for K3S_HOST, K3S_SSH_USER, PIER_API_TOKEN, PIER_INGRESS_DOMAIN.
+# Load environment for K3S_HOST, K3S_SSH_USER, PIER_API_TOKEN, PIER_INGRESS_DOMAIN, PIER_TLS_ISSUER.
 # Values already in the environment win. PIER_ENV_FILE overrides the path
 # (tests point it at a file that doesn't exist).
 ENV_FILE="${PIER_ENV_FILE:-$BACKEND_DIR/.env}"
@@ -94,7 +94,8 @@ DASHBOARD_HOST="${PIER_DASHBOARD_HOST:-}"
 if [[ -z "$DASHBOARD_HOST" && -n "${PIER_INGRESS_DOMAIN:-}" ]]; then
   DASHBOARD_HOST="pier.${PIER_INGRESS_DOMAIN}"
 fi
-for var in PIER_INGRESS_DOMAIN DASHBOARD_HOST; do
+TLS_ISSUER="${PIER_TLS_ISSUER:-}"
+for var in PIER_INGRESS_DOMAIN DASHBOARD_HOST TLS_ISSUER; do
   if ! [[ "${!var:-}" =~ ^[a-z0-9.-]*$ ]]; then
     die "$var \"${!var}\" contains invalid characters. Use lowercase letters, digits, dots, and hyphens only."
   fi
@@ -113,6 +114,7 @@ fi
 RENDER_IMAGE="pier-backend:$TAG"
 RENDER_INGRESS_DOMAIN="${PIER_INGRESS_DOMAIN:-}"
 RENDER_DASHBOARD_HOST="$DASHBOARD_HOST"
+RENDER_TLS_ISSUER="$TLS_ISSUER"
 if [[ "$MODE" == render ]]; then
   RENDER_TOKEN="REDACTED"
 else
@@ -138,6 +140,11 @@ fi
 
 # Verify kubectl can reach the cluster.
 kubectl get nodes >/dev/null 2>&1 || die "kubectl cannot reach the cluster. Check KUBECONFIG."
+
+# TLS needs cert-manager's CRDs before tls.yaml can apply (or dry-run).
+if [[ -n "$TLS_ISSUER" ]] && ! kubectl get crd clusterissuers.cert-manager.io >/dev/null 2>&1; then
+  die "PIER_TLS_ISSUER is set but cert-manager isn't installed. Run ./scripts/install-cert-manager.sh first."
+fi
 
 # Build and import image (real deploys only).
 if [[ "$MODE" == deploy ]]; then
@@ -175,7 +182,7 @@ kubectl -n default rollout status deploy/pier-backend --timeout=120s
 echo "==> Deployment successful!"
 echo ""
 if [[ -n "$DASHBOARD_HOST" ]]; then
-  echo "Dashboard: http://$DASHBOARD_HOST"
+  echo "Dashboard: http${TLS_ISSUER:+s}://$DASHBOARD_HOST"
   echo ""
 fi
 echo "Troubleshooting:"
