@@ -15,7 +15,7 @@ load_env_file() {
   local status=0
 
   while IFS= read -r line || [[ -n "$line" ]]; do
-    ((line_num++))
+    line_num=$((line_num + 1))
 
     # Skip blank lines.
     if [[ -z "${line//[[:space:]]/}" ]]; then

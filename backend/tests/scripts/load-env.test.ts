@@ -1,368 +1,75 @@
 import { test } from "node:test";
 import * as assert from "node:assert";
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
-import { fileURLToPath } from "node:url";
+import { backendDir, runBash, withTempDir } from "../helpers/run-bash.js";
 
-// Test load_env_file by sourcing the script and running it in a clean bash environment.
-// Uses fixtures written to a temp directory.
+// Sources scripts/lib/load-env.sh in a clean bash and checks what it exports.
 
-// Get the backend directory (two levels up from this test file).
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const backendDir = path.resolve(__dirname, "../..");
+const loadEnv = path.join(backendDir, "scripts/lib/load-env.sh");
 
-test("load-env.sh: basic parsing", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
+/** Writes `contents` to a temp .env, runs `body` after loading it, returns the result. */
+function loadAndRun(contents: string, body: string, prelude = "") {
+  return withTempDir((dir) => {
+    const fixture = path.join(dir, ".env");
+    fs.writeFileSync(fixture, contents);
+    return runBash(`
+      ${prelude}
+      source "${loadEnv}"
+      load_env_file "${fixture}"
+      ${body}
+    `);
+  });
+}
 
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "A=abc==\n");
+const cases: { name: string; file: string; key: string; want: string }[] = [
+  { name: "basic parsing (splits on first =)", file: "A=abc==\n", key: "A", want: "abc==" },
+  { name: "quoted value with spaces", file: 'B="hello  world"\n', key: "B", want: "hello  world" },
+  { name: "apostrophe in unquoted value", file: "C=it's\n", key: "C", want: "it's" },
+  { name: "single-quoted value", file: "D='single'\n", key: "D", want: "single" },
+  { name: "backslash preserved", file: "E=a\\b\n", key: "E", want: "a\\b" },
+  { name: "inline comment stripped", file: "F=val # comment\n", key: "F", want: "val" },
+  { name: "hash inside quotes not stripped", file: 'G="has # hash"\n', key: "G", want: "has # hash" },
+  { name: "handles export prefix", file: "export K=with_export_prefix\n", key: "K", want: "with_export_prefix" },
+  { name: "last line without newline", file: "L=no_newline", key: "L", want: "no_newline" },
+];
 
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$A"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
+for (const c of cases) {
+  test(`load-env.sh: ${c.name}`, () => {
+    const result = loadAndRun(c.file, `printf '%s' "$${c.key}"`);
     assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "abc==");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
+    assert.strictEqual(result.stdout, c.want);
+  });
+}
+
+test("load-env.sh: skips blank lines and comments", () => {
+  const file = "\n# This is a comment\nH=value1\n\n# Another comment\n  # indented comment\nI=value2\n";
+  const result = loadAndRun(file, `printf '%s\\0%s' "$H" "$I"`);
+  assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
+  assert.deepStrictEqual(result.stdout.split("\0"), ["value1", "value2"]);
 });
 
-test("load-env.sh: quoted value with spaces", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
+test("load-env.sh: rejects invalid keys", () => {
+  const result = loadAndRun("123INVALID=value\n", "");
+  assert.strictEqual(result.status, 1);
+  assert.match(result.stderr, /invalid key on line 1/);
+});
 
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, 'B="hello  world"\n');
+test("load-env.sh: respects existing env vars", () => {
+  const result = loadAndRun("J=from_file\n", `printf '%s' "$J"`, 'export J="from_env"');
+  assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
+  assert.strictEqual(result.stdout, "from_env");
+});
 
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$B"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
+// Regression: `((line_num++))` returns status 1 when line_num is 0, which
+// kills the shell under `set -e` on the very first line of the file.
+for (const [name, file] of [
+  ["first line is a variable", "A=1\nB=2\n"],
+  ["first line is a comment", "# c\nA=1\nB=2\n"],
+] as const) {
+  test(`load-env.sh: survives set -euo pipefail (${name})`, () => {
+    const result = loadAndRun(file, `printf '%s%s' "$A" "$B"`, "set -euo pipefail");
     assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "hello  world");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: apostrophe in unquoted value", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "C=it's\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$C"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "it's");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: single-quoted value", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "D='single'\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$D"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "single");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: backslash preserved", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "E=a\\b\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$E"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "a\\b");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: inline comment stripped", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "F=val # comment\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$F"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "val");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: hash inside quotes not stripped", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, 'G="has # hash"\n');
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$G"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "has # hash");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: skips blank lines and comments", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(
-      fixture,
-      `
-# This is a comment
-H=value1
-
-# Another comment
-  # indented comment
-I=value2
-`
-    );
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s\\0%s' "$H" "$I"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    const [h, i] = result.stdout.split("\0");
-    assert.strictEqual(h, "value1");
-    assert.strictEqual(i, "value2");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: rejects invalid keys", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "123INVALID=value\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 1);
-    assert.match(result.stderr, /invalid key on line 1/);
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: respects existing env vars", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "J=from_file\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          export J="from_env"
-          load_env_file "${fixture}"
-          printf '%s' "$J"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "from_env");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
-
-test("load-env.sh: handles export prefix", (_t) => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "load-env-test-"));
-
-  try {
-    const fixture = path.join(tmpDir, ".env");
-    fs.writeFileSync(fixture, "export K=with_export_prefix\n");
-
-    const result = spawnSync(
-      "bash",
-      [
-        "-c",
-        `
-          source "${backendDir}/scripts/lib/load-env.sh"
-          load_env_file "${fixture}"
-          printf '%s' "$K"
-        `,
-      ],
-      {
-        cwd: backendDir,
-        env: {},
-        encoding: "utf-8",
-      }
-    );
-
-    assert.strictEqual(result.status, 0, `stderr: ${result.stderr}`);
-    assert.strictEqual(result.stdout, "with_export_prefix");
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true });
-  }
-});
+    assert.strictEqual(result.stdout, "12");
+  });
+}
