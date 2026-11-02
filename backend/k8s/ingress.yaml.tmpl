@@ -1,6 +1,8 @@
 # ingress.yaml.tmpl
-# Rendered by deploy-local.sh: __DASHBOARD_HOST__ is substituted.
+# Rendered by deploy-local.sh with this placeholder substitution:
+#   __DASHBOARD_HOST__ - Dashboard hostname (e.g. pier.192.0.2.10.nip.io)
 # Do not kubectl apply this template directly; use deploy-local.sh instead.
+# Only applied if PIER_DASHBOARD_HOST or PIER_INGRESS_DOMAIN is set.
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress

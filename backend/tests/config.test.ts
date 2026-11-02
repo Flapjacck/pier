@@ -102,8 +102,8 @@ describe("loadConfig", () => {
   });
 
   it("accepts a valid ingress domain with nip.io suffix", () => {
-    const config = loadConfig({ PIER_INGRESS_DOMAIN: "10.0.0.87.nip.io" });
-    assert.equal(config.ingressDomain, "10.0.0.87.nip.io");
+    const config = loadConfig({ PIER_INGRESS_DOMAIN: "192.0.2.10.nip.io" });
+    assert.equal(config.ingressDomain, "192.0.2.10.nip.io");
   });
 
   it("rejects ingress domain with only one label", () => {
