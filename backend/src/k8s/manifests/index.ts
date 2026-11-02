@@ -1,4 +1,4 @@
-import type { V1Deployment, V1ObjectMeta, V1PodSpec, V1PodTemplateSpec, V1Container, V1Probe, V1SecurityContext, V1PodSecurityContext, V1ResourceRequirements, V1EnvVar, V1Service, V1ServiceSpec, V1ServicePort, V1Ingress, V1IngressSpec, V1IngressRule, V1HTTPIngressRuleValue, V1HTTPIngressPath, V1IngressBackend, V1OwnerReference, V1DeploymentSpec } from "@kubernetes/client-node";
+import type { V1Deployment, V1ObjectMeta, V1PodSpec, V1PodTemplateSpec, V1Container, V1Probe, V1SecurityContext, V1PodSecurityContext, V1ResourceRequirements, V1EnvVar, V1Service, V1ServiceSpec, V1ServicePort, V1OwnerReference, V1DeploymentSpec } from "@kubernetes/client-node";
 import { APP_LABEL, appLabels } from "../labels.js";
 import { CPU_REQUEST, CPU_LIMIT, MEMORY_REQUEST, MEMORY_LIMIT, EPHEMERAL_STORAGE_REQUEST, EPHEMERAL_STORAGE_LIMIT, PROGRESS_DEADLINE_SECONDS } from "./constants.js";
 
@@ -10,6 +10,8 @@ export type CreateAppInput = {
   replicas: number;
   host?: string;
   env?: Record<string, string>;
+  /** cert-manager ClusterIssuer (PIER_TLS_ISSUER). Set: the Ingress gets TLS. */
+  tlsIssuer?: string;
 };
 
 /**
@@ -164,70 +166,4 @@ export function buildService(
   };
 }
 
-/**
- * Build an Ingress manifest for exposing an app at a domain.
- * Only callable when host is provided.
- * Add owner reference if deployment UID is provided for garbage collection.
- */
-export function buildIngress(
-  input: CreateAppInput,
-  deploymentUid?: string,
-): V1Ingress {
-  if (!input.host) {
-    throw new Error("buildIngress requires input.host to be set");
-  }
-
-  const labels = appLabels(input.name);
-  const backend: V1IngressBackend = {
-    service: {
-      name: input.name,
-      port: {
-        number: 80,
-      },
-    },
-  };
-
-  const path: V1HTTPIngressPath = {
-    path: "/",
-    pathType: "Prefix",
-    backend,
-  };
-
-  const httpRule: V1HTTPIngressRuleValue = {
-    paths: [path],
-  };
-
-  const rule: V1IngressRule = {
-    host: input.host,
-    http: httpRule,
-  };
-
-  const spec: V1IngressSpec = {
-    ingressClassName: "traefik",
-    rules: [rule],
-  };
-
-  const metadata: V1ObjectMeta = {
-    name: input.name,
-    labels,
-  };
-
-  if (deploymentUid) {
-    const ownerRef: V1OwnerReference = {
-      apiVersion: "apps/v1",
-      kind: "Deployment",
-      name: input.name,
-      uid: deploymentUid,
-      blockOwnerDeletion: false,
-      controller: false,
-    };
-    metadata.ownerReferences = [ownerRef];
-  }
-
-  return {
-    apiVersion: "networking.k8s.io/v1",
-    kind: "Ingress",
-    metadata,
-    spec,
-  };
-}
+export { buildIngress, type IngressTls } from "./ingress.js";

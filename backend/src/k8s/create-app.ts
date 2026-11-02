@@ -78,26 +78,18 @@ export async function createApp(
   // Ingress rules. With a single backend replica (deployment.yaml.tmpl), the check is
   // effectively serialized by the create-app mutex. For multi-replica backends, a real
   // reservation (e.g., Lease or ConfigMap) would be needed.
+  // API errors (e.g., RBAC) propagate and are fatal.
   if (input.host) {
-    try {
-      const response = await clients.networking.listNamespacedIngress({
-        namespace,
-        labelSelector: `${MANAGED_BY_LABEL}=${MANAGED_BY_VALUE}`,
-      });
-
-      for (const ingress of response.items ?? []) {
-        for (const rule of ingress.spec?.rules ?? []) {
-          if (rule.host?.toLowerCase() === input.host?.toLowerCase()) {
-            throw new HostInUseError(`host "${input.host}" is already in use`);
-          }
+    const response = await clients.networking.listNamespacedIngress({
+      namespace,
+      labelSelector: `${MANAGED_BY_LABEL}=${MANAGED_BY_VALUE}`,
+    });
+    for (const ingress of response.items ?? []) {
+      for (const rule of ingress.spec?.rules ?? []) {
+        if (rule.host?.toLowerCase() === input.host.toLowerCase()) {
+          throw new HostInUseError(`host "${input.host}" is already in use`);
         }
       }
-    } catch (err) {
-      if (err instanceof HostInUseError) {
-        throw err;
-      }
-      // API errors (e.g., RBAC) are fatal.
-      throw err;
     }
   }
 
@@ -126,9 +118,10 @@ export async function createApp(
     });
     created.push({ type: "service", name: input.name });
 
-    // Create Ingress if host provided (with owner ref).
+    // Create Ingress if host provided (with owner ref, and TLS when an issuer is set).
     if (input.host) {
-      const ingManifest = buildIngress(input, deploymentUid);
+      const tls = input.tlsIssuer ? { issuer: input.tlsIssuer, namespace } : undefined;
+      const ingManifest = buildIngress(input, deploymentUid, tls);
       await clients.networking.createNamespacedIngress({
         namespace,
         body: ingManifest,
@@ -137,7 +130,7 @@ export async function createApp(
     }
 
     // Success: convert Deployment to App, including host if provided.
-    return deploymentToApp(depResponse, input.host);
+    return deploymentToApp(depResponse, input.host, Boolean(input.host && input.tlsIssuer));
   } catch (err) {
     // Rollback: delete created objects in reverse order.
     for (let i = created.length - 1; i >= 0; i--) {

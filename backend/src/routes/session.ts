@@ -5,6 +5,8 @@ import { tokensMatch } from "../plugins/auth.js";
 type SessionRouteDeps = {
   apiToken: string | undefined;
   ingressDomain: string | undefined;
+  /** True when app Ingresses get TLS (PIER_TLS_ISSUER set). */
+  tls?: boolean;
 };
 
 /**
@@ -196,7 +198,7 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
      *
      * Responses:
      * - 200: authenticated or auth disabled
-     *   { ok: true, authDisabled: boolean, ingressDomain: string | null }
+     *   { ok: true, authDisabled: boolean, ingressDomain: string | null, tls: boolean }
      * - 401: not authenticated
      */
     app.get("/session", async (_req, reply) => {
@@ -204,6 +206,7 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
         ok: true,
         authDisabled: !deps.apiToken,
         ingressDomain: deps.ingressDomain ?? null,
+        tls: deps.tls ?? false,
       });
     });
   };

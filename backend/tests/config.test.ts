@@ -156,4 +156,20 @@ describe("loadConfig", () => {
     const config = loadConfig({ PIER_INGRESS_DOMAIN: "my-app-domain.example.com" });
     assert.equal(config.ingressDomain, "my-app-domain.example.com");
   });
+
+  it("leaves tlsIssuer unset when PIER_TLS_ISSUER is missing or blank", () => {
+    assert.equal(loadConfig({}).tlsIssuer, undefined);
+    assert.equal(loadConfig({ PIER_TLS_ISSUER: "  " }).tlsIssuer, undefined);
+  });
+
+  it("parses PIER_TLS_ISSUER", () => {
+    assert.equal(loadConfig({ PIER_TLS_ISSUER: " pier-ca " }).tlsIssuer, "pier-ca");
+    assert.equal(loadConfig({ PIER_TLS_ISSUER: "letsencrypt.prod" }).tlsIssuer, "letsencrypt.prod");
+  });
+
+  for (const bad of ["Pier-CA", "pier_ca", "-pier", "pier-", "a/b"]) {
+    it(`rejects PIER_TLS_ISSUER "${bad}"`, () => {
+      assert.throws(() => loadConfig({ PIER_TLS_ISSUER: bad }), /Invalid PIER_TLS_ISSUER/);
+    });
+  }
 });

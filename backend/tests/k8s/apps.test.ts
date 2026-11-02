@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AppsV1Api, NetworkingV1Api, V1Deployment } from "@kubernetes/client-node";
-import {
-  deploymentToApp,
-  deriveStatus,
-  listApps,
-} from "../../src/k8s/apps.js";
+import { appUrl, deploymentToApp, deriveStatus, ingressHasTls, listApps } from "../../src/k8s/apps.js";
 import { APP_LABEL } from "../../src/k8s/labels.js";
 
 function deployFixture(partial: Record<string, unknown>): V1Deployment {
@@ -235,5 +231,17 @@ describe("listApps", () => {
       apps.map((a) => a.name),
       ["alpha", "zebra"],
     );
+  });
+});
+
+describe("appUrl and ingressHasTls", () => {
+  it("uses https only when a tls entry covers the rule host", () => {
+    const h = "hello.192.0.2.10.nip.io";
+    const ing = (hosts?: string[]) => ({ spec: { rules: [{ host: h }], tls: hosts && [{ hosts }] } });
+    assert.equal(appUrl(h), `http://${h}`);
+    assert.equal(appUrl(h, true), `https://${h}`);
+    assert.equal(ingressHasTls(ing()), false);
+    assert.equal(ingressHasTls(ing(["other.192.0.2.10.nip.io"])), false);
+    assert.equal(ingressHasTls(ing([h.toUpperCase()])), true);
   });
 });

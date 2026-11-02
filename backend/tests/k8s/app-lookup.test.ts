@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AppsV1Api, NetworkingV1Api, V1Deployment, V1Ingress } from "@kubernetes/client-node";
-import { getLiveApp, getAppHost, getApp } from "../../src/k8s/app-lookup.js";
+import { getLiveApp, getAppRoute, getApp } from "../../src/k8s/app-lookup.js";
 import { APP_LABEL } from "../../src/k8s/labels.js";
 import { FakeApiError } from "../helpers/fake-clients.js";
 
@@ -106,24 +106,29 @@ describe("getLiveApp", () => {
       },
     } as unknown as AppsV1Api;
 
-    try {
-      await getLiveApp(api, "pier-apps", "hello");
-      assert.fail("should have thrown");
-    } catch (err) {
-      assert(err instanceof Error);
-      assert(err.message.includes("Internal Server Error"));
-    }
+    await assert.rejects(getLiveApp(api, "pier-apps", "hello"), /Internal Server Error/);
   });
 });
 
-describe("getAppHost", () => {
+const tlsIngress: V1Ingress = {
+  ...testIngress,
+  spec: { ...testIngress.spec, tls: [{ hosts: ["hello.192.0.2.10.nip.io"], secretName: "hello-tls" }] },
+};
+
+describe("getAppRoute", () => {
   it("returns the host from the Ingress", async () => {
     const api = {
       readNamespacedIngress: async () => testIngress,
     } as unknown as NetworkingV1Api;
 
-    const result = await getAppHost(api, "pier-apps", "hello");
-    assert.equal(result, "hello.192.0.2.10.nip.io");
+    const result = await getAppRoute(api, "pier-apps", "hello");
+    assert.deepEqual(result, { host: "hello.192.0.2.10.nip.io", tls: false });
+  });
+
+  it("reports tls when the Ingress has a TLS entry for its host", async () => {
+    const api = { readNamespacedIngress: async () => tlsIngress } as unknown as NetworkingV1Api;
+    const result = await getAppRoute(api, "pier-apps", "hello");
+    assert.deepEqual(result, { host: "hello.192.0.2.10.nip.io", tls: true });
   });
 
   it("returns undefined on 404", async () => {
@@ -133,7 +138,7 @@ describe("getAppHost", () => {
       },
     } as unknown as NetworkingV1Api;
 
-    const result = await getAppHost(api, "pier-apps", "hello");
+    const result = await getAppRoute(api, "pier-apps", "hello");
     assert.equal(result, undefined);
   });
 
@@ -146,7 +151,7 @@ describe("getAppHost", () => {
       readNamespacedIngress: async () => terminatingIngress,
     } as unknown as NetworkingV1Api;
 
-    const result = await getAppHost(api, "pier-apps", "hello");
+    const result = await getAppRoute(api, "pier-apps", "hello");
     assert.equal(result, undefined);
   });
 
@@ -159,7 +164,7 @@ describe("getAppHost", () => {
       readNamespacedIngress: async () => wrongLabelIngress,
     } as unknown as NetworkingV1Api;
 
-    const result = await getAppHost(api, "pier-apps", "hello");
+    const result = await getAppRoute(api, "pier-apps", "hello");
     assert.equal(result, undefined);
   });
 
@@ -170,13 +175,7 @@ describe("getAppHost", () => {
       },
     } as unknown as NetworkingV1Api;
 
-    try {
-      await getAppHost(api, "pier-apps", "hello");
-      assert.fail("should have thrown");
-    } catch (err) {
-      assert(err instanceof Error);
-      assert(err.message.includes("Internal Server Error"));
-    }
+    await assert.rejects(getAppRoute(api, "pier-apps", "hello"), /Internal Server Error/);
   });
 });
 
@@ -197,6 +196,15 @@ describe("getApp", () => {
     assert.equal(result.port, 8080);
     assert.equal(result.host, "hello.192.0.2.10.nip.io");
     assert.equal(result.url, "http://hello.192.0.2.10.nip.io");
+  });
+
+  it("returns an https url when the Ingress has TLS", async () => {
+    const clients = {
+      apps: { readNamespacedDeployment: async () => testDeploy } as unknown as AppsV1Api,
+      networking: { readNamespacedIngress: async () => tlsIngress } as unknown as NetworkingV1Api,
+    };
+    const result = await getApp(clients, "pier-apps", "hello");
+    assert.equal(result?.url, "https://hello.192.0.2.10.nip.io");
   });
 
   it("returns undefined when the Deployment is not found", async () => {

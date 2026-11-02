@@ -204,8 +204,8 @@ describe("POST /api/logout", () => {
 });
 
 describe("GET /api/session", () => {
-  it("returns 200 with authDisabled:false and ingressDomain when set", async () => {
-    const app = await buildApp(testConfig({ apiToken: TEST_TOKEN, ingressDomain: "192.0.2.10.nip.io" }), {
+  it("returns 200 with authDisabled:false, ingressDomain and tls when set", async () => {
+    const app = await buildApp(testConfig({ apiToken: TEST_TOKEN, ingressDomain: "192.0.2.10.nip.io", tlsIssuer: "pier-ca" }), {
       logger: false,
       k8s: createFakeClientsResult({
         core: {
@@ -227,10 +227,11 @@ describe("GET /api/session", () => {
     await app.close();
 
     assert.equal(res.statusCode, 200);
-    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null };
+    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null; tls: boolean };
     assert.equal(body.ok, true);
     assert.equal(body.authDisabled, false);
     assert.equal(body.ingressDomain, "192.0.2.10.nip.io");
+    assert.equal(body.tls, true);
   });
 
   it("returns 200 with authDisabled:false and ingressDomain:null when not configured", async () => {
@@ -256,10 +257,11 @@ describe("GET /api/session", () => {
     await app.close();
 
     assert.equal(res.statusCode, 200);
-    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null };
+    const body = res.json() as { ok: boolean; authDisabled: boolean; ingressDomain: string | null; tls: boolean };
     assert.equal(body.ok, true);
     assert.equal(body.authDisabled, false);
     assert.equal(body.ingressDomain, null);
+    assert.equal(body.tls, false);
   });
 
   it("returns 200 with authDisabled:false when authed with session cookie", async () => {

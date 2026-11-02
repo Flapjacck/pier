@@ -14,6 +14,8 @@ export type AppsRouteDeps = {
   namespace: string;
   ingressDomain: string | undefined;
   dashboardHost: string | undefined;
+  /** cert-manager ClusterIssuer for app Ingresses (PIER_TLS_ISSUER); unset = HTTP only. */
+  tlsIssuer?: string;
 };
 
 /** Factory keeps apps routes testable without a live cluster. */
