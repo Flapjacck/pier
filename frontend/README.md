@@ -16,7 +16,57 @@ pnpm --dir frontend dev        # http://127.0.0.1:5173
 pnpm --dir frontend lint
 pnpm --dir frontend typecheck
 pnpm --dir frontend build      # output in frontend/dist/
+pnpm --dir frontend test       # run tests once
+pnpm --dir frontend test:watch # run tests in watch mode
 ```
+
+## Tests
+
+Frontend uses **Vitest** + **jsdom** + **Testing Library** for unit and component tests.
+
+### Running tests
+
+```bash
+pnpm --dir frontend test           # Run all tests once, exit with result
+pnpm --dir frontend test:watch     # Watch mode: re-run on file changes
+```
+
+### Test structure
+
+- Tests live next to modules: `src/**/*.test.{ts,tsx}`
+- No browser or e2e tests; all run in jsdom environment
+- Mocks for `fetch` (via `vi.stubGlobal`) and `EventSource` (in `src/test/setup.ts`)
+- Testing Library for components (no snapshots, query by text/role/label)
+- Each test file kept ≤250 lines
+
+### Test stack
+
+- **Vitest 5** – fast unit test runner with jdom environment
+- **jsdom 30** – Node.js DOM implementation (fast, no real browser)
+- **@testing-library/react** – render hooks/components, query DOM
+- **@testing-library/jest-dom** – matchers like `toBeInTheDocument()`, `toBeDisabled()`
+
+### Mocking patterns
+
+```typescript
+// Mock fetch
+vi.stubGlobal('fetch', vi.fn());
+const mockFetch = vi.mocked(fetch);
+mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({...}), { status: 200 }));
+
+// Mock timers
+vi.useFakeTimers();
+vi.setSystemTime(new Date('2024-01-01T00:00:00Z'));
+// ... test relative time logic ...
+vi.useRealTimers();
+```
+
+### Design notes
+
+- **No globals import:** Explicitly import `describe`, `it`, `expect`, `vi` from `vitest` (keeping types clear)
+- **No `any` types** – all code strictly typed
+- **Shared backoff delay:** `src/lib/backoff.ts` extracted from `useLogStream` for testable, deterministic delays
+- **hookRender + waitFor:** `renderHook` from `@testing-library/react` for testing hooks; `waitFor` for async state
 
 ## Folder layout
 

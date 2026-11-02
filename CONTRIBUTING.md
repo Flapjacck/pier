@@ -67,7 +67,7 @@ Examples:
 3. **Run local checks** before pushing:
    ```bash
    pnpm --dir backend lint && pnpm --dir backend typecheck && pnpm --dir backend test && pnpm --dir backend build
-   pnpm --dir frontend lint && pnpm --dir frontend typecheck && pnpm --dir frontend build
+   pnpm --dir frontend lint && pnpm --dir frontend typecheck && pnpm --dir frontend test && pnpm --dir frontend build
    ```
 
 4. **Push your branch** and create a pull request against `main`:
@@ -102,7 +102,7 @@ This auto-closes the issue when the PR is merged.
 ## Testing and verification
 
 - Backend tests run via `node:test` and require no external cluster or `.env`.
-- Frontend has no automated tests yet; verify manually in the dev server.
+- Frontend tests run via Vitest in jsdom with mock `fetch` and `EventSource`. See [frontend/README.md](./frontend/README.md#tests) for details.
 - All CI checks must pass before merge.
 
 ## Branch protection
