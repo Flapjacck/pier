@@ -38,6 +38,6 @@ export default [
         project: "./tsconfig.node.json",
       },
     },
-    files: ["vite.config.ts"],
+    files: ["vite.config.ts", "vitest.config.ts"],
   },
 ];
