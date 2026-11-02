@@ -33,40 +33,53 @@ pnpm --dir frontend test:watch     # Watch mode: re-run on file changes
 
 ### Test structure
 
-- Tests live next to modules: `src/**/*.test.{ts,tsx}`
-- No browser or e2e tests; all run in jsdom environment
-- Mocks for `fetch` (via `vi.stubGlobal`) and `EventSource` (in `src/test/setup.ts`)
-- Testing Library for components (no snapshots, query by text/role/label)
-- Each test file kept ≤250 lines
+Tests live in `frontend/tests/`, mirroring `src/` (same idea as `backend/tests/`):
+
+```
+tests/
+  setup.ts            # jest-dom matchers, cleanup, HTMLDialogElement polyfill
+  helpers/            # shared fixtures (deployForm, mockEventSource)
+  api/ lib/ hooks/ components/ pages/   # one *.test.ts(x) per module under test
+```
+
+- `vitest.config.ts` merges `vite.config.ts` and runs `tests/**/*.test.{ts,tsx}` in jsdom.
+- `tsconfig.test.json` (referenced from `tsconfig.json`) typechecks `tests/` with `src/`, so `pnpm typecheck` covers tests; `tsconfig.app.json` stays `src` only and tests are never bundled.
+- ESLint lints `tests/**` with `tsconfig.test.json`.
+- No browser or e2e tests; everything runs in jsdom. Testing Library for components (no snapshots).
+- Each test file stays ≤250 lines.
 
 ### Test stack
 
-- **Vitest 5** – fast unit test runner with jdom environment
-- **jsdom 30** – Node.js DOM implementation (fast, no real browser)
-- **@testing-library/react** – render hooks/components, query DOM
-- **@testing-library/jest-dom** – matchers like `toBeInTheDocument()`, `toBeDisabled()`
+- **Vitest 5**: test runner with the jsdom environment
+- **jsdom 30**: DOM implementation in Node, no real browser
+- **@testing-library/react**: render hooks and components, query the DOM
+- **@testing-library/jest-dom**: matchers like `toBeInTheDocument()` and `toBeDisabled()`
 
 ### Mocking patterns
 
-```typescript
-// Mock fetch
-vi.stubGlobal('fetch', vi.fn());
-const mockFetch = vi.mocked(fetch);
-mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({...}), { status: 200 }));
+Stub globals per test, never globally in `setup.ts`:
 
-// Mock timers
+```typescript
+// fetch
+vi.stubGlobal("fetch", vi.fn());
+vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+// EventSource (see tests/helpers/mockEventSource.ts)
+vi.stubGlobal("EventSource", MockEventSource);
+act(() => MockEventSource.instances[0]?.emitOpen());
+
+// timers
 vi.useFakeTimers();
-vi.setSystemTime(new Date('2024-01-01T00:00:00Z'));
-// ... test relative time logic ...
-vi.useRealTimers();
+act(() => vi.advanceTimersByTime(2000));
 ```
+
+With fake timers, don't use Testing Library's `waitFor` (it polls with the faked timers and hangs). Wrap events and timer advances in `act()` and assert synchronously; use an `async act` to flush promise callbacks.
 
 ### Design notes
 
-- **No globals import:** Explicitly import `describe`, `it`, `expect`, `vi` from `vitest` (keeping types clear)
-- **No `any` types** – all code strictly typed
-- **Shared backoff delay:** `src/lib/backoff.ts` extracted from `useLogStream` for testable, deterministic delays
-- **hookRender + waitFor:** `renderHook` from `@testing-library/react` for testing hooks; `waitFor` for async state
+- Import `describe`, `it`, `expect` and `vi` from `vitest` explicitly (no globals).
+- No `any`.
+- `src/lib/backoff.ts` (`backoffDelay`) was extracted from `useLogStream` so delays are deterministic in tests: base doubles from 1s to a 30s cap with ±10% jitter. The hook's first retry uses attempt 1, so the first reconnect waits about 2s.
 
 ## Folder layout
 
