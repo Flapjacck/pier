@@ -36,7 +36,9 @@ export function parseSessionInfo(json: unknown): SessionInfo {
   // ingressDomain is optional (null or string); default to null for backward compatibility
   const ingressDomain =
     typeof json.ingressDomain === "string" ? json.ingressDomain : null;
-  return { ok: true, authDisabled: json.authDisabled, ingressDomain };
+  // tls is optional too (older backends omit it); anything but true means HTTP.
+  const tls = json.tls === true;
+  return { ok: true, authDisabled: json.authDisabled, ingressDomain, tls };
 }
 
 export function parseApp(json: unknown): App {

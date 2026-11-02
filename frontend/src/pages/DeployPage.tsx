@@ -7,7 +7,7 @@ import { DeployForm } from "./deploy/DeployForm";
  */
 export function DeployPage() {
   const navigate = useNavigate();
-  const { ingressDomain } = useAuth();
+  const { ingressDomain, tls } = useAuth();
 
   const handleCancel = () => {
     navigate("/apps");
@@ -23,7 +23,7 @@ export function DeployPage() {
       </header>
 
       <div className="border border-pier-border rounded-pier-lg bg-pier-bg p-6">
-        <DeployForm ingressDomain={ingressDomain} onCancel={handleCancel} />
+        <DeployForm ingressDomain={ingressDomain} tls={tls} onCancel={handleCancel} />
       </div>
     </div>
   );
