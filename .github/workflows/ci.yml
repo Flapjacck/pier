@@ -35,6 +35,14 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: backend
 
+      - run: pnpm audit --prod --audit-level high
+        working-directory: backend
+
+      - name: Check deploy scripts
+        run: |
+          bash -n backend/scripts/deploy-local.sh backend/scripts/lib/*.sh
+          shellcheck -x backend/scripts/*.sh backend/scripts/lib/*.sh
+
       - run: pnpm lint
         working-directory: backend
 
@@ -64,6 +72,9 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - run: pnpm audit --prod --audit-level high
         working-directory: frontend
 
       - run: pnpm lint
