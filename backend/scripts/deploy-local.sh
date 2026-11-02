@@ -110,11 +110,13 @@ fi
 
 kubectl apply $APPLY_OPTS -f "$BACKEND_DIR/k8s/service.yaml"
 
-# Create or update Secret with labels (without echoing the token).
+# Create or update Secret with labels. The token goes in on stdin (printf is a
+# bash builtin), so it never appears in any process's argv or in `ps`.
 echo "==> Creating or updating secret"
-kubectl -n default create secret generic pier-backend-secrets \
-  --from-literal="PIER_API_TOKEN=$PIER_API_TOKEN" \
-  --dry-run=client -o yaml | \
+printf '%s' "$PIER_API_TOKEN" | \
+  kubectl -n default create secret generic pier-backend-secrets \
+    --from-file=PIER_API_TOKEN=/dev/stdin \
+    --dry-run=client -o yaml | \
   kubectl label --local -f - \
     app=pier-backend \
     app.kubernetes.io/part-of=pier \
