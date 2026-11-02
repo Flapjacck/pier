@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/errors";
 import { appLogsUrl, getAppLogsText } from "../api/client";
 import { LogBuffer } from "../lib/logBuffer";
+import { backoffDelay } from "../lib/backoff";
 import type { LogLine } from "../lib/logBuffer";
 
 export type { LogLine };
@@ -29,12 +30,6 @@ interface UseLogStreamResult {
   reconnectNow: () => void;
 }
 
-/** Exponential backoff: 1s → 2s → 4s → ... → 30s, with ±20% jitter. */
-function getBackoffMs(attempt: number): number {
-  const base = Math.min(1000 * Math.pow(2, attempt), 30000);
-  const jitter = base * 0.2 * (Math.random() - 0.5);
-  return base + jitter;
-}
 
 export function useLogStream({
   name,
@@ -122,7 +117,7 @@ export function useLogStream({
     // Retry with backoff
     const retry = (attempt: number) => {
       if (cancelled) return;
-      const nextRetryMs = getBackoffMs(attempt);
+      const nextRetryMs = backoffDelay(attempt);
       setStatus({ kind: "reconnecting", attempt, nextRetryMs });
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       reconnectTimer = window.setTimeout(() => {
