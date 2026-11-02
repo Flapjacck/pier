@@ -27,6 +27,7 @@ pnpm dev               # http://127.0.0.1:3000
 | `PIER_PUBLIC_DIR` | unset | server | Optional path to public directory for serving static files (dashboard SPA). Defaults to `../public` relative to `dist/` in production. Used in development to test static file serving. Leave empty in production. |
 | `PIER_TRUST_PROXY` | unset (false) | server | Set to `true` when behind a reverse proxy (Traefik, Nginx) to trust `X-Forwarded-Proto` and `X-Forwarded-For` headers. Unsafe if exposed directly to untrusted networks. |
 | `PIER_DASHBOARD_HOST` | unset | server, `deploy-local.sh` | Optional DNS hostname for the dashboard (e.g. `pier.example.com`). Reserved in POST `/api/apps` to prevent app name collision. Used by `deploy-local.sh` to render dashboard ingress. |
+| `PIER_TLS_ISSUER` | unset (HTTP only) | server, `deploy-local.sh` | Name of a cert-manager ClusterIssuer (e.g. `pier-ca`). When set, app and dashboard Ingresses get TLS plus an HTTP to HTTPS redirect, app URLs are `https://`, and `GET /api/session` reports `tls: true`. Must be a lowercase DNS name. Needs cert-manager; see [k8s/README.md#tls](k8s/README.md#tls). |
 | `KUBECONFIG` | `~/.kube/config` | server (outside a pod, at startup) | Read once at startup via `loadKubeConfig()`. Use an absolute path; `~` is not expanded in `.env`. Ignored in-cluster. Changes require a server restart. |
 | `K3S_HOST` | none | `deploy-local.sh` | k3s node address for the SSH image import. |
 | `K3S_SSH_USER` | none | `deploy-local.sh` | SSH user on the k3s node (needs passwordless `sudo k3s ctr`). |
@@ -187,7 +188,7 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
 |------|--------------|-------|
 | (none) | Build, import over SSH, apply, wait for rollout. | Docker, SSH, cluster, `K3S_HOST`, `K3S_SSH_USER`, `PIER_API_TOKEN` |
 | `--dry-run` | `kubectl apply --dry-run=server` on every manifest. No build, no SSH, nothing changed. | Cluster, `PIER_API_TOKEN` |
-| `--render [--out DIR]` | Render every manifest to `DIR` (default: new temp dir) as `NN-<name>.yaml` in apply order, then lint offline: no `__PLACEHOLDER__` left, and every file parses (`kubectl kustomize`; `apply --dry-run=client` can't run without a cluster). The Secret is rendered with the value `REDACTED`. | `kubectl` on PATH only |
+| `--render [--out DIR]` | Render every manifest to `DIR` (default: new temp dir) as `NNN-<name>.yaml` in apply order, then lint offline: no `__PLACEHOLDER__` left, and every file parses (`kubectl kustomize`; `apply --dry-run=client` can't run without a cluster). The Secret is rendered with the value `REDACTED`. | `kubectl` on PATH only |
 | `-h`, `--help` | Print usage. | |
 
 `TAG` defaults to the git short SHA (plus `-dirty`). It may only contain letters, digits, `.`, `_` and `-`. `PIER_ENV_FILE` overrides the env file path (default `backend/.env`); variables already set in the shell win over the file.
@@ -211,6 +212,7 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
   - `PIER_API_TOKEN`: Bearer token (generate with `openssl rand -hex 32`)
   - `PIER_INGRESS_DOMAIN`: Wildcard DNS suffix (e.g. `192.0.2.10.nip.io` or `apps.example.internal`), used to render the dashboard ingress
   - `PIER_DASHBOARD_HOST` (optional): Explicit dashboard hostname; if unset, derived from `PIER_INGRESS_DOMAIN` as `pier.<PIER_INGRESS_DOMAIN>`
+  - `PIER_TLS_ISSUER` (optional): cert-manager ClusterIssuer for HTTPS. Install cert-manager first with `./scripts/install-cert-manager.sh`; the script stops if it's missing. See [k8s/README.md#tls](k8s/README.md#tls).
 
 ### What it does
 
@@ -221,6 +223,7 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
    - `rbac.yaml` (ClusterRole for cluster health)
    - `rbac-apps.yaml` (Role for app management in `pier-apps`)
    - Optional: `quota.yaml`, `networkpolicies.yaml`, `policy-services.yaml` (if present)
+   - Optional: `tls.yaml` (only when `PIER_TLS_ISSUER` is set)
    - `service.yaml` (Service for backend)
 4. **Creates or updates Secret** `default/pier-backend-secrets` from `PIER_API_TOKEN`. The token is piped to `kubectl` on stdin (`--from-file=PIER_API_TOKEN=/dev/stdin`), so it never appears in any command line or `ps`, and the rendered Secret is piped straight to `kubectl apply` without touching disk.
 5. **Renders and applies** `deployment.yaml.tmpl`, substituting placeholders:
@@ -228,7 +231,8 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
    - `__TOKEN_SHA256__`: SHA256 hash of `PIER_API_TOKEN`
    - `__INGRESS_DOMAIN__`: `PIER_INGRESS_DOMAIN`
    - `__DASHBOARD_HOST__`: `PIER_DASHBOARD_HOST` or derived value
-6. **Applies dashboard ingress** from `ingress.yaml.tmpl` if `PIER_DASHBOARD_HOST` is set, rendering the hostname.
+   - `__TLS_ISSUER__`: `PIER_TLS_ISSUER` (empty when TLS is off)
+6. **Applies dashboard ingress** from `ingress.yaml.tmpl` when a dashboard host is set, rendering the hostname. With `PIER_TLS_ISSUER` set it also gets TLS and the HTTPS redirect.
 7. **Waits for rollout** (up to 120s) with `kubectl rollout status deploy/pier-backend`.
 
 ### Example: deploy with custom tag

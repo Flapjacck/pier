@@ -12,9 +12,10 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 | [quota.yaml](quota.yaml) | ResourceQuota `pier-apps-quota` and LimitRange `pier-apps-limits` in `pier-apps` (optional, applied if present). |
 | [networkpolicies.yaml](networkpolicies.yaml) | Four NetworkPolicies in `pier-apps`: default-deny, allow-ingress-from-traefik, allow-dns-egress, allow-internet-egress (optional, applied if present). |
 | [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps` (optional, applied if present). |
+| [tls.yaml](tls.yaml) | cert-manager ClusterIssuers `pier-selfsigned` and `pier-ca`, the root Certificate `cert-manager/pier-root-ca`, and the Traefik Middleware `pier-https-redirect` in `pier-apps` and `default`. Applied only when `PIER_TLS_ISSUER` is set; needs cert-manager (see [TLS](#tls)). |
 | [service.yaml](service.yaml) | ClusterIP Service `pier-backend` in `default`. |
-| [deployment.yaml.tmpl](deployment.yaml.tmpl) | Deployment `pier-backend` in `default` (template; rendered with `__IMAGE__`, `__TOKEN_SHA256__`, `__INGRESS_DOMAIN__`, `__DASHBOARD_HOST__`). |
-| [ingress.yaml.tmpl](ingress.yaml.tmpl) | Ingress `pier-backend-dashboard` for the dashboard (template; rendered with `__DASHBOARD_HOST__`; applied only if dashboard host is set). |
+| [deployment.yaml.tmpl](deployment.yaml.tmpl) | Deployment `pier-backend` in `default` (template; rendered with `__IMAGE__`, `__TOKEN_SHA256__`, `__INGRESS_DOMAIN__`, `__DASHBOARD_HOST__`, `__TLS_ISSUER__`). |
+| [ingress.yaml.tmpl](ingress.yaml.tmpl) | Ingress `pier-backend-dashboard` for the dashboard (template; rendered with `__DASHBOARD_HOST__` and `__TLS_ISSUER__`; lines ending in `# tls-only` are kept only when `PIER_TLS_ISSUER` is set; applied only if dashboard host is set). |
 
 ## Apply order
 
@@ -26,14 +27,16 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 4. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
 5. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
 6. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
-7. `service.yaml` — Service for pier-backend
-8. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
-9. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
+7. **Optional:** `tls.yaml` (only when `PIER_TLS_ISSUER` is set) — CA issuers and HTTPS redirect Middlewares. The script stops early if cert-manager's CRDs are missing.
+8. `service.yaml` — Service for pier-backend
+9. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
+10. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
    - `__IMAGE__` → `pier-backend:$TAG` (the built image)
    - `__TOKEN_SHA256__` → SHA256 hash of `PIER_API_TOKEN` (for restart detection)
    - `__INGRESS_DOMAIN__` → `PIER_INGRESS_DOMAIN` env var
    - `__DASHBOARD_HOST__` → `PIER_DASHBOARD_HOST` or derived value
-10. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`
+   - `__TLS_ISSUER__` → `PIER_TLS_ISSUER` (empty when TLS is off)
+11. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`. With TLS on it also gets the cert-manager issuer annotation, the redirect Middleware and a `tls` block (Secret `pier-backend-tls`).
 
 Namespace and RBAC must exist before namespaced objects.
 
@@ -41,6 +44,50 @@ To check changes here without touching the cluster:
 
 - `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NNN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
 - `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed).
+
+## TLS
+
+TLS is opt-in. With `PIER_TLS_ISSUER` set, every Ingress Pier creates (apps and the dashboard) asks cert-manager for a certificate, Traefik terminates HTTPS on `websecure`, and plain HTTP gets a permanent redirect to HTTPS through the `pier-https-redirect` Middleware.
+
+**Why a private CA.** The default ingress domain is a `nip.io` name on a LAN IP, which Let's Encrypt can't validate (HTTP-01 needs the node reachable from the internet, and DNS-01 needs a zone you control). So `tls.yaml` sets up a small CA inside the cluster: a self-signed ClusterIssuer mints a 10-year root (`cert-manager/pier-root-ca`, ECDSA P-256), and the `pier-ca` ClusterIssuer signs every app certificate with it. Browsers trust those once you trust the root.
+
+**Setup, once per cluster:**
+
+```bash
+cd backend
+./scripts/install-cert-manager.sh --dry-run   # server-side check, changes nothing
+./scripts/install-cert-manager.sh             # pinned, checksum-verified cert-manager
+echo 'PIER_TLS_ISSUER=pier-ca' >> .env
+ssh-add && ./scripts/deploy-local.sh          # applies tls.yaml and the TLS dashboard ingress
+```
+
+`install-cert-manager.sh` pins a cert-manager release, verifies its sha256, and adds `--enable-certificate-owner-ref=true` to the controller. That makes each certificate Secret owned by its Certificate, which is owned (through cert-manager's ingress-shim) by the Ingress, which is owned by the app Deployment. Deleting an app therefore garbage-collects its `<name>-tls` Secret too, and the backend needs no new RBAC.
+
+**Trust the root CA** on each machine that opens the dashboard or apps:
+
+```bash
+kubectl -n cert-manager get secret pier-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > pier-root-ca.crt
+# Linux Mint / Ubuntu:
+sudo cp pier-root-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates
+# Firefox keeps its own store: Settings, Privacy & Security, Certificates, View Certificates, Authorities, Import.
+```
+
+Keep the root private: anyone with the `pier-root-ca` Secret can mint certificates your machines will trust.
+
+**Check it:**
+
+```bash
+kubectl get clusterissuer pier-ca                  # READY True
+kubectl -n pier-apps get certificate               # one per app, READY True
+curl -sI http://<app>.<domain>                     # 301 to https://
+curl -sI --cacert pier-root-ca.crt https://<app>.<domain>   # 200
+```
+
+**Public domain instead.** If the ingress domain is public and the node is reachable on port 80, create a Let's Encrypt ACME ClusterIssuer (for example `letsencrypt-prod`) and set `PIER_TLS_ISSUER` to its name; nothing else changes. The CA issuers in `tls.yaml` can stay.
+
+**Turning it off.** Unset `PIER_TLS_ISSUER` and redeploy. New apps get HTTP-only Ingresses; existing ones keep their `tls` block until they're recreated. The API reports each app's URL from its live Ingress, so old and new apps both show the right scheme.
+
+**NetworkPolicies are unchanged.** TLS ends at Traefik, which already reaches apps on their plain HTTP port, and the CA issuer needs no ACME solver pods in `pier-apps`. A Let's Encrypt HTTP-01 issuer would need an ingress allowance for its solver pods.
 
 ## RBAC
 
