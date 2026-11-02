@@ -1,6 +1,9 @@
 # ingress.yaml.tmpl
 # Rendered by deploy-local.sh with this placeholder substitution:
 #   __DASHBOARD_HOST__ - Dashboard hostname (e.g. pier.192.0.2.10.nip.io)
+#   __TLS_ISSUER__     - cert-manager ClusterIssuer (PIER_TLS_ISSUER)
+# Lines ending in "# tls-only" are kept (marker stripped) only when
+# PIER_TLS_ISSUER is set, and dropped otherwise.
 # Do not kubectl apply this template directly; use deploy-local.sh instead.
 # Only applied if PIER_DASHBOARD_HOST or PIER_INGRESS_DOMAIN is set.
 
@@ -12,8 +15,15 @@ metadata:
   labels:
     app: pier-backend
     app.kubernetes.io/part-of: pier
+  annotations: # tls-only
+    cert-manager.io/cluster-issuer: __TLS_ISSUER__ # tls-only
+    traefik.ingress.kubernetes.io/router.middlewares: default-pier-https-redirect@kubernetescrd # tls-only
 spec:
   ingressClassName: traefik
+  tls: # tls-only
+    - hosts: # tls-only
+        - __DASHBOARD_HOST__ # tls-only
+      secretName: pier-backend-tls # tls-only
   rules:
     - host: __DASHBOARD_HOST__
       http:

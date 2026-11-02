@@ -39,7 +39,7 @@ Namespace and RBAC must exist before namespaced objects.
 
 To check changes here without touching the cluster:
 
-- `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
+- `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NNN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
 - `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed).
 
 ## RBAC

@@ -23,6 +23,7 @@ case "$(basename "$0")" in
   kubectl)
     case " $* " in
       *" apply "*) cat >>"$SHIM_LOG.stdin"; exit 0 ;;
+      *" get crd "*) [[ -z "\${SHIM_NO_CRDS:-}" ]]; exit $? ;;
       *" get "* | *" rollout "*) exit 0 ;;
     esac
     exec "$REAL_KUBECTL" "$@"
@@ -82,9 +83,9 @@ test("deploy-local.sh --render: offline, no token, nothing left unrendered", { s
 
     const files = fs.readdirSync(out).sort();
     assert.deepStrictEqual(files.slice(0, 3), [
-      "00-namespace.yaml",
-      "10-rbac.yaml",
-      "20-rbac-apps.yaml",
+      "000-namespace.yaml",
+      "010-rbac.yaml",
+      "020-rbac-apps.yaml",
     ]);
     for (const f of ["secret", "deployment", "ingress"]) {
       assert.ok(files.some((n) => n.endsWith(`-${f}.yaml`)), `missing ${f}`);
@@ -94,6 +95,9 @@ test("deploy-local.sh --render: offline, no token, nothing left unrendered", { s
     assert.match(all, /image: pier-backend:t1/);
     assert.match(all, /host: pier\.192\.0\.2\.10\.nip\.io/);
     assert.match(all, new RegExp(Buffer.from("REDACTED").toString("base64")));
+    // TLS is opt-in: no issuer, no tls manifest and no TLS on the dashboard.
+    assert.ok(!files.some((n) => n.endsWith("-tls.yaml")), "tls rendered without an issuer");
+    assert.doesNotMatch(all, /# tls-only$|cert-manager\.io\/cluster-issuer|secretName: pier-backend-tls/m);
 
     // Never touched the cluster, docker or ssh.
     assert.doesNotMatch(run.argv, /^(docker|ssh) /m);
@@ -139,15 +143,54 @@ test("deploy-local.sh: --dry-run skips docker and ssh", { skip }, () => {
   });
 });
 
+test("deploy-local.sh --render: PIER_TLS_ISSUER adds the CA issuer and dashboard TLS", { skip }, () => {
+  withTempDir((dir) => {
+    const out = path.join(dir, "out");
+    const run = deploy(["--render", "--out", out, "t6"], {
+      PIER_INGRESS_DOMAIN: "192.0.2.10.nip.io",
+      PIER_TLS_ISSUER: "pier-ca",
+    }, dir);
+    assert.strictEqual(run.status, 0, run.stderr);
+    const files = fs.readdirSync(out).sort();
+    const tlsAt = files.findIndex((n) => n.endsWith("-tls.yaml"));
+    const serviceAt = files.findIndex((n) => n.endsWith("-service.yaml"));
+    assert.ok(tlsAt > 0 && tlsAt < serviceAt, `tls out of order: ${files.join(", ")}`);
+    const read = (suffix: string) =>
+      fs.readFileSync(path.join(out, files.find((n) => n.endsWith(suffix)) ?? ""), "utf-8");
+    const ingress = read("-ingress.yaml");
+    assert.match(ingress, /^ {4}cert-manager\.io\/cluster-issuer: pier-ca$/m);
+    assert.match(ingress, /router\.middlewares: default-pier-https-redirect@kubernetescrd$/m);
+    assert.match(ingress, /^ {6}secretName: pier-backend-tls$/m);
+    assert.doesNotMatch(ingress, /# tls-only$/m);
+    assert.match(read("-deployment.yaml"), /name: PIER_TLS_ISSUER\n\s+value: "pier-ca"/);
+    assert.match(read("-tls.yaml"), /name: pier-ca/);
+  });
+});
+
+test("deploy-local.sh: PIER_TLS_ISSUER without cert-manager fails before applying", { skip }, () => {
+  withTempDir((dir) => {
+    const run = deploy(["--dry-run", "t7"], {
+      PIER_API_TOKEN: FAKE_TOKEN,
+      PIER_TLS_ISSUER: "pier-ca",
+      SHIM_NO_CRDS: "1",
+    }, dir);
+    assert.strictEqual(run.status, 1);
+    assert.match(run.stderr, /cert-manager isn't installed.*install-cert-manager\.sh/);
+    assert.doesNotMatch(run.argv, /kubectl apply/);
+  });
+});
+
 for (const [name, args, err] of [
   ["unknown flag", ["--bogus"], /unknown flag --bogus/],
   ["--render with --dry-run", ["--render", "--dry-run"], /only one of --dry-run and --render/],
   ["--out without --render", ["--out", "x"], /--out only works with --render/],
   ["bad TAG", ["--render", "a|b"], /TAG "a\|b" may only use/],
+  ["bad PIER_TLS_ISSUER", ["--render"], /TLS_ISSUER "Pier_CA" contains invalid characters/],
 ] as const) {
   test(`deploy-local.sh: rejects ${name}`, () => {
     withTempDir((dir) => {
-      const run = deploy([...args], {}, dir);
+      const env: Record<string, string> = name.includes("TLS") ? { PIER_TLS_ISSUER: "Pier_CA" } : {};
+      const run = deploy([...args], env, dir);
       assert.strictEqual(run.status, 1);
       assert.match(run.stderr, err);
     });
