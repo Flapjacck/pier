@@ -4,7 +4,7 @@ WORKDIR /app
 RUN corepack enable pnpm
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN cd frontend && pnpm install --frozen-lockfile
-COPY frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/vite.config.ts frontend/index.html ./frontend/
+COPY frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/tsconfig.test.json frontend/vite.config.ts frontend/index.html ./frontend/
 COPY frontend/src ./frontend/src
 COPY frontend/public ./frontend/public
 RUN cd frontend && pnpm build

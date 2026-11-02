@@ -43,7 +43,7 @@ tests/
 ```
 
 - `vitest.config.ts` merges `vite.config.ts` and runs `tests/**/*.test.{ts,tsx}` in jsdom.
-- `tsconfig.test.json` (referenced from `tsconfig.json`) typechecks `tests/` with `src/`, so `pnpm typecheck` covers tests; `tsconfig.app.json` stays `src` only and tests are never bundled.
+- `tsconfig.test.json` (referenced from `tsconfig.json`) typechecks `tests/` with `src/`, so `pnpm typecheck` covers tests; `tsconfig.app.json` stays `src` only and tests are never bundled. `pnpm build` only builds the app and node configs (`tsc -b tsconfig.app.json tsconfig.node.json`), so tests are never typechecked in the Docker image. The Dockerfile still copies `tsconfig.test.json` because Vite reads every config `tsconfig.json` references; `tests/` itself stays out of the image.
 - ESLint lints `tests/**` with `tsconfig.test.json`.
 - No browser or e2e tests; everything runs in jsdom. Testing Library for components (no snapshots).
 - Each test file stays ≤250 lines.
