@@ -181,7 +181,21 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
 
 ## Deploy to k3s
 
-`scripts/deploy-local.sh [--dry-run] [TAG]` builds the image, imports it into containerd, renders and applies manifests, and waits for rollout. The backend pod runs in the `default` namespace with ServiceAccount `pier-backend`.
+`scripts/deploy-local.sh [--dry-run | --render [--out DIR]] [TAG]` builds the image, imports it into containerd, renders and applies manifests, and waits for rollout. The backend pod runs in the `default` namespace with ServiceAccount `pier-backend`.
+
+| Mode | What it does | Needs |
+|------|--------------|-------|
+| (none) | Build, import over SSH, apply, wait for rollout. | Docker, SSH, cluster, `K3S_HOST`, `K3S_SSH_USER`, `PIER_API_TOKEN` |
+| `--dry-run` | `kubectl apply --dry-run=server` on every manifest. No build, no SSH, nothing changed. | Cluster, `PIER_API_TOKEN` |
+| `--render [--out DIR]` | Render every manifest to `DIR` (default: new temp dir) as `NN-<name>.yaml` in apply order, then lint offline: no `__PLACEHOLDER__` left, and every file parses (`kubectl kustomize`; `apply --dry-run=client` can't run without a cluster). The Secret is rendered with the value `REDACTED`. | `kubectl` on PATH only |
+| `-h`, `--help` | Print usage. | |
+
+`TAG` defaults to the git short SHA (plus `-dirty`). It may only contain letters, digits, `.`, `_` and `-`. `PIER_ENV_FILE` overrides the env file path (default `backend/.env`); variables already set in the shell win over the file.
+
+```bash
+./backend/scripts/deploy-local.sh --render --out /tmp/pier-render   # offline check
+./backend/scripts/deploy-local.sh --dry-run                         # server-side check
+```
 
 ### Prerequisites
 
@@ -200,7 +214,7 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
 
 ### What it does
 
-1. **Builds image:** `pier-backend:$TAG`. `TAG` defaults to the git short SHA, plus `-dirty` if tracked files have uncommitted changes. Use `--dry-run` to skip this step.
+1. **Builds image:** `pier-backend:$TAG`. `TAG` defaults to the git short SHA, plus `-dirty` if tracked files have uncommitted changes. `--dry-run` and `--render` skip this step.
 2. **Imports to containerd** via SSH: `docker save | ssh $K3S_SSH_USER@$K3S_HOST sudo k3s ctr images import -`
 3. **Applies manifests** in order (see [k8s/README.md#apply-order](k8s/README.md#apply-order)):
    - `namespace.yaml` (creates `pier-apps` with Pod Security labels)
@@ -208,7 +222,7 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
    - `rbac-apps.yaml` (Role for app management in `pier-apps`)
    - Optional: `quota.yaml`, `networkpolicies.yaml`, `policy-services.yaml` (if present)
    - `service.yaml` (Service for backend)
-4. **Creates or updates Secret** `default/pier-backend-secrets` from `PIER_API_TOKEN` (never echoed).
+4. **Creates or updates Secret** `default/pier-backend-secrets` from `PIER_API_TOKEN`. The token is piped to `kubectl` on stdin (`--from-file=PIER_API_TOKEN=/dev/stdin`), so it never appears in any command line or `ps`, and the rendered Secret is piped straight to `kubectl apply` without touching disk.
 5. **Renders and applies** `deployment.yaml.tmpl`, substituting placeholders:
    - `__IMAGE__`: `pier-backend:$TAG`
    - `__TOKEN_SHA256__`: SHA256 hash of `PIER_API_TOKEN`
@@ -279,10 +293,13 @@ For RBAC, Pod Security, ResourceQuota, NetworkPolicies, and the Service-type adm
 | `src/routes/` | HTTP handlers. See [src/routes/README.md](src/routes/README.md). |
 | `src/k8s/` | Kubernetes client and mapping helpers. See [src/k8s/README.md](src/k8s/README.md). |
 | `tests/` | `node:test` suites mirroring `src/` (config, auth, routes, k8s mappers). Routes are tested with injected fakes. |
-| `tests/helpers/` | `fake-clients.ts` (fake `K8sClientsResult` for `buildApp(config, { k8s })`), `fake-kubeconfig-loader.ts` (counting loader for `buildApp(config, { loadKubeConfig })`), `test-config.ts` (`testConfig()` and `authHeader`). |
+| `tests/scripts/` | `load-env.test.ts` (parser cases, incl. `set -euo pipefail`) and `deploy-local.test.ts` (runs the script against shim `kubectl`/`docker`/`ssh` that log argv: `--render` offline, no token in any argv, flag errors). |
+| `tests/helpers/` | `fake-clients.ts` (fake `K8sClientsResult` for `buildApp(config, { k8s })`), `fake-kubeconfig-loader.ts` (counting loader for `buildApp(config, { loadKubeConfig })`), `test-config.ts` (`testConfig()` and `authHeader`), `run-bash.ts` (`runBash` in a clean env, `withTempDir`). |
 | `tests/fixtures/` | Test data: `kubeconfig.yaml` (valid but fake kubeconfig for testing). |
 | `k8s/` | Manifests. See [k8s/README.md](k8s/README.md). |
-| `scripts/deploy-local.sh` | Build, import and roll out to k3s (above). |
+| `scripts/deploy-local.sh` | Build, import and roll out to k3s, or `--dry-run` / `--render` (above). |
+| `scripts/lib/load-env.sh` | `load_env_file`: safe `.env` parser (no eval; existing env wins; safe under `set -e`). |
+| `scripts/lib/render.sh` | `manifest_names`, `render_manifest`, `render_to_dir`, `lint_rendered`: one renderer shared by every deploy mode. |
 | `Dockerfile` | Two-stage `node:22-alpine` build, pinned by digest. Stage 1 runs `pnpm install --frozen-lockfile`, `build` and `prune --prod`. Stage 2 runs `node dist/index.js` as `node` (uid 1000) on port 3000. |
 | `.dockerignore` | Keeps `node_modules`, `dist`, `.env*` (except `.env.example`), `tests`, `k8s`, `scripts`, `*.md` and `.git` out of the build context. |
 | `.env.example` | Template for `.env`. |

@@ -68,6 +68,9 @@ Examples:
    ```bash
    pnpm --dir backend lint && pnpm --dir backend typecheck && pnpm --dir backend test && pnpm --dir backend build
    pnpm --dir frontend lint && pnpm --dir frontend typecheck && pnpm --dir frontend test && pnpm --dir frontend build
+   pnpm --dir backend audit --prod --audit-level high && pnpm --dir frontend audit --prod --audit-level high
+   shellcheck -x backend/scripts/*.sh backend/scripts/lib/*.sh   # if you touched backend/scripts
+   ./backend/scripts/deploy-local.sh --render                      # if you touched backend/k8s or scripts; offline
    ```
 
 4. **Push your branch** and create a pull request against `main`:
@@ -76,7 +79,7 @@ Examples:
    gh pr create --base main
    ```
 
-5. **CI must pass** (GitHub Actions workflow: `backend` and `frontend` jobs both green).
+5. **CI must pass** (GitHub Actions workflow: `backend` and `frontend` jobs both green). Each job runs install, `pnpm audit --prod --audit-level high`, lint, typecheck, test and build; the backend job also runs `bash -n` and `shellcheck` on `backend/scripts/`. Actions are pinned to full commit SHAs, and Dependabot (`.github/dependabot.yml`) opens weekly PRs to bump them. Don't switch a pin back to a tag.
 
 6. **No direct pushes to `main`** — all changes go through pull requests. The `main` branch is protected.
 
@@ -101,7 +104,7 @@ This auto-closes the issue when the PR is merged.
 
 ## Testing and verification
 
-- Backend tests run via `node:test` and require no external cluster or `.env`.
+- Backend tests run via `node:test` and require no external cluster or `.env`. `tests/scripts/` runs the deploy scripts against shim `kubectl`/`docker`/`ssh` binaries (the real `kubectl` is only used for offline subcommands; those tests skip if it isn't installed).
 - Frontend tests run via Vitest in jsdom with mock `fetch` and `EventSource`. See [frontend/README.md](./frontend/README.md#tests) for details.
 - All CI checks must pass before merge.
 

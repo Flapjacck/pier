@@ -27,31 +27,54 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 5. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
 6. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
 7. `service.yaml` — Service for pier-backend
-8. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
+8. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
+9. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
    - `__IMAGE__` → `pier-backend:$TAG` (the built image)
    - `__TOKEN_SHA256__` → SHA256 hash of `PIER_API_TOKEN` (for restart detection)
    - `__INGRESS_DOMAIN__` → `PIER_INGRESS_DOMAIN` env var
    - `__DASHBOARD_HOST__` → `PIER_DASHBOARD_HOST` or derived value
-9. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if `PIER_DASHBOARD_HOST` is set), rendered with `__DASHBOARD_HOST__`
+10. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`
 
-Namespace and RBAC must exist before namespaced objects. The script uses `kubectl apply --dry-run=server` with `--dry-run` flag for validation without mutation.
+Namespace and RBAC must exist before namespaced objects.
+
+To check changes here without touching the cluster:
+
+- `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
+- `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed).
 
 ## RBAC
 
 | Subject | Scope | Grants |
 |---------|-------|--------|
-| `pier-backend-cluster-health` (ClusterRole) | cluster | `get`/`list` on `nodes` and `pods`; `get` on `/version`, `/healthz`, `/livez`, `/readyz`. Dropping `pods` is a `TODO(#5)`. |
-| `pier-app-manager` (Role) | `pier-apps` | Full CRUD on `deployments`, `services` and `ingresses`; `get`/`update`/`patch` on `deployments/scale`; `get`/`list`/`watch` on `pods`; `get` on `pods/log`. |
+| `pier-backend-cluster-health` (ClusterRole) | cluster | `get`/`list` on `nodes`; `get` on `/version`, `/healthz`, `/livez`, `/readyz`. |
+| `pier-app-manager` (Role) | `pier-apps` | Only what the backend calls (see the comments in [rbac-apps.yaml](rbac-apps.yaml)), below. |
+
+`pier-app-manager` verbs:
+
+| Resource | Verbs | Used by |
+|----------|-------|---------|
+| `deployments` | `get`, `list`, `create`, `patch`, `delete` | lookup, `GET /apps`, create, restart (JSON patch), delete and create rollback |
+| `deployments/scale` | `update` | scale (`replaceNamespacedDeploymentScale` is a PUT) |
+| `services` | `get`, `create`, `delete` | create, delete |
+| `pods` | `list` | app pods and the cluster pods route |
+| `pods/log` | `get` | logs and live logs (`follow` is still a `get`) |
+| `ingresses` | `get`, `list`, `create`, `delete` | lookup, host conflict check, create, delete |
+
+No `watch` (there are no watches or informers) and no `update` on whole objects (nothing PUTs a Deployment, Service or Ingress). If you add a k8s call, add its verb here and in `rbac-apps.yaml`.
 
 Check what it allows:
 
 ```bash
 SA=system:serviceaccount:default:pier-backend
-kubectl auth can-i create deployments -n pier-apps --as=$SA       # yes
-kubectl auth can-i patch deployments/scale -n pier-apps --as=$SA  # yes
-kubectl auth can-i get pods/log -n pier-apps --as=$SA             # yes
-kubectl auth can-i create ingresses -n pier-apps --as=$SA         # yes
-kubectl auth can-i delete pods -n pier-apps --as=$SA              # no
+kubectl auth can-i create deployments -n pier-apps --as=$SA        # yes
+kubectl auth can-i update deployments/scale -n pier-apps --as=$SA  # yes
+kubectl auth can-i list pods -n pier-apps --as=$SA                 # yes
+kubectl auth can-i get pods/log -n pier-apps --as=$SA              # yes
+kubectl auth can-i create ingresses -n pier-apps --as=$SA          # yes
+kubectl auth can-i watch deployments -n pier-apps --as=$SA         # no
+kubectl auth can-i update services -n pier-apps --as=$SA           # no
+kubectl auth can-i get pods -n pier-apps --as=$SA                  # no
+kubectl auth can-i delete pods -n pier-apps --as=$SA               # no
 kubectl auth can-i create deployments -n default --as=$SA         # no
 kubectl auth can-i delete nodes --as=$SA                          # no
 ```
