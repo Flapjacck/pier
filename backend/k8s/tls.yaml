@@ -1,0 +1,78 @@
+# tls.yaml: Pier's LAN certificate authority and HTTPS redirect (#29).
+# Applied by deploy-local.sh only when PIER_TLS_ISSUER is set, and only after
+# cert-manager is installed (./scripts/install-cert-manager.sh).
+#
+# Chain: pier-selfsigned signs the pier-root-ca CA certificate once; pier-ca
+# then signs every <app>-tls certificate requested through the
+# cert-manager.io/cluster-issuer annotation. Trust pier-root-ca on your devices
+# (see k8s/README.md#tls). No ACME, so no challenge solvers or extra
+# NetworkPolicies are needed.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: pier-selfsigned
+  labels:
+    app.kubernetes.io/part-of: pier
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pier-root-ca
+  # A ClusterIssuer reads its CA Secret from cert-manager's cluster resource
+  # namespace, which is cert-manager's own namespace by default.
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/part-of: pier
+spec:
+  isCA: true
+  commonName: Pier LAN Root CA
+  secretName: pier-root-ca
+  duration: 87600h # 10 years
+  renewBefore: 720h # 30 days
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: pier-selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: pier-ca
+  labels:
+    app.kubernetes.io/part-of: pier
+spec:
+  ca:
+    secretName: pier-root-ca
+---
+# Traefik only resolves a middleware in the Ingress's own namespace by default,
+# so there's one copy for app Ingresses and one for the dashboard Ingress.
+# redirectScheme passes HTTPS requests through and 301s plain HTTP.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: pier-https-redirect
+  namespace: pier-apps
+  labels:
+    app.kubernetes.io/part-of: pier
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: pier-https-redirect
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: pier
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
