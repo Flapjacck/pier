@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { backoffDelay } from "./backoff";
+import { backoffDelay } from "../../src/lib/backoff";
 
 describe("backoffDelay", () => {
   it("attempt 0 gives 1000ms at mid-random", () => {
@@ -24,14 +24,14 @@ describe("backoffDelay", () => {
     expect(d).toBe(30000);
   });
 
-  it("applies jitter: ±20% of base", () => {
+  it("applies jitter: ±10% of base", () => {
     const d0 = backoffDelay(0, () => 0); // Min jitter
     const d1 = backoffDelay(0, () => 1); // Max jitter
 
-    // At random=0: jitter = 1000 * 0.2 * (0 - 0.5) = -100
+    // At random=0: jitter = 1000 * 0.2 * (0 - 0.5) = -100 (10% below)
     expect(d0).toBe(900);
 
-    // At random=1: jitter = 1000 * 0.2 * (1 - 0.5) = 100
+    // At random=1: jitter = 1000 * 0.2 * (1 - 0.5) = 100 (10% above)
     expect(d1).toBe(1100);
   });
 
@@ -39,10 +39,10 @@ describe("backoffDelay", () => {
     const d0 = backoffDelay(2, () => 0);
     const d1 = backoffDelay(2, () => 1);
 
-    // At random=0: jitter = 4000 * 0.2 * (0 - 0.5) = -400
+    // At random=0: jitter = 4000 * 0.2 * (0 - 0.5) = -400 (10% below)
     expect(d0).toBe(3600);
 
-    // At random=1: jitter = 4000 * 0.2 * (1 - 0.5) = 400
+    // At random=1: jitter = 4000 * 0.2 * (1 - 0.5) = 400 (10% above)
     expect(d1).toBe(4400);
   });
 
@@ -57,10 +57,10 @@ describe("backoffDelay", () => {
     const d0 = backoffDelay(10, () => 0);
     const d1 = backoffDelay(10, () => 1);
 
-    // At random=0: jitter = 30000 * 0.2 * (0 - 0.5) = -3000
+    // At random=0: jitter = 30000 * 0.2 * (0 - 0.5) = -3000 (10% below)
     expect(d0).toBe(27000);
 
-    // At random=1: jitter = 30000 * 0.2 * (1 - 0.5) = 3000
+    // At random=1: jitter = 30000 * 0.2 * (1 - 0.5) = 3000 (10% above)
     expect(d1).toBe(33000);
   });
 });

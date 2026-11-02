@@ -40,4 +40,13 @@ export default [
     },
     files: ["vite.config.ts", "vitest.config.ts"],
   },
+  {
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: {
+        project: "./tsconfig.test.json",
+      },
+    },
+    files: ["tests/**/*.ts", "tests/**/*.tsx"],
+  },
 ];

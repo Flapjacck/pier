@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { appLogsUrl } from "./client";
-import { parseApp, parseAppList } from "./guards";
+import { appLogsUrl } from "../../src/api/client";
+import { parseApp, parseAppList } from "../../src/api/guards";
 
 describe("appLogsUrl", () => {
   it("encodes app name in URL", () => {

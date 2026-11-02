@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getStatusClasses } from "./status";
+import { getStatusClasses } from "../../src/lib/status";
 
 describe("getStatusClasses", () => {
   it("returns running status classes", () => {

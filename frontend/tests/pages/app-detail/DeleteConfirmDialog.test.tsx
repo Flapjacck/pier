@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { DeleteConfirmDialog } from "../../../src/pages/app-detail/DeleteConfirmDialog";
 
 describe("DeleteConfirmDialog", () => {
   it("renders dialog when open", () => {

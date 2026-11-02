@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { request, requestVoid, setUnauthorizedHandler } from "./request";
-import { ApiError } from "./errors";
+import { request, requestVoid, setUnauthorizedHandler } from "../../src/api/request";
+import { ApiError } from "../../src/api/errors";
 
 describe("request", () => {
   beforeEach(() => {
