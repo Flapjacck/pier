@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { EmptyDock } from "./EmptyDock";
+import { EmptyDock } from "../../../src/components/ui/EmptyDock";
 
 describe("EmptyDock", () => {
   it("renders title", () => {

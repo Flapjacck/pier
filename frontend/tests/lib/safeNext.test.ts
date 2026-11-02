@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { safeNext } from "./safeNext";
+import { safeNext } from "../../src/lib/safeNext";
 
 describe("safeNext", () => {
   it("accepts relative app path", () => {

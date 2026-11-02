@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { mapApiErrorToFields } from "./errorMapping";
-import { ApiError } from "../../api/errors";
+import { mapApiErrorToFields } from "../../../src/pages/deploy/errorMapping";
+import { ApiError } from "../../../src/api/errors";
 
 describe("mapApiErrorToFields", () => {
   it("maps 409 name conflict to name field", () => {

@@ -1,6 +1,6 @@
 /**
  * Calculate exponential backoff delay with jitter.
- * Base doubles from 1s up to 30s cap with ±20% jitter.
+ * Base doubles from 1s up to 30s cap with ±10% jitter.
  * @param attempt - Attempt number (0-indexed)
  * @param random - Random number generator (0 to 1); defaults to Math.random
  * @returns Delay in milliseconds

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { apiErrorFromResponse } from "./errors";
+import { apiErrorFromResponse } from "../../src/api/errors";
 
 describe("apiErrorFromResponse", () => {
   it("creates error from 400 validation error", () => {
