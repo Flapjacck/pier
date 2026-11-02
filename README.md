@@ -163,7 +163,7 @@ pnpm --dir frontend dev       # http://127.0.0.1:5173
 
 ### Local checks
 
-Before pushing, run the linter, type-checker, and (backend) tests:
+Before pushing, run the linter, type-checker, and tests:
 
 ```bash
 pnpm --dir backend lint      # ESLint
@@ -173,6 +173,7 @@ pnpm --dir backend build     # tsup
 
 pnpm --dir frontend lint     # ESLint
 pnpm --dir frontend typecheck # tsc -b
+pnpm --dir frontend test     # Vitest
 pnpm --dir frontend build    # Vite
 ```
 
