@@ -10,6 +10,7 @@ export type Config = {
   publicDir: string | undefined;
   trustProxy: boolean;
   dashboardHost: string | undefined;
+  tlsIssuer: string | undefined;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -131,6 +132,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dashboardHost = dashboardHostRaw.toLowerCase();
   }
 
+  // Parse TLS issuer (optional cert-manager ClusterIssuer name, DNS-1123 subdomain).
+  const tlsIssuerRaw = optionalNonEmpty(env.PIER_TLS_ISSUER);
+  if (tlsIssuerRaw !== undefined) {
+    const subdomain = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+    if (tlsIssuerRaw.length > 253 || !subdomain.test(tlsIssuerRaw)) {
+      throw new Error(
+        `Invalid PIER_TLS_ISSUER "${tlsIssuerRaw}": must be a ClusterIssuer name (lowercase letters, digits, '-' and '.')`,
+      );
+    }
+  }
+
   return {
     port: parsePort(env.PORT),
     host,
@@ -141,5 +153,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicDir: optionalNonEmpty(env.PIER_PUBLIC_DIR),
     trustProxy: parseBoolean(env.PIER_TRUST_PROXY),
     dashboardHost,
+    tlsIssuer: tlsIssuerRaw,
   };
 }

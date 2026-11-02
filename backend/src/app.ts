@@ -79,9 +79,9 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
   // Register all API routes under /api prefix (health, session, cluster, apps).
   await app.register(async (api) => {
     await api.register(healthRoutes);
-    await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain }));
+    await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
-    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost }));
+    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer }));
   }, { prefix: "/api" });
 
   // Register static file serving (dashboard SPA) after API routes.

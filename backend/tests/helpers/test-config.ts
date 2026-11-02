@@ -14,6 +14,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     publicDir: undefined,
     trustProxy: false,
     dashboardHost: undefined,
+    tlsIssuer: undefined,
     ...overrides,
   };
 }

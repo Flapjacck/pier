@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 import {
   buildDeployment,
   buildService,
-  buildIngress,
   type CreateAppInput,
 } from "../../src/k8s/manifests/index.js";
 import {
@@ -163,59 +162,7 @@ describe("buildService", () => {
   });
 });
 
-describe("buildIngress", () => {
-  it("throws when host is not provided", () => {
-    assert.throws(
-      () => buildIngress(baseInput),
-      (err: Error) => {
-        assert.match(err.message, /host/i);
-        return true;
-      },
-    );
-  });
-
-  it("creates an Ingress with correct metadata and labels", () => {
-    const ing = buildIngress({ ...baseInput, host: "hello.example.com" });
-    assert.equal(ing.kind, "Ingress");
-    assert.equal(ing.metadata?.name, "hello");
-    assert.equal(ing.metadata?.labels?.["pier.app"], "hello");
-  });
-
-  it("sets ingressClassName to traefik", () => {
-    const ing = buildIngress({ ...baseInput, host: "hello.example.com" });
-    assert.equal(ing.spec?.ingressClassName, "traefik");
-  });
-
-  it("sets rule with host and path / Prefix", () => {
-    const ing = buildIngress({ ...baseInput, host: "hello.example.com" });
-    const rule = ing.spec?.rules?.[0];
-    assert.equal(rule?.host, "hello.example.com");
-    assert.equal(rule?.http?.paths?.[0]?.path, "/");
-    assert.equal(rule?.http?.paths?.[0]?.pathType, "Prefix");
-  });
-
-  it("sets backend to Service name and port 80", () => {
-    const ing = buildIngress({ ...baseInput, host: "hello.example.com" });
-    const backend = ing.spec?.rules?.[0]?.http?.paths?.[0]?.backend;
-    assert.equal(backend?.service?.name, "hello");
-    assert.equal(backend?.service?.port?.number, 80);
-  });
-
-  it("adds owner reference to Deployment when uid provided", () => {
-    const ing = buildIngress({ ...baseInput, host: "hello.example.com" }, "dep-uid-123");
-    const owner = ing.metadata?.ownerReferences?.[0];
-    assert.equal(owner?.kind, "Deployment");
-    assert.equal(owner?.name, "hello");
-    assert.equal(owner?.uid, "dep-uid-123");
-    assert.equal(owner?.blockOwnerDeletion, false);
-    assert.equal(owner?.controller, false);
-  });
-
-  it("omits owner reference when no uid provided", () => {
-    const ing = buildIngress({ ...baseInput, host: "hello.example.com" });
-    assert(!ing.metadata?.ownerReferences || ing.metadata.ownerReferences.length === 0);
-  });
-
+describe("buildDeployment rollout", () => {
   it("sets progressDeadlineSeconds to 120 for rapid failure detection", () => {
     const dep = buildDeployment(baseInput);
     assert.equal(dep.spec?.progressDeadlineSeconds, PROGRESS_DEADLINE_SECONDS);

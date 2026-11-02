@@ -14,6 +14,8 @@ type PostAppsRouteDeps = {
   namespace: string;
   ingressDomain: string | undefined;
   dashboardHost: string | undefined;
+  /** cert-manager ClusterIssuer for app Ingresses (PIER_TLS_ISSUER); unset = HTTP only. */
+  tlsIssuer?: string;
 };
 
 /** POST /apps — create a new Deployment, Service, and optionally Ingress. */
@@ -107,6 +109,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               replicas,
               host: hostNorm,
               env,
+              tlsIssuer: deps.tlsIssuer,
             },
             req.log,
           );

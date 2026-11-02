@@ -2,7 +2,7 @@ import type { AppsV1Api, NetworkingV1Api, V1Deployment } from "@kubernetes/clien
 import type { App } from "./apps.js";
 import { APP_LABEL } from "./labels.js";
 import { apiStatusCode } from "./api-errors.js";
-import { deploymentToApp } from "./apps.js";
+import { deploymentToApp, ingressHasTls, ingressHost } from "./apps.js";
 
 /** Read a live (non-terminating) Deployment for an app by name.
  * Returns undefined if not found (404), being terminated, or labels don't match pier.app=name.
@@ -38,16 +38,19 @@ export async function getLiveApp(
   }
 }
 
-/** Read the host for an app from its Ingress.
- * Returns undefined if not found (404), being terminated, or missing pier.app label.
- * Otherwise returns the first rule's host (lowercased by the create route).
+/** Where an app is served: its Ingress host and whether that host has TLS. */
+export type AppRoute = { host: string; tls: boolean };
+
+/** Read the host (and TLS) for an app from its Ingress.
+ * Returns undefined if not found (404), being terminated, missing pier.app label,
+ * or without a host. Otherwise returns the first rule's host, lowercased.
  * Rethrows other API errors for the caller to handle.
  */
-export async function getAppHost(
+export async function getAppRoute(
   networking: NetworkingV1Api,
   namespace: string,
   name: string,
-): Promise<string | undefined> {
+): Promise<AppRoute | undefined> {
   try {
     const response = await networking.readNamespacedIngress({
       name,
@@ -63,8 +66,8 @@ export async function getAppHost(
     }
 
     // Extract host from the first rule.
-    const host = response.spec?.rules?.[0]?.host;
-    return host ? host.toLowerCase() : undefined;
+    const host = ingressHost(response);
+    return host ? { host, tls: ingressHasTls(response) } : undefined;
   } catch (err) {
     const code = apiStatusCode(err);
     if (code === 404) {
@@ -91,8 +94,8 @@ export async function getApp(
   }
 
   // Fetch the Ingress if it exists.
-  const host = await getAppHost(clients.networking, namespace, name);
+  const route = await getAppRoute(clients.networking, namespace, name);
 
-  // Convert to App, passing host if available.
-  return deploymentToApp(deployment, host);
+  // Convert to App, passing host (and TLS) if available.
+  return deploymentToApp(deployment, route?.host, route?.tls);
 }

@@ -99,19 +99,28 @@ export function ingressHost(ing: V1Ingress): string | undefined {
   return host ? host.toLowerCase() : undefined;
 }
 
-/** Generate the URL for an app given its host.
- * Returns http://host; switches to https:// when #29 (TLS) lands.
- */
-export function appUrl(host: string): string {
-  return `http://${host}`;
+/** True when the Ingress serves its first rule's host over TLS (#29). */
+export function ingressHasTls(ing: V1Ingress): boolean {
+  const host = ingressHost(ing);
+  if (!host) {
+    return false;
+  }
+  return (ing.spec?.tls ?? []).some((entry) =>
+    (entry.hosts ?? []).some((h) => h.toLowerCase() === host),
+  );
+}
+
+/** Generate the URL for an app given its host: https:// when its Ingress has TLS. */
+export function appUrl(host: string, tls = false): string {
+  return `${tls ? "https" : "http"}://${host}`;
 }
 
 /** Pure mapping from a namespaced Deployment to the public App shape.
- * If host is provided, sets host and url in the response.
+ * If host is provided, sets host and url in the response (https:// when tls).
  * Sets port when the Deployment has ports defined.
  * Omits keys with undefined values.
  */
-export function deploymentToApp(d: V1Deployment, host?: string): App {
+export function deploymentToApp(d: V1Deployment, host?: string, tls = false): App {
   const replicas = d.spec?.replicas ?? 1;
   const ready = d.status?.readyReplicas ?? 0;
   const name =
@@ -135,7 +144,7 @@ export function deploymentToApp(d: V1Deployment, host?: string): App {
 
   if (host) {
     app.host = host;
-    app.url = appUrl(host);
+    app.url = appUrl(host, tls);
   }
 
   return app;
@@ -167,8 +176,8 @@ export async function listApps(
     (d) => !d.metadata?.deletionTimestamp,
   );
 
-  // Build a Map<appName, host> from non-terminating Ingresses with pier.app label.
-  const hosts = new Map<string, string>();
+  // Build a Map<appName, {host, tls}> from non-terminating Ingresses with pier.app label.
+  const hosts = new Map<string, { host: string; tls: boolean }>();
   for (const ingress of ingressResponse.items ?? []) {
     if (ingress.metadata?.deletionTimestamp) {
       continue;
@@ -179,14 +188,15 @@ export async function listApps(
     }
     const host = ingressHost(ingress);
     if (host) {
-      hosts.set(appName, host);
+      hosts.set(appName, { host, tls: ingressHasTls(ingress) });
     }
   }
 
   // Convert Deployments to Apps, passing the host if available.
   const appList = liveDeployments.map((d) => {
     const appName = d.metadata?.labels?.[APP_LABEL] ?? d.metadata?.name ?? "";
-    return deploymentToApp(d, hosts.get(appName));
+    const route = hosts.get(appName);
+    return deploymentToApp(d, route?.host, route?.tls);
   });
 
   appList.sort((a, b) => a.name.localeCompare(b.name));
