@@ -31,7 +31,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 
 ## What it does
 
-- **Deploy apps:** Push a Docker image, get a URL instantly via HTTP ingress
+- **Deploy apps:** Push a Docker image, get a URL instantly via ingress (optional HTTPS through cert-manager)
 - **Logs & monitoring:** Stream live logs, check pod status, see resource usage
 - **Scaling:** Scale replicas up/down, pause with zero replicas
 - **Restart:** Trigger pod rollouts for live reload or recovery
@@ -119,6 +119,8 @@ Before you start, ensure your k3s node has:
    - Create a new app: name=`myapp`, image=`nginx:alpine`, port=`80`
    - Set host: `myapp.192.0.2.10.nip.io`
    - Open `http://myapp.192.0.2.10.nip.io` — Nginx is running
+
+6. **Optional: turn on HTTPS.** Run `./scripts/install-cert-manager.sh`, add `PIER_TLS_ISSUER=pier-ca` to `backend/.env`, redeploy, and trust Pier's root CA on your machines. New apps then get `https://` URLs and HTTP redirects to HTTPS. Full steps are in [backend/k8s/README.md#tls](backend/k8s/README.md#tls).
 
 ## Upgrading
 

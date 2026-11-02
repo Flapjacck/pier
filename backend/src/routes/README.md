@@ -137,11 +137,12 @@ Get the current session status and ingress domain. Requires authentication (bear
 **200 (success)**:
 
 ```json
-{ "ok": true, "authDisabled": false, "ingressDomain": "192.0.2.10.nip.io" }
+{ "ok": true, "authDisabled": false, "ingressDomain": "192.0.2.10.nip.io", "tls": true }
 ```
 
 - `authDisabled` is `false` when a token is configured, `true` when `PIER_API_TOKEN` is unset (loopback only). When `true`, other `/api/*` routes still require a token; only this endpoint is public.
 - `ingressDomain` is the wildcard suffix for ingress hosts (from `PIER_INGRESS_DOMAIN`), or `null` if not configured. The frontend uses this to prefill the host on deploy forms.
+- `tls` is `true` when `PIER_TLS_ISSUER` is set, so new app URLs will be `https://`. The deploy form uses it for the URL preview.
 
 **401 (unauthorized)**: Not authenticated (no bearer token or invalid session cookie).
 
@@ -201,7 +202,7 @@ Lists Deployments in `PIER_NAMESPACE` (default `pier-apps`) that have the `pier.
 - `replicas` is `spec.replicas` (default 1), and `ready` is `status.readyReplicas` (default 0).
 - `port` (optional) is the container port from `containers[0]`: preferred port named `http`, or first port if `http` is not present. Omitted if no ports are defined.
 - `host` (optional) is the Ingress hostname, lowercased. Omitted if no active Ingress is found (404, terminating, or no `pier.app` label on Ingress).
-- `url` (optional) is `http://` + `host`. Omitted when `host` is absent. Will switch to `https://` when #29 (TLS) lands.
+- `url` (optional) is `https://` + `host` when the app's Ingress has a `tls` entry covering that host, otherwise `http://` + `host`. Omitted when `host` is absent. The scheme comes from the live Ingress, so apps created before TLS was turned on keep `http://`.
 
 `status` (`deriveStatus` in `../k8s/apps.ts`) is decided by the first rule that matches, in this order:
 
@@ -382,7 +383,7 @@ If `host` is provided:
 - **Case-insensitive host conflict check**: The pre-creation host-in-use check compares hosts case-insensitively, so uppercase `HELLO.example.com` conflicts with existing lowercase `hello.example.com`.
 - Ingress is created with `ingressClassName: traefik`, one rule `host: <host>` (lowercased) → path `/` (Prefix) → Service port 80.
 - If `PIER_INGRESS_DOMAIN` is not configured (empty or unset), `host` is rejected with 400.
-- **TLS:** Assumes Traefik is configured for TLS termination on ingress hosts. Traefik routes must have TLS enabled; HTTP-only will expose traffic in plaintext. See [#27](https://github.com/Flapjacck/pier/issues/27) for TLS enforcement.
+- **TLS:** When `PIER_TLS_ISSUER` is set, the Ingress also gets the `cert-manager.io/cluster-issuer` annotation, the `pier-apps-pier-https-redirect@kubernetescrd` router middleware (HTTP gets a 301 to HTTPS), and `tls: [{ hosts: [<host>], secretName: <name>-tls }]`; the response `url` is `https://`. Without it the Ingress is HTTP-only. Setup is in [../../k8s/README.md#tls](../../k8s/README.md#tls).
 
 ### Network isolation
 
