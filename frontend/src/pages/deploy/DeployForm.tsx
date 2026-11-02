@@ -11,13 +11,15 @@ import { useDeployForm } from "./useDeployForm";
 
 interface Props {
   ingressDomain: string | null;
+  /** App URLs are https:// (backend TLS on). */
+  tls?: boolean;
   onCancel: () => void;
 }
 
 /**
  * Deploy form with validation, error mapping, and success state.
  */
-export function DeployForm({ ingressDomain, onCancel }: Props) {
+export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
   const { push: showToast } = useToast();
 
   const {
@@ -159,6 +161,7 @@ export function DeployForm({ ingressDomain, onCancel }: Props) {
               id="deploy-host"
               subdomain={subdomain}
               ingressDomain={ingressDomain}
+              tls={tls}
               onSubdomainChange={setSubdomain}
               onClearError={clearHostError}
               error={touched ? errors.host : undefined}

@@ -5,6 +5,8 @@ interface Props {
   id: string;
   subdomain: string;
   ingressDomain: string | null;
+  /** Preview the URL as https:// (backend TLS on). */
+  tls?: boolean;
   onSubdomainChange: (subdomain: string) => void;
   onClearError: () => void;
   error?: string;
@@ -18,6 +20,7 @@ export function HostField({
   id,
   subdomain,
   ingressDomain,
+  tls = false,
   onSubdomainChange,
   onClearError,
   error,
@@ -41,7 +44,7 @@ export function HostField({
       label="Public URL"
       hint={
         subdomain
-          ? `http://${subdomain}.${ingressDomain}`
+          ? `${tls ? "https" : "http"}://${subdomain}.${ingressDomain}`
           : `e.g. demo.${ingressDomain}`
       }
       error={error}

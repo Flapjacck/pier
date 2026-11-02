@@ -7,7 +7,7 @@
  * - backend/src/k8s/client.ts (KubeConfigMode)
  * - backend/src/routes/apps-schemas.ts (PostAppsBody, error bodies)
  * - backend/src/routes/apps/restart.ts (RestartResult)
- * - backend/src/routes/session.ts (SessionInfo) — now includes ingressDomain
+ * - backend/src/routes/session.ts (SessionInfo) — includes ingressDomain and tls
  */
 
 export type KubeConfigMode = "in-cluster" | "kubeconfig";
@@ -67,6 +67,8 @@ export type SessionInfo = {
   ok: true;
   authDisabled: boolean;
   ingressDomain: string | null;
+  /** True when app Ingresses get TLS (backend PIER_TLS_ISSUER set). */
+  tls: boolean;
 };
 
 /** POST /api/apps body — mirrors apps-schemas PostAppsBody */
