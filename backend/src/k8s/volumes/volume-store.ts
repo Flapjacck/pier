@@ -6,6 +6,7 @@ import { listAttachments } from "./attachments.js";
 import { buildPvc, pvcToVolume } from "./pvc.js";
 import type { Volume } from "./types.js";
 import {
+  StorageClassMissingError,
   VolumeExistsError,
   VolumeInUseError,
   VolumeNotFoundError,
@@ -14,6 +15,7 @@ import {
 export { VolumeExistsError, VolumeInUseError, VolumeNotFoundError, VolumeQuotaExceededError };
 
 type Clients = { core: CoreV1Api; apps: AppsV1Api; storage?: StorageV1Api };
+type Logger = { warn: (obj: object, msg: string) => void };
 
 export async function listVolumes(clients: Clients, namespace: string): Promise<Volume[]> {
   const [pvcs, attachments] = await Promise.all([
@@ -41,7 +43,7 @@ export async function createVolume(clients: Clients, namespace: string, name: st
       await clients.storage.readStorageClass({ name: "pier-local" });
     } catch (err) {
       if (apiStatusCode(err) === 404) {
-        throw new Error("StorageClass pier-local not found; re-run deploy-local.sh");
+        throw new StorageClassMissingError();
       }
       throw err;
     }
@@ -66,21 +68,22 @@ export async function setVolumeAppLabel(core: CoreV1Api, namespace: string, name
   );
 }
 
-export async function deleteVolume(clients: Clients, namespace: string, name: string): Promise<{ dataRetained: boolean }> {
+export async function deleteVolume(clients: Clients, namespace: string, name: string, logger?: Logger): Promise<{ dataRetained: boolean }> {
   const raw = await readManagedPvc(clients.core, namespace, name);
   const attachments = await listAttachments(clients.apps, namespace);
   const attachment = attachments.get(name);
   if (attachment) throw new VolumeInUseError(`volume in use by app "${attachment.app}"`);
-  return deleteVolumeResource(clients, namespace, name, raw);
+  return deleteVolumeResource(clients, namespace, name, raw, logger);
 }
 
 export async function deleteVolumeUnchecked(
   clients: Clients,
   namespace: string,
   name: string,
+  logger?: Logger,
 ): Promise<{ dataRetained: boolean }> {
   const raw = await readManagedPvc(clients.core, namespace, name);
-  return deleteVolumeResource(clients, namespace, name, raw);
+  return deleteVolumeResource(clients, namespace, name, raw, logger);
 }
 
 async function readManagedPvc(
@@ -103,6 +106,7 @@ async function deleteVolumeResource(
   namespace: string,
   name: string,
   raw: V1PersistentVolumeClaim,
+  logger?: Logger,
 ): Promise<{ dataRetained: boolean }> {
   let dataRetained = false;
   const pvName = raw.spec?.volumeName;
@@ -118,7 +122,7 @@ async function deleteVolumeResource(
     } catch (err) {
       dataRetained = true;
       // The PVC is still deleted; operators can clean up the retained PV manually.
-      console.warn(`volume ${name}: unable to flip PV ${pvName} reclaim policy`, err);
+      logger?.warn({ err, volume: name, pv: pvName }, "unable to flip volume PV reclaim policy");
     }
   }
   await clients.core.deleteNamespacedPersistentVolumeClaim({ namespace, name });

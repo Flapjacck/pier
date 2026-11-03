@@ -1,4 +1,5 @@
-import type { AppsV1Api, CoreV1Api } from "@kubernetes/client-node";
+import type { AppsV1Api, CoreV1Api, StorageV1Api } from "@kubernetes/client-node";
+import { MANAGED_BY_LABEL, MANAGED_BY_VALUE } from "../labels.js";
 import { listAttachments } from "./attachments.js";
 import { createVolume, setVolumeAppLabel } from "./volume-store.js";
 import { mountProblems } from "./validation.js";
@@ -10,19 +11,19 @@ import {
   VolumesReplicaError,
 } from "./errors.js";
 
-type Clients = { apps: AppsV1Api; core: CoreV1Api; storage?: import("@kubernetes/client-node").StorageV1Api };
-export type ResolvedVolumes = { created: string[]; attached: string[] };
+type Clients = { apps: AppsV1Api; core: CoreV1Api; storage?: StorageV1Api };
+export type ResolvedVolumes = { created: string[]; newlyAttached: string[] };
 
 export async function resolveVolumes(clients: Clients, namespace: string, app: string, mounts: VolumeMount[], replicas: number): Promise<ResolvedVolumes> {
   if (mounts.length && replicas > 1) throw new VolumesReplicaError("apps with volumes run at most 1 replica");
   const problem = mountProblems(mounts);
   if (problem) throw new InvalidVolumesError(problem);
-  const result: ResolvedVolumes = { created: [], attached: [] };
+  const result: ResolvedVolumes = { created: [], newlyAttached: [] };
   if (!mounts.length) return result;
   const attachments = await listAttachments(clients.apps, namespace);
   const pvcList = await clients.core.listNamespacedPersistentVolumeClaim({
     namespace,
-    labelSelector: "app.kubernetes.io/managed-by=pier",
+    labelSelector: `${MANAGED_BY_LABEL}=${MANAGED_BY_VALUE}`,
   });
   const existing = new Map((pvcList.items ?? []).map((pvc) => [pvc.metadata?.name ?? "", pvc]));
   try {
@@ -36,8 +37,9 @@ export async function resolveVolumes(clients: Clients, namespace: string, app: s
         await createVolume(clients, namespace, mount.name, mount.size);
         result.created.push(mount.name);
       }
+      const currentApp = existing.get(mount.name)?.metadata?.labels?.["pier.app"];
       await setVolumeAppLabel(clients.core, namespace, mount.name, app);
-      result.attached.push(mount.name);
+      if (!currentApp || currentApp !== app) result.newlyAttached.push(mount.name);
     }
   } catch (err) {
     await rollbackResolvedVolumes(clients, namespace, result);
@@ -58,8 +60,7 @@ export async function rollbackResolvedVolumes(
       // Best effort: preserve the original operation error.
     }
   }
-  for (const name of resolved.attached) {
-    if (resolved.created.includes(name)) continue;
+  for (const name of resolved.newlyAttached) {
     try {
       await setVolumeAppLabel(clients.core, namespace, name, null);
     } catch {
