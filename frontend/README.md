@@ -158,7 +158,7 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/apps/new` → Deploy form (create new app with validation and error mapping; CPU & memory presets or custom values, sent only when not the defaults)
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
-  - `/:name/pods` → Pods tab (list, refresh, reasons)
+  - `/:name/pods` → Pods tab (pod status, image, restart/previous logs actions, and recent Kubernetes events; refreshes every 5s while visible)
   - `/:name/logs` → Logs tab (live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
   - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete
 - `*` → `NotFoundPage` (still in shell)

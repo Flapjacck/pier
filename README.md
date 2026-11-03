@@ -36,6 +36,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 - **Scaling:** Scale replicas up/down, pause with zero replicas
 - **App settings:** Change image, port, env and CPU/RAM on a running app (with a quota pre-check)
 - **Restart:** Trigger pod rollouts for live reload or recovery
+- **Pod actions:** Restart one pod, inspect previous container logs, and read recent app events
 - **Networking:** Apps reach public internet; isolated from each other and from the host LAN by default (configurable)
 - **Cluster health:** Check API server status and node readiness
 

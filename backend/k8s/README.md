@@ -102,9 +102,11 @@ curl -sI --cacert pier-root-ca.crt https://<app>.<domain>   # 200
 |----------|-------|---------|
 | `deployments` | `get`, `list`, `create`, `patch`, `delete` | lookup, `GET /apps`, create, restart and settings (JSON patch), delete and create rollback |
 | `deployments/scale` | `update` | scale (`replaceNamespacedDeploymentScale` is a PUT) |
+| `replicasets` | `list` | app events UID matching |
 | `services` | `get`, `create`, `patch`, `delete` | create, delete, settings (port change patches `targetPort`) |
 | `resourcequotas`, `limitranges` | `list` | quota/limit pre-check on create with `resources` and on `PATCH /apps/:name` |
-| `pods` | `list` | app pods and the cluster pods route |
+| `pods` | `list`, `delete` | app pods, the cluster pods route, and single-pod restart |
+| `events` | `list` | app events |
 | `pods/log` | `get` | logs and live logs (`follow` is still a `get`) |
 | `ingresses` | `get`, `list`, `create`, `delete` | lookup, host conflict check, create, delete |
 
@@ -117,13 +119,16 @@ SA=system:serviceaccount:default:pier-backend
 kubectl auth can-i create deployments -n pier-apps --as=$SA        # yes
 kubectl auth can-i update deployments/scale -n pier-apps --as=$SA  # yes
 kubectl auth can-i list pods -n pier-apps --as=$SA                 # yes
+kubectl auth can-i delete pods -n pier-apps --as=$SA               # yes
+kubectl auth can-i list events -n pier-apps --as=$SA               # yes
+kubectl auth can-i list replicasets -n pier-apps --as=$SA          # yes
 kubectl auth can-i get pods/log -n pier-apps --as=$SA              # yes
 kubectl auth can-i create ingresses -n pier-apps --as=$SA          # yes
 kubectl auth can-i watch deployments -n pier-apps --as=$SA         # no
 kubectl auth can-i list resourcequotas -n pier-apps --as=$SA       # yes
 kubectl auth can-i update services -n pier-apps --as=$SA           # no
 kubectl auth can-i get pods -n pier-apps --as=$SA                  # no
-kubectl auth can-i delete pods -n pier-apps --as=$SA               # no
+kubectl auth can-i watch events -n pier-apps --as=$SA               # no
 kubectl auth can-i create deployments -n default --as=$SA         # no
 kubectl auth can-i delete nodes --as=$SA                          # no
 ```
