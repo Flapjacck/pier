@@ -8,6 +8,9 @@ import {
   type PostAppsBody,
 } from "../apps-schemas.js";
 import { mapPostAppsError } from "./post-errors.js";
+import { checkResourceFit } from "../../k8s/resource-fit.js";
+import { DEFAULT_RESOURCES, mergeResources, resourcesProblem } from "../../k8s/resources.js";
+import { InvalidResourcesError } from "../../k8s/update-app.js";
 
 type PostAppsRouteDeps = {
   k8s: K8sClientsResult;
@@ -45,7 +48,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           });
         }
 
-        const { name, image, port, replicas, host, env } = req.body;
+        const { name, image, port, replicas, host, env, resources } = req.body;
 
         // Normalize host to lowercase (case-insensitive matching in Ingress rules).
         const hostNorm = host?.toLowerCase();
@@ -99,6 +102,18 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
         }
 
         try {
+          // Only check resources the client set; the defaults always fit the shipped quota.
+          if (resources) {
+            const merged = mergeResources(DEFAULT_RESOURCES, resources);
+            const problem = resourcesProblem(merged);
+            if (problem) throw new InvalidResourcesError(problem);
+            await checkResourceFit(
+              deps.k8s.clients.core,
+              deps.namespace,
+              { next: { resources: merged, replicas }, surge: false },
+              req.log,
+            );
+          }
           const app = await createAppSerialized(
             deps.k8s.clients,
             deps.namespace,
@@ -109,6 +124,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               replicas,
               host: hostNorm,
               env,
+              resources,
               tlsIssuer: deps.tlsIssuer,
             },
             req.log,

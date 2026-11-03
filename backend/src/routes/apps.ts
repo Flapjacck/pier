@@ -6,6 +6,7 @@ import { postAppsRoutesWithDeps } from "./apps/post.js";
 import { getAppPodsRoutesWithDeps } from "./apps/pods.js";
 import { getAppLogsRoutesWithDeps } from "./apps/logs.js";
 import { scaleAppRoutesWithDeps } from "./apps/scale.js";
+import { patchAppRoutesWithDeps } from "./apps/patch.js";
 import { restartAppRoutesWithDeps } from "./apps/restart.js";
 import { deleteAppRoutesWithDeps } from "./apps/delete.js";
 
@@ -28,6 +29,7 @@ export function appsRoutesWithDeps(deps: AppsRouteDeps): FastifyPluginAsync {
     // Register app pod and log routes
     await app.register(getAppPodsRoutesWithDeps(deps));
     await app.register(getAppLogsRoutesWithDeps(deps));
+    await app.register(patchAppRoutesWithDeps(deps));
     // Register app action routes (scale, restart, delete)
     await app.register(scaleAppRoutesWithDeps(deps));
     await app.register(restartAppRoutesWithDeps(deps));
