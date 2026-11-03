@@ -10,7 +10,7 @@
 package-lock.json
 **/package-lock.json
 
-# Dependencies (pnpm workspace installs at repo root too)
+# Dependencies (backend/ and frontend/ each install their own)
 node_modules/
 
 # Backend

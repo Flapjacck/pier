@@ -177,6 +177,8 @@ pnpm --dir frontend lint     # ESLint
 pnpm --dir frontend typecheck # tsc -b
 pnpm --dir frontend test     # Vitest
 pnpm --dir frontend build    # Vite
+
+docker build -f backend/Dockerfile -t pier-backend:ci .  # the image deploy-local.sh ships
 ```
 
 See [backend/README.md](./backend/README.md) for API/kubeconfig setup and [frontend/README.md](./frontend/README.md) for the dashboard stack, tokens, and assets.
