@@ -2,6 +2,8 @@ import type { V1Deployment, V1ObjectMeta, V1PodSpec, V1PodTemplateSpec, V1Contai
 import { APP_LABEL, appLabels } from "../labels.js";
 import { PROGRESS_DEADLINE_SECONDS } from "./constants.js";
 import { DEFAULT_RESOURCES, mergeResources, toContainerResources, type PartialAppResources } from "../resources.js";
+import { strategyFor, withVolumes } from "../volumes/pod-spec.js";
+import type { VolumeMount } from "../volumes/types.js";
 
 /** Input for building Deployment, Service, and Ingress manifests. */
 export type CreateAppInput = {
@@ -13,6 +15,7 @@ export type CreateAppInput = {
   env?: Record<string, string>;
   /** CPU/RAM requests and limits; missing fields default to DEFAULT_RESOURCES. */
   resources?: PartialAppResources;
+  volumes?: VolumeMount[];
   /** cert-manager ClusterIssuer (PIER_TLS_ISSUER). Set: the Ingress gets TLS. */
   tlsIssuer?: string;
 };
@@ -73,11 +76,11 @@ export function buildDeployment(input: CreateAppInput): V1Deployment {
     },
   };
 
-  const podSpec: V1PodSpec = {
+  const podSpec: V1PodSpec = withVolumes({
     automountServiceAccountToken: false,
     securityContext: podSecurityContext,
     containers: [container],
-  };
+  }, container, input.volumes ?? []);
 
   const templateSpec: V1PodTemplateSpec = {
     metadata: {
@@ -87,7 +90,8 @@ export function buildDeployment(input: CreateAppInput): V1Deployment {
   };
 
   const deploymentSpec: V1DeploymentSpec = {
-    replicas: input.replicas,
+    replicas: input.volumes && input.volumes.length > 0 ? Math.min(input.replicas, 1) : input.replicas,
+    strategy: strategyFor(input.volumes ?? []),
     selector: {
       matchLabels: {
         [APP_LABEL]: input.name,

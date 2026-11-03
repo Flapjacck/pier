@@ -1,5 +1,6 @@
 import { APP_NAME_SCHEMA_PATTERN } from "../k8s/names.js";
 import type { PartialAppResources } from "../k8s/resources.js";
+import { SIZE_PATTERN } from "../k8s/volumes/validation.js";
 
 /** Schemas and types for the /apps routes (POST /apps, PATCH /apps/:name, responses). */
 
@@ -11,6 +12,7 @@ export type PostAppsBody = {
   host?: string;
   env?: Record<string, string>;
   resources?: PartialAppResources;
+  volumes?: { name: string; mountPath: string; size?: string }[];
 };
 
 /** PATCH /apps/:name body: at least one field; env replaces the whole set. */
@@ -20,6 +22,7 @@ export type PatchAppBody = {
   replicas?: number;
   env?: Record<string, string>;
   resources?: PartialAppResources;
+  volumes?: { name: string; mountPath: string; size?: string }[];
 };
 
 /** Millicores ("250m", 1m–9999m) or cores ("1", "0.5", up to 3 decimals). */
@@ -54,6 +57,17 @@ const envSchema = {
   propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
   additionalProperties: { type: "string", maxLength: 4096 },
 } as const;
+export const volumeMountSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "mountPath"],
+  properties: {
+    name: { type: "string", pattern: APP_NAME_SCHEMA_PATTERN },
+    mountPath: { type: "string", minLength: 1, maxLength: 255 },
+    size: { type: "string", pattern: SIZE_PATTERN },
+  },
+} as const;
+export const volumesSchema = { type: "array", maxItems: 3, items: volumeMountSchema } as const;
 
 export const patchAppBodySchema = {
   type: "object",
@@ -65,6 +79,7 @@ export const patchAppBodySchema = {
     replicas: { type: "integer", minimum: 0, maximum: 10 },
     env: envSchema,
     resources: resourcesBodySchema,
+    volumes: volumesSchema,
   },
 } as const;
 
@@ -91,6 +106,7 @@ export const postAppsBodySchema = {
     },
     env: envSchema,
     resources: resourcesBodySchema,
+    volumes: volumesSchema,
   },
   required: ["name", "image", "port"],
 } as const;
@@ -122,6 +138,7 @@ export const appSchema = {
         requests: resourcePairResponse,
         limits: resourcePairResponse,
       },
+      volumes: volumesSchema,
     },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
