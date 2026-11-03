@@ -1,6 +1,7 @@
 import { APP_NAME_SCHEMA_PATTERN } from "../k8s/names.js";
+import type { PartialAppResources } from "../k8s/resources.js";
 
-/** Schemas and types for POST /apps route validation. */
+/** Schemas and types for the /apps routes (POST /apps, PATCH /apps/:name, responses). */
 
 export type PostAppsBody = {
   name: string;
@@ -9,7 +10,63 @@ export type PostAppsBody = {
   replicas: number;
   host?: string;
   env?: Record<string, string>;
+  resources?: PartialAppResources;
 };
+
+/** PATCH /apps/:name body: at least one field; env replaces the whole set. */
+export type PatchAppBody = {
+  image?: string;
+  port?: number;
+  replicas?: number;
+  env?: Record<string, string>;
+  resources?: PartialAppResources;
+};
+
+/** Millicores ("250m", 1m–9999m) or cores ("1", "0.5", up to 3 decimals). */
+export const CPU_QUANTITY_PATTERN = "^(?:[1-9][0-9]{0,3}m|[0-9]{1,2}(?:\\.[0-9]{1,3})?)$";
+
+/** Whole Mi or Gi ("256Mi", "1Gi"). */
+export const MEMORY_QUANTITY_PATTERN = "^[1-9][0-9]{0,5}(?:Mi|Gi)$";
+
+const resourcePairSchema = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: {
+    cpu: { type: "string", pattern: CPU_QUANTITY_PATTERN },
+    memory: { type: "string", pattern: MEMORY_QUANTITY_PATTERN },
+  },
+} as const;
+
+/** Partial requests/limits; missing fields come from the defaults (POST) or the app (PATCH). */
+export const resourcesBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: { requests: resourcePairSchema, limits: resourcePairSchema },
+} as const;
+
+const imageSchema = { type: "string", minLength: 1, maxLength: 255, pattern: "^\\S+$" } as const;
+const portSchema = { type: "integer", minimum: 1, maximum: 65535 } as const;
+const envSchema = {
+  type: "object",
+  maxProperties: 50,
+  propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" },
+  additionalProperties: { type: "string", maxLength: 4096 },
+} as const;
+
+export const patchAppBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: {
+    image: imageSchema,
+    port: portSchema,
+    replicas: { type: "integer", minimum: 0, maximum: 10 },
+    env: envSchema,
+    resources: resourcesBodySchema,
+  },
+} as const;
 
 export const postAppsBodySchema = {
   type: "object",
@@ -19,17 +76,8 @@ export const postAppsBodySchema = {
       type: "string",
       pattern: APP_NAME_SCHEMA_PATTERN,
     },
-    image: {
-      type: "string",
-      minLength: 1,
-      maxLength: 255,
-      pattern: "^\\S+$",
-    },
-    port: {
-      type: "integer",
-      minimum: 1,
-      maximum: 65535,
-    },
+    image: imageSchema,
+    port: portSchema,
     replicas: {
       type: "integer",
       minimum: 0,
@@ -41,19 +89,15 @@ export const postAppsBodySchema = {
       minLength: 1,
       maxLength: 253,
     },
-    env: {
-      type: "object",
-      maxProperties: 50,
-      propertyNames: {
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
-      },
-      additionalProperties: {
-        type: "string",
-        maxLength: 4096,
-      },
-    },
+    env: envSchema,
+    resources: resourcesBodySchema,
   },
   required: ["name", "image", "port"],
+} as const;
+
+const resourcePairResponse = {
+  type: "object",
+  properties: { cpu: { type: "string" }, memory: { type: "string" } },
 } as const;
 
 export const appSchema = {
@@ -71,6 +115,14 @@ export const appSchema = {
     port: { type: "integer" },
     host: { type: "string" },
     url: { type: "string" },
+    env: { type: "object", additionalProperties: { type: "string" } },
+    resources: {
+      type: "object",
+      properties: {
+        requests: resourcePairResponse,
+        limits: resourcePairResponse,
+      },
+    },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
 } as const;

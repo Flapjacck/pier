@@ -18,7 +18,8 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     # get: app-lookup, create-app (exists check) | list: apps (GET /apps)
-    # create: create-app | patch: app-actions restart | delete: app-actions, create-app rollback
+    # create: create-app | patch: app-actions restart, update-app (PATCH /apps/:name)
+    # delete: app-actions, create-app rollback
     verbs: ["get", "list", "create", "patch", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]
@@ -26,8 +27,14 @@ rules:
     verbs: ["update"]
   - apiGroups: [""]
     resources: ["services"]
-    # get: app-actions delete (exists check) | create: create-app | delete: app-actions, create-app rollback
-    verbs: ["get", "create", "delete"]
+    # get: app-actions delete (exists check) | create: create-app
+    # patch: update-app (targetPort on a port change) | delete: app-actions, create-app rollback
+    verbs: ["get", "create", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    # list: resource-fit pre-check (quota and container max are only enforced at pod
+    # admission, so Pier checks them before patching). Read-only.
+    verbs: ["list"]
   - apiGroups: [""]
     resources: ["pods"]
     # list: app-pods, list-pods (cluster route). No single-pod reads.
