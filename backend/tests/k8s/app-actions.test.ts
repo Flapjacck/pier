@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { AppsV1Api, CoreV1Api, NetworkingV1Api } from "@kubernetes/client-node";
-import { deleteApp, restartApp } from "../../src/k8s/app-actions.js";
+import { deleteApp, restartApp, scaleApp } from "../../src/k8s/app-actions.js";
+import { VolumesReplicaError } from "../../src/k8s/volumes/errors.js";
 import { APP_LABEL } from "../../src/k8s/labels.js";
 import { FakeApiError } from "../helpers/fake-clients.js";
 
@@ -70,6 +71,50 @@ describe("restartApp", () => {
 });
 
 describe("deleteApp", () => {
+  const volumeDeployment = {
+    metadata: { name: "hello", labels: { [APP_LABEL]: "hello" } },
+    spec: { template: { spec: {
+      volumes: [{ name: "vol-data", persistentVolumeClaim: { claimName: "data" } }],
+      containers: [{ name: "app", volumeMounts: [{ name: "vol-data", mountPath: "/data" }] }],
+    } } },
+  };
+
+  it("keeps a PVC by default and removes its app label", async () => {
+    let unlabelled = false;
+    const clients = {
+      apps: { readNamespacedDeployment: async () => volumeDeployment, deleteNamespacedDeployment: async () => undefined },
+      core: {
+        deleteNamespacedService: async () => undefined,
+        patchNamespacedPersistentVolumeClaim: async () => { unlabelled = true; },
+      },
+      networking: { deleteNamespacedIngress: async () => undefined },
+    } as unknown as { apps: AppsV1Api; core: CoreV1Api; networking: NetworkingV1Api };
+    await deleteApp(clients, "pier-apps", "hello");
+    assert.equal(unlabelled, true);
+  });
+
+  it("deletes a volume after a terminating Deployment and reports cleanup errors", async () => {
+    const clients = {
+      apps: { readNamespacedDeployment: async () => volumeDeployment, deleteNamespacedDeployment: async () => undefined },
+      core: {
+        deleteNamespacedService: async () => undefined,
+        readNamespacedPersistentVolumeClaim: async () => ({ metadata: { labels: { "app.kubernetes.io/managed-by": "pier" } } }),
+        deleteNamespacedPersistentVolumeClaim: async () => { throw new Error("blocked"); },
+      },
+      networking: { deleteNamespacedIngress: async () => undefined },
+    } as unknown as { apps: AppsV1Api; core: CoreV1Api; networking: NetworkingV1Api };
+    const result = await deleteApp(clients, "pier-apps", "hello", true);
+    assert.equal(result.volumeErrors.length, 1);
+    assert.deepEqual(result.deleted, ["deployment", "service", "ingress"]);
+  });
+
+  it("rejects scaling a volume app above one replica", async () => {
+    const apps = {
+      readNamespacedDeployment: async () => volumeDeployment,
+    } as unknown as AppsV1Api;
+    await assert.rejects(scaleApp(apps, "pier-apps", "hello", 2), VolumesReplicaError);
+  });
+
   it("tolerates 404 on each resource when deleting a live app", async () => {
     const clients = {
       apps: {
