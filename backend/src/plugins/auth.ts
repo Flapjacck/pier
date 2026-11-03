@@ -132,7 +132,18 @@ export function setupAuth(app: FastifyInstance, apiToken: string | undefined): v
         ...(details && { details }),
       });
     }
-    throw err;
+    // Other Fastify request errors (empty JSON body, bad content type, body too large):
+    // answer in Pier's error shape so route response schemas can serialize them.
+    const status = typeof errObj.statusCode === "number" ? errObj.statusCode : 500;
+    if (status >= 400 && status < 500) {
+      return reply.status(status).send({
+        ok: false,
+        error: "invalid request",
+        ...(err instanceof Error && err.message && { details: err.message }),
+      });
+    }
+    _req.log.error({ err }, "unhandled error");
+    return reply.status(500).send({ ok: false, error: "internal error" });
   });
 
   // Register onRequest hook that runs before all handlers.
