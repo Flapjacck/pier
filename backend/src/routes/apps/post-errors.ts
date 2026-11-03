@@ -6,6 +6,7 @@ import {
   HostInUseError,
 } from "../../k8s/create-app.js";
 import { mapClusterWriteError } from "./cluster-errors.js";
+import { mapVolumeError } from "../volume-errors.js";
 
 /**
  * Map a caught error from POST /apps (resource pre-check or createAppSerialized) to a response.
@@ -25,6 +26,7 @@ export function mapPostAppsError(
     reply.status(409).send({ ok: false, error: "host already in use" });
     return true;
   }
+  if (mapVolumeError(err, reply)) return true;
 
   if (err instanceof CreateTimeoutError) {
     reply.status(503).send({

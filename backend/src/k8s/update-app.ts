@@ -13,6 +13,13 @@ import {
   type AppResources,
   type PartialAppResources,
 } from "./resources.js";
+import { volumeMountsOf } from "./volumes/pod-spec.js";
+import { resolveVolumes, rollbackResolvedVolumes, type ResolvedVolumes } from "./volumes/resolve.js";
+import { setVolumeAppLabel } from "./volumes/volume-store.js";
+import { mountProblems } from "./volumes/validation.js";
+import { strategyFor, withVolumes } from "./volumes/pod-spec.js";
+import type { VolumeMount } from "./volumes/types.js";
+import { InvalidVolumesError, VolumesReplicaError } from "./volumes/errors.js";
 
 /** Fields PATCH /apps/:name can change. Anything left out stays as it is. */
 export type UpdateAppInput = {
@@ -23,6 +30,7 @@ export type UpdateAppInput = {
   env?: Record<string, string>;
   /** Merged onto the app's current requests/limits. */
   resources?: PartialAppResources;
+  volumes?: VolumeMount[];
 };
 
 /** The app doesn't exist (or is being deleted). */
@@ -40,7 +48,6 @@ export class InvalidResourcesError extends Error {
     this.name = "InvalidResourcesError";
   }
 }
-
 export type JsonPatchOp = { op: "add" | "replace"; path: string; value: unknown };
 
 const CONTAINER = "/spec/template/spec/containers/0";
@@ -57,7 +64,7 @@ export function toEnvVars(env: Record<string, string>): V1EnvVar[] {
  * port named "http" and a tcpSocket readiness probe on it, so those are replaced wholesale.
  * `add` is used where the field might be missing (it replaces when present).
  */
-export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources): JsonPatchOp[] {
+export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources, currentReplicas = 1): JsonPatchOp[] {
   const ops: JsonPatchOp[] = [];
   if (input.image !== undefined) {
     ops.push({ op: "replace", path: `${CONTAINER}/image`, value: input.image });
@@ -79,10 +86,20 @@ export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources):
   if (input.replicas !== undefined) {
     ops.push({ op: "add", path: "/spec/replicas", value: input.replicas });
   }
+  if (input.volumes !== undefined) {
+    const mounts = input.volumes;
+    const podSpec = withVolumes({ containers: [{ name: "app" }] }, { name: "app" }, mounts);
+    ops.push({ op: "add", path: "/spec/template/spec/volumes", value: podSpec.volumes ?? [] });
+    ops.push({ op: "add", path: `${CONTAINER}/volumeMounts`, value: podSpec.containers[0]?.volumeMounts ?? [] });
+    ops.push({ op: "add", path: "/spec/strategy", value: strategyFor(mounts) });
+    if (mounts.length && currentReplicas > 1) {
+      ops.push({ op: "add", path: "/spec/replicas", value: 1 });
+    }
+  }
   return ops;
 }
 
-type Clients = { apps: AppsV1Api; core: CoreV1Api; networking: NetworkingV1Api };
+type Clients = { apps: AppsV1Api; core: CoreV1Api; networking: NetworkingV1Api; storage?: import("@kubernetes/client-node").StorageV1Api };
 type Logger = { warn: (obj: object, msg: string) => void };
 
 /**
@@ -115,22 +132,48 @@ export async function updateApp(
     input.env !== undefined ||
     nextResources !== undefined;
   const currentReplicas = deployment.spec?.replicas ?? 1;
+  const currentMounts = volumeMountsOf(deployment);
+  const nextMounts = input.volumes;
+  const effectiveMounts = nextMounts ?? currentMounts;
+  const effectiveReplicas = input.replicas ?? currentReplicas;
+  if (effectiveMounts.length && effectiveReplicas > 1) {
+    throw new VolumesReplicaError();
+  }
+  let resolved: ResolvedVolumes | undefined;
+  if (nextMounts) {
+    const problem = mountProblems(nextMounts);
+    if (problem) throw new InvalidVolumesError(problem);
+    resolved = await resolveVolumes(clients, namespace, name, nextMounts, effectiveReplicas);
+  }
 
   await checkResourceFit(
     clients.core,
     namespace,
     {
       current: { resources: currentResources, replicas: currentReplicas },
-      next: { resources: nextResources ?? currentResources, replicas: input.replicas ?? currentReplicas },
-      surge: templateChanged,
+      next: { resources: nextResources ?? currentResources, replicas: effectiveReplicas },
+      surge: templateChanged && !effectiveMounts.length,
     },
     log,
   );
 
-  await clients.apps.patchNamespacedDeployment(
-    { namespace, name, body: buildUpdateOps(input, nextResources) },
-    setHeaderOptions("Content-Type", PatchStrategy.JsonPatch),
-  );
+  try {
+    await clients.apps.patchNamespacedDeployment(
+      { namespace, name, body: buildUpdateOps(input, nextResources, effectiveReplicas) },
+      setHeaderOptions("Content-Type", PatchStrategy.JsonPatch),
+    );
+  } catch (err) {
+    if (resolved) await rollbackResolvedVolumes(clients, namespace, resolved);
+    throw err;
+  }
+  if (nextMounts) {
+    const before = new Set(currentMounts.map((mount) => mount.name));
+    const after = new Set(nextMounts.map((mount) => mount.name));
+    for (const nameToLabel of after) if (!before.has(nameToLabel)) await setVolumeAppLabel(clients.core, namespace, nameToLabel, name);
+    for (const nameToUnlabel of before) if (!after.has(nameToUnlabel)) {
+      try { await setVolumeAppLabel(clients.core, namespace, nameToUnlabel, null); } catch (err) { log?.warn({ err, name: nameToUnlabel }, "volume detach label failed"); }
+    }
+  }
 
   if (portChanged && input.port !== undefined) {
     await patchServiceTargetPort(clients.core, namespace, name, input.port);

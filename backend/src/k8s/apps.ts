@@ -1,6 +1,7 @@
 import type { AppsV1Api, NetworkingV1Api, V1Deployment, V1DeploymentCondition, V1Ingress } from "@kubernetes/client-node";
 import { APP_LABEL, appSelector, MANAGED_BY_LABEL, MANAGED_BY_VALUE } from "./labels.js";
 import { resourcesFromContainer, type AppResources } from "./resources.js";
+import { volumeMountsOf } from "./volumes/pod-spec.js";
 
 export type AppStatus = "running" | "stopped" | "building" | "failed";
 
@@ -18,6 +19,7 @@ export type App = {
   env?: Record<string, string>;
   /** CPU/RAM requests and limits (defaults filled in for anything unset). */
   resources: AppResources;
+  volumes?: { name: string; mountPath: string }[];
 };
 
 function condition(
@@ -143,6 +145,8 @@ export function deploymentToApp(d: V1Deployment, host?: string, tls = false): Ap
     createdAt: creationTimestampIso(d),
     resources: resourcesFromContainer(container),
   };
+  const mounts = volumeMountsOf(d);
+  if (mounts.length) app.volumes = mounts;
 
   const env = Object.fromEntries(
     (container?.env ?? []).flatMap((e) =>

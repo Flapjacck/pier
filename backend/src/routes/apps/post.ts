@@ -48,7 +48,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           });
         }
 
-        const { name, image, port, replicas, host, env, resources } = req.body;
+        const { name, image, port, replicas, host, env, resources, volumes } = req.body;
 
         // Normalize host to lowercase (case-insensitive matching in Ingress rules).
         const hostNorm = host?.toLowerCase();
@@ -110,7 +110,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
             await checkResourceFit(
               deps.k8s.clients.core,
               deps.namespace,
-              { next: { resources: merged, replicas }, surge: false },
+              { next: { resources: merged, replicas: volumes?.length ? Math.min(replicas, 1) : replicas }, surge: false },
               req.log,
             );
           }
@@ -126,6 +126,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               env,
               resources,
               tlsIssuer: deps.tlsIssuer,
+              volumes,
             },
             req.log,
           );

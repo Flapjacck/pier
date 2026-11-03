@@ -4,6 +4,7 @@ import { isValidAppName } from "../../k8s/names.js";
 import { AppNotFoundError, updateApp } from "../../k8s/update-app.js";
 import { appSchema, errorSchema, patchAppBodySchema, type PatchAppBody } from "../apps-schemas.js";
 import { mapClusterWriteError } from "./cluster-errors.js";
+import { mapVolumeError } from "../volume-errors.js";
 
 type PatchAppRouteDeps = {
   k8s: K8sClientsResult;
@@ -55,6 +56,7 @@ export function patchAppRoutesWithDeps(deps: PatchAppRouteDeps): FastifyPluginAs
           if (err instanceof AppNotFoundError) {
             return reply.status(404).send({ ok: false, error: "app not found" });
           }
+          if (mapVolumeError(err, reply)) return;
           req.log.error({ err }, "update app failed");
           mapClusterWriteError(err, reply);
           return;

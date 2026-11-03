@@ -4,6 +4,8 @@ import { buildDeployment, buildService, buildIngress, type CreateAppInput } from
 import { deploymentToApp, type App } from "./apps.js";
 import { MANAGED_BY_LABEL, MANAGED_BY_VALUE } from "./labels.js";
 import { apiStatusCode } from "./api-errors.js";
+import { resolveVolumes } from "./volumes/resolve.js";
+import { setVolumeAppLabel } from "./volumes/volume-store.js";
 
 /** Thrown when trying to create an app that already exists. */
 export class AppExistsError extends Error {
@@ -35,9 +37,9 @@ export class HostInUseError extends Error {
 type K8sClients = {
   apps: AppsV1Api;
   core: CoreV1Api;
+  storage?: import("@kubernetes/client-node").StorageV1Api;
   networking: NetworkingV1Api;
 };
-
 /**
  * Create an app with Deployment, Service, and optional Ingress.
  * Performs pre-checks: app must not exist, host must not be in use.
@@ -63,7 +65,7 @@ export async function createApp(
     }
     const code = apiStatusCode(err);
     if (code === 404) {
-      // Expected: app doesn't exist yet.
+      // Deployment does not exist; continue.
     } else if (code === 409) {
       // Race condition: app was just created.
       throw new AppExistsError(`app "${input.name}" already exists`);
@@ -71,7 +73,6 @@ export async function createApp(
       throw err; // Re-throw API error.
     }
   }
-
   // Pre-check: if host provided, ensure it's not in use by another Pier-managed app.
   // This check scans Ingresses in the app namespace with the Pier managed-by label.
   // Note: Not race-safe; concurrent requests can both pass the check and create overlapping
@@ -92,13 +93,13 @@ export async function createApp(
       }
     }
   }
-
   // Track what we created for rollback on error.
   const created: Array<{
     type: "deployment" | "service" | "ingress";
     name: string;
   }> = [];
 
+  const resolved = await resolveVolumes(clients, namespace, input.name, input.volumes ?? [], input.replicas);
   try {
     // Create Deployment.
     const depManifest = buildDeployment(input);
@@ -128,7 +129,6 @@ export async function createApp(
       });
       created.push({ type: "ingress", name: input.name });
     }
-
     // Success: convert Deployment to App, including host if provided.
     return deploymentToApp(depResponse, input.host, Boolean(input.host && input.tlsIssuer));
   } catch (err) {
@@ -160,7 +160,15 @@ export async function createApp(
         );
       }
     }
-
+    for (const volume of resolved.created) {
+      try { await clients.core.deleteNamespacedPersistentVolumeClaim({ name: volume, namespace }); }
+      catch (rollbackErr) { logger?.warn({ kind: "persistentvolumeclaim", name: volume, err: rollbackErr }, "rollback delete failed"); }
+    }
+    for (const volume of resolved.attached) {
+      if (resolved.created.includes(volume)) continue;
+      try { await setVolumeAppLabel(clients.core, namespace, volume, null); }
+      catch (rollbackErr) { logger?.warn({ kind: "persistentvolumeclaim", name: volume, err: rollbackErr }, "rollback label reset failed"); }
+    }
     // Re-throw the original error (or wrap 409 in AppExistsError).
     const code = apiStatusCode(err);
     if (code === 409) {
