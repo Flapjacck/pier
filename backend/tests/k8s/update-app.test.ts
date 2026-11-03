@@ -7,6 +7,7 @@ import {
   InvalidResourcesError,
   updateApp,
 } from "../../src/k8s/update-app.js";
+import { VolumesReplicaError } from "../../src/k8s/volumes/errors.js";
 import { DEFAULT_RESOURCES } from "../../src/k8s/resources.js";
 import { FakeApiError } from "../helpers/fake-clients.js";
 
@@ -132,5 +133,17 @@ describe("updateApp", () => {
   it("throws AppNotFoundError for a missing app", async () => {
     const { fake } = clients({ live: false });
     await assert.rejects(updateApp(fake, "pier-apps", "hello", { replicas: 2 }), AppNotFoundError);
+  });
+
+  it("rejects replicas above one for volume apps", async () => {
+    const { fake } = clients();
+    await assert.rejects(updateApp(fake, "pier-apps", "hello", {
+      replicas: 3, volumes: [{ name: "data", mountPath: "/data", size: "1Gi" }],
+    }), VolumesReplicaError);
+  });
+
+  it("does not raise paused replicas when volume strategy changes", () => {
+    const ops = buildUpdateOps({ volumes: [{ name: "data", mountPath: "/data" }] }, undefined, 0);
+    assert.equal(ops.find((op) => op.path === "/spec/replicas"), undefined);
   });
 });
