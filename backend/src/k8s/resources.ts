@@ -14,7 +14,7 @@ export type ResourcePair = { cpu: string; memory: string };
 /** Per-app CPU/RAM requests and limits. Ephemeral storage stays fixed (constants.ts). */
 export type AppResources = { requests: ResourcePair; limits: ResourcePair };
 
-/** Resources as sent by a client: any field may be left out and is filled from a base. */
+/** Resources from a client may omit fields; omitted values are filled from a base. */
 export type PartialAppResources = {
   requests?: Partial<ResourcePair>;
   limits?: Partial<ResourcePair>;
