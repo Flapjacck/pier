@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { DeleteConfirmDialog } from "../../../src/pages/app-detail/DeleteConfirmDialog";
 
 describe("DeleteConfirmDialog", () => {
@@ -103,5 +103,14 @@ describe("DeleteConfirmDialog", () => {
     // Check that Cancel button exists
     const buttons = screen.getAllByText(/Cancel|Delete/);
     expect(buttons.length).toBeGreaterThan(0);
+  });
+
+  it("reports deleting volumes when checked", () => {
+    const onDeleteVolumesChange = vi.fn();
+    render(
+      <DeleteConfirmDialog open appName="myapp" nameInput="myapp" onNameInputChange={vi.fn()} onClose={vi.fn()} onConfirm={vi.fn()} pending={false} volumeCount={1} onDeleteVolumesChange={onDeleteVolumesChange} />,
+    );
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(onDeleteVolumesChange).toHaveBeenCalledWith(true);
   });
 });

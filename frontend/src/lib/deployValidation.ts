@@ -105,6 +105,9 @@ export function validateDeployForm(
     ) {
       errors.replicas = "Replicas must be an integer between 0 and 10";
     }
+    if (values.volume && Number.isInteger(replicasNum) && replicasNum > 1) {
+      errors.replicas = "Apps with volumes run at most 1 replica";
+    }
   }
 
   // Validate host (optional, but if provided must match ingress rules).
