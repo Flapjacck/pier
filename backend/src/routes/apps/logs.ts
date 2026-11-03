@@ -2,135 +2,76 @@ import { PassThrough } from "node:stream";
 import type { FastifyPluginAsync } from "fastify";
 import { getLiveApp } from "../../k8s/app-lookup.js";
 import { listAppPods } from "../../k8s/app-pods.js";
+import { apiErrorMessage } from "../../k8s/api-errors.js";
 import { isValidAppName, POD_NAME_SCHEMA_PATTERN } from "../../k8s/names.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { errorSchema } from "../apps-schemas.js";
 import { streamSseLogs } from "./logs-stream.js";
 
-type LogsRouteDeps = {
-  k8s: K8sClientsResult;
-  namespace: string;
-};
+type LogsRouteDeps = { k8s: K8sClientsResult; namespace: string };
+type LogsQuery = { pod?: string; tail: number; follow: boolean; previous: boolean };
 
-type LogsQuerystring = {
-  pod?: string;
-  tail: number;
-  follow: boolean;
-};
+function isMissingPrevious(error: unknown): boolean {
+  const message = apiErrorMessage(error)?.toLowerCase() ?? "";
+  return message.includes("previous") && message.includes("not found");
+}
 
-/** GET /apps/:name/logs — stream logs from a specific pod with optional follow. */
 export function getAppLogsRoutesWithDeps(deps: LogsRouteDeps): FastifyPluginAsync {
   return async (app) => {
-    app.get<{
-      Params: { name: string };
-      Querystring: LogsQuerystring;
-    }>(
+    app.get<{ Params: { name: string }; Querystring: LogsQuery }>(
       "/apps/:name/logs",
       {
         schema: {
           querystring: {
             type: "object",
             properties: {
-              pod: {
-                type: "string",
-                pattern: POD_NAME_SCHEMA_PATTERN,
-                maxLength: 253,
-              },
-              tail: {
-                type: "integer",
-                minimum: 1,
-                maximum: 5000,
-                default: 200,
-              },
-              follow: {
-                type: "boolean",
-                default: false,
-              },
+              pod: { type: "string", pattern: POD_NAME_SCHEMA_PATTERN, maxLength: 253 },
+              tail: { type: "integer", minimum: 1, maximum: 5000, default: 200 },
+              follow: { type: "boolean", default: false },
+              previous: { type: "boolean", default: false },
             },
             additionalProperties: false,
           },
-          response: {
-            200: { type: "string" },
-            400: errorSchema,
-            404: errorSchema,
-            503: errorSchema,
-          },
+          response: { 200: { type: "string" }, 400: errorSchema, 404: errorSchema, 503: errorSchema },
         },
       },
       async (req, reply) => {
-        if (!deps.k8s.ok) {
-          return reply.status(503).send({
-            ok: false,
-            error: "cluster unreachable",
-          });
-        }
-
         const { name } = req.params;
-        const { pod: podName, tail, follow } = req.query;
-
-        if (!isValidAppName(name)) {
+        const { pod: podName, tail, follow, previous } = req.query;
+        if (!isValidAppName(name)) return reply.status(400).send({ ok: false, error: "invalid request" });
+        if (previous && follow) {
           return reply.status(400).send({
             ok: false,
             error: "invalid request",
+            details: "previous logs can't be followed",
           });
         }
-
+        if (!deps.k8s.ok) return reply.status(503).send({ ok: false, error: "cluster unreachable" });
         try {
-          // Check if app exists.
-          const live = await getLiveApp(deps.k8s.clients.apps, deps.namespace, name);
-          if (!live) {
-            return reply.status(404).send({
-              ok: false,
-              error: "app not found",
-            });
+          if (!(await getLiveApp(deps.k8s.clients.apps, deps.namespace, name))) {
+            return reply.status(404).send({ ok: false, error: "app not found" });
           }
-
-          // List pods for this app.
           const pods = await listAppPods(deps.k8s.clients.core, deps.namespace, name);
-          if (pods.length === 0) {
-            return reply.status(404).send({
-              ok: false,
-              error: "no pods",
-            });
-          }
+          if (pods.length === 0) return reply.status(404).send({ ok: false, error: "no pods" });
+          const selectedPod = podName ? pods.find((pod) => pod.name === podName) : pods[0];
+          if (!selectedPod) return reply.status(404).send({ ok: false, error: "pod not found" });
 
-          // Determine which pod to log from.
-          let selectedPod = pods[0]; // Default to newest pod.
-          if (podName) {
-            const found = pods.find((p) => p.name === podName);
-            if (!found) {
-              return reply.status(404).send({
-                ok: false,
-                error: "pod not found",
-              });
-            }
-            selectedPod = found;
-          }
-
-          // For non-SSE (follow=false), stream plain text logs.
           if (!follow) {
+            const stream = new PassThrough();
             try {
-              const stream = new PassThrough();
-              await deps.k8s.clients.log.log(
-                deps.namespace,
-                selectedPod.name,
-                "app",
-                stream,
-                { tailLines: tail },
-              );
-
-              reply.type("text/plain; charset=utf-8");
-              return reply.send(stream);
-            } catch (err) {
-              req.log.error({ err }, "read logs failed");
-              return reply.status(503).send({
-                ok: false,
-                error: "cluster unreachable",
+              await deps.k8s.clients.log.log(deps.namespace, selectedPod.name, "app", stream, {
+                tailLines: tail,
+                previous,
               });
+            } catch (err) {
+              if (previous && isMissingPrevious(err)) {
+                return reply.status(404).send({ ok: false, error: "no previous logs" });
+              }
+              throw err;
             }
+            reply.type("text/plain; charset=utf-8");
+            return reply.send(stream);
           }
-
-          // For follow=true, stream SSE events.
           await streamSseLogs({
             reply,
             req,
@@ -141,10 +82,7 @@ export function getAppLogsRoutesWithDeps(deps: LogsRouteDeps): FastifyPluginAsyn
           });
         } catch (err) {
           req.log.error({ err }, "log endpoint failed");
-          return reply.status(503).send({
-            ok: false,
-            error: "cluster unreachable",
-          });
+          return reply.status(503).send({ ok: false, error: "cluster unreachable" });
         }
       },
     );
