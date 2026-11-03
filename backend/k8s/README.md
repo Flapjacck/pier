@@ -100,9 +100,10 @@ curl -sI --cacert pier-root-ca.crt https://<app>.<domain>   # 200
 
 | Resource | Verbs | Used by |
 |----------|-------|---------|
-| `deployments` | `get`, `list`, `create`, `patch`, `delete` | lookup, `GET /apps`, create, restart (JSON patch), delete and create rollback |
+| `deployments` | `get`, `list`, `create`, `patch`, `delete` | lookup, `GET /apps`, create, restart and settings (JSON patch), delete and create rollback |
 | `deployments/scale` | `update` | scale (`replaceNamespacedDeploymentScale` is a PUT) |
-| `services` | `get`, `create`, `delete` | create, delete |
+| `services` | `get`, `create`, `patch`, `delete` | create, delete, settings (port change patches `targetPort`) |
+| `resourcequotas`, `limitranges` | `list` | quota/limit pre-check on create with `resources` and on `PATCH /apps/:name` |
 | `pods` | `list` | app pods and the cluster pods route |
 | `pods/log` | `get` | logs and live logs (`follow` is still a `get`) |
 | `ingresses` | `get`, `list`, `create`, `delete` | lookup, host conflict check, create, delete |
@@ -119,6 +120,7 @@ kubectl auth can-i list pods -n pier-apps --as=$SA                 # yes
 kubectl auth can-i get pods/log -n pier-apps --as=$SA              # yes
 kubectl auth can-i create ingresses -n pier-apps --as=$SA          # yes
 kubectl auth can-i watch deployments -n pier-apps --as=$SA         # no
+kubectl auth can-i list resourcequotas -n pier-apps --as=$SA       # yes
 kubectl auth can-i update services -n pier-apps --as=$SA           # no
 kubectl auth can-i get pods -n pier-apps --as=$SA                  # no
 kubectl auth can-i delete pods -n pier-apps --as=$SA               # no
@@ -174,6 +176,8 @@ Because `requests.*` and `limits.*` are in the quota, every container needs them
 kubectl describe resourcequota pier-apps-quota -n pier-apps
 kubectl describe limitrange pier-apps-limits -n pier-apps
 ```
+
+Pier sets explicit CPU/memory on every app (defaults match the LimitRange defaults; apps can pick others). Quotas only bite at pod admission, so the backend pre-checks them before creating or patching an app and returns `403 quota exceeded` instead of leaving pods stuck. The Settings tab caps limits at the LimitRange max (2 CPU / 2Gi).
 
 ## Service type policy (`pier-apps`)
 

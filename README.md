@@ -34,6 +34,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 - **Deploy apps:** Push a Docker image, get a URL instantly via ingress (optional HTTPS through cert-manager)
 - **Logs & monitoring:** Stream live logs, check pod status, see resource usage
 - **Scaling:** Scale replicas up/down, pause with zero replicas
+- **App settings:** Change image, port, env and CPU/RAM on a running app (with a quota pre-check)
 - **Restart:** Trigger pod rollouts for live reload or recovery
 - **Networking:** Apps reach public internet; isolated from each other and from the host LAN by default (configurable)
 - **Cluster health:** Check API server status and node readiness

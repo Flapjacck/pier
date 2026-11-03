@@ -155,12 +155,12 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/login` → public sign-in (no shell)
 - `/` → redirect to `/apps` (requires session)
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
-- `/apps/new` → Deploy form (create new app with validation and error mapping)
+- `/apps/new` → Deploy form (create new app with validation and error mapping; CPU & memory presets or custom values, sent only when not the defaults)
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
   - `/:name/pods` → Pods tab (list, refresh, reasons)
   - `/:name/logs` → Logs tab (live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
-  - `/:name/settings` → Settings tab (scale, restart, delete)
+  - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
 - Dev only: `/__boom` throws to test the error boundary
