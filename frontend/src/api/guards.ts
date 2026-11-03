@@ -1,11 +1,13 @@
 import type {
   App,
   AppPod,
+  AppResources,
   AppStatus,
   ClusterHealth,
   ClusterPodsResult,
   KubeConfigMode,
   PodSummary,
+  ResourcePair,
   RestartResult,
   SessionInfo,
 } from "./types";
@@ -64,7 +66,36 @@ export function parseApp(json: unknown): App {
   if (typeof json.port === "number") app.port = json.port;
   if (typeof json.host === "string") app.host = json.host;
   if (typeof json.url === "string") app.url = json.url;
+  const env = parseStringRecord(json.env);
+  if (env) app.env = env;
+  const resources = parseResources(json.resources);
+  if (resources) app.resources = resources;
   return app;
+}
+
+function parseStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, v] of Object.entries(value)) {
+    if (typeof v !== "string") return undefined;
+    out[key] = v;
+  }
+  return out;
+}
+
+function parsePair(value: unknown): ResourcePair | undefined {
+  if (!isRecord(value) || typeof value.cpu !== "string" || typeof value.memory !== "string") {
+    return undefined;
+  }
+  return { cpu: value.cpu, memory: value.memory };
+}
+
+/** Resources are optional (older backends don't send them); a malformed object is dropped. */
+function parseResources(value: unknown): AppResources | undefined {
+  if (!isRecord(value)) return undefined;
+  const requests = parsePair(value.requests);
+  const limits = parsePair(value.limits);
+  return requests && limits ? { requests, limits } : undefined;
 }
 
 export function parseAppList(json: unknown): App[] {

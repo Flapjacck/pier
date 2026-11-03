@@ -8,6 +8,7 @@ import { EnvRows } from "./EnvRows";
 import { DeployAlerts } from "./DeployAlerts";
 import { DeploySuccess } from "./DeploySuccess";
 import { useDeployForm } from "./useDeployForm";
+import { ResourcesFields } from "../../components/apps/ResourcesFields";
 
 interface Props {
   ingressDomain: string | null;
@@ -31,6 +32,8 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
     setPort,
     replicas,
     setReplicas,
+    resources,
+    setResources,
     publicUrl,
     setPublicUrl,
     subdomain,
@@ -137,6 +140,14 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
           invalid={touched && Boolean(errors.replicas)}
         />
       </Field>
+
+      {/* CPU & memory */}
+      <ResourcesFields
+        idPrefix="deploy"
+        value={resources}
+        onChange={setResources}
+        errors={touched ? errors.resources : undefined}
+      />
 
       {/* Public URL */}
       {ingressDomain ? (
