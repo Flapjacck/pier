@@ -10,6 +10,7 @@ import { appsRoutesWithDeps } from "./routes/apps";
 import { clusterRoutesWithDeps } from "./routes/cluster";
 import { healthRoutes } from "./routes/health";
 import { sessionRoutesWithDeps } from "./routes/session";
+import { volumesRoutesWithDeps } from "./routes/volumes";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -82,6 +83,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer }));
+    await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
   }, { prefix: "/api" });
 
   // Register static file serving (dashboard SPA) after API routes.

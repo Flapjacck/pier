@@ -12,6 +12,7 @@ export type K8sClients = {
   core: k8s.CoreV1Api;
   version: k8s.VersionApi;
   apps: k8s.AppsV1Api;
+  storage?: k8s.StorageV1Api;
   networking: k8s.NetworkingV1Api;
   log: k8s.Log;
 };
@@ -38,12 +39,13 @@ export function createK8sClients(
     const core = kc.makeApiClient(k8s.CoreV1Api);
     const version = kc.makeApiClient(k8s.VersionApi);
     const apps = kc.makeApiClient(k8s.AppsV1Api);
+    const storage = kc.makeApiClient(k8s.StorageV1Api);
     const networking = kc.makeApiClient(k8s.NetworkingV1Api);
     const log = new k8s.Log(kc);
 
     return {
       ok: true,
-      clients: { mode, core, version, apps, networking, log },
+      clients: { mode, core, version, apps, storage, networking, log },
     };
   } catch (err) {
     // Return the error without throwing so the app can start and reply 503.
