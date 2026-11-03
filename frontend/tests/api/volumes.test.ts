@@ -25,4 +25,9 @@ describe("volume client", () => {
     await deleteApp("web", { deleteVolumes: true });
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/apps/web?deleteVolumes=true");
   });
+  it("treats a 204 app delete (volumes kept) as success", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await expect(deleteApp("web")).resolves.toEqual({ ok: true, dataRetained: false, volumeErrors: [] });
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe("/api/apps/web");
+  });
 });
