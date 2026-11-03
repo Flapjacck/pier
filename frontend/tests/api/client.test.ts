@@ -1,11 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { appLogsUrl } from "../../src/api/client";
+import { appLogsUrl, appPodLogsUrl } from "../../src/api/client";
 import { parseApp, parseAppList } from "../../src/api/guards";
 
 describe("appLogsUrl", () => {
   it("encodes app name in URL", () => {
     const url = appLogsUrl("my-app");
     expect(url).toBe("/api/apps/my-app/logs");
+  });
+
+  describe("appPodLogsUrl", () => {
+    it("encodes app and pod names and requests the previous container", () => {
+      expect(appPodLogsUrl("my app", "pod/1")).toBe(
+        "/api/apps/my%20app/logs?pod=pod%2F1&tail=500&previous=true",
+      );
+    });
   });
 
   it("encodes special characters in name", () => {

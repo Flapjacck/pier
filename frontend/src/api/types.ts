@@ -2,6 +2,7 @@
  * Hand-written API types — keep in sync with:
  * - backend/src/k8s/apps.ts (App, AppStatus)
  * - backend/src/k8s/app-pods.ts (AppPod)
+ * - backend/src/k8s/app-events.ts (AppEvent)
  * - backend/src/k8s/list-pods.ts (PodSummary, ClusterPodsResult)
  * - backend/src/k8s/cluster-health.ts (ClusterHealth)
  * - backend/src/k8s/client.ts (KubeConfigMode)
@@ -52,6 +53,23 @@ export type AppPod = {
   startedAt?: string;
   waitingReason?: string;
   lastTerminationReason?: string;
+  image?: string;
+  lastExitCode?: number;
+};
+
+export type AppEvent = {
+  type: "Normal" | "Warning";
+  reason: string;
+  message: string;
+  summary?: string;
+  object: { kind: string; name: string };
+  count: number;
+  firstSeen?: string;
+  lastSeen?: string;
+};
+
+export type AppEventList = {
+  events: AppEvent[];
 };
 
 export type PodSummary = {

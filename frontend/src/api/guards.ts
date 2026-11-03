@@ -1,5 +1,7 @@
 import type {
   App,
+  AppEvent,
+  AppEventList,
   AppPod,
   AppResources,
   AppStatus,
@@ -127,12 +129,45 @@ export function parseAppPod(json: unknown): AppPod {
   if (typeof json.lastTerminationReason === "string") {
     pod.lastTerminationReason = json.lastTerminationReason;
   }
+  if (typeof json.image === "string") pod.image = json.image;
+  if (typeof json.lastExitCode === "number") pod.lastExitCode = json.lastExitCode;
   return pod;
 }
 
 export function parseAppPodList(json: unknown): AppPod[] {
   if (!Array.isArray(json)) throw new SyntaxError("Invalid app pods list");
   return json.map(parseAppPod);
+}
+
+export function parseAppEvent(json: unknown): AppEvent {
+  if (
+    !isRecord(json) ||
+    (json.type !== "Normal" && json.type !== "Warning") ||
+    typeof json.reason !== "string" ||
+    typeof json.message !== "string" ||
+    !isRecord(json.object) ||
+    typeof json.object.kind !== "string" ||
+    typeof json.object.name !== "string" ||
+    typeof json.count !== "number"
+  ) {
+    throw new SyntaxError("Invalid app event response");
+  }
+  const event: AppEvent = {
+    type: json.type,
+    reason: json.reason,
+    message: json.message,
+    object: { kind: json.object.kind, name: json.object.name },
+    count: json.count,
+  };
+  if (typeof json.summary === "string") event.summary = json.summary;
+  if (typeof json.firstSeen === "string") event.firstSeen = json.firstSeen;
+  if (typeof json.lastSeen === "string") event.lastSeen = json.lastSeen;
+  return event;
+}
+
+export function parseAppEventList(json: unknown): AppEventList {
+  if (!isRecord(json) || !Array.isArray(json.events)) throw new SyntaxError("Invalid app events list");
+  return { events: json.events.map(parseAppEvent) };
 }
 
 function parsePodSummary(json: unknown): PodSummary {
