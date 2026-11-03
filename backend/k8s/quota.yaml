@@ -26,8 +26,12 @@ spec:
     services.loadbalancers: "0"
     # Ingress count: max 20 app ingress routes (one per app usually, plus some room).
     count/ingresses.networking.k8s.io: "20"
-    # PersistentVolumeClaims: not allowed yet; raise this when apps need persistent storage.
-    persistentvolumeclaims: "0"
+    # PVC count and requested storage for Pier's local StorageClass.
+    persistentvolumeclaims: "10"
+    requests.storage: 20Gi
+    pier-local.storageclass.storage.k8s.io/requests.storage: 20Gi
+    # The shared default class is not available to apps.
+    local-path.storageclass.storage.k8s.io/persistentvolumeclaims: "0"
 ---
 apiVersion: v1
 kind: LimitRange
