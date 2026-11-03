@@ -1,5 +1,6 @@
 import {
   parseApp,
+  parseAppEventList,
   parseAppList,
   parseAppPodList,
   parseClusterHealth,
@@ -10,6 +11,7 @@ import {
 import { request, requestVoid, type RequestOptions } from "./request";
 import type {
   App,
+  AppEventList,
   ClusterHealth,
   ClusterPodsResult,
   CreateAppBody,
@@ -22,6 +24,8 @@ import type {
 export { ApiError, type ApiErrorKind } from "./errors";
 export type {
   App,
+  AppEvent,
+  AppEventList,
   AppPod,
   AppResources,
   AppStatus,
@@ -131,6 +135,27 @@ export function listAppPods(name: string, options?: RequestOptions) {
   });
 }
 
+export function deleteAppPod(name: string, pod: string, options?: RequestOptions): Promise<void> {
+  return requestVoid(`/api/apps/${encodeURIComponent(name)}/pods/${encodeURIComponent(pod)}`, {
+    ...withSignal(options),
+    method: "DELETE",
+  });
+}
+
+export const deletePod = deleteAppPod;
+
+export function listAppEvents(name: string, options?: RequestOptions & { limit?: number }): Promise<AppEventList> {
+  const limit = options?.limit;
+  const requestOptions = { ...options };
+  delete requestOptions.limit;
+  const query = limit === undefined ? "" : `?limit=${encodeURIComponent(String(limit))}`;
+  return request(`/api/apps/${encodeURIComponent(name)}/events${query}`, {
+    ...withSignal(requestOptions),
+    ...(limit === undefined ? {} : { query: { limit } }),
+    parse: parseAppEventList,
+  });
+}
+
 export function listClusterPods(options?: RequestOptions): Promise<ClusterPodsResult> {
   return request("/api/cluster/pods", {
     ...withSignal(options),
@@ -141,22 +166,27 @@ export function listClusterPods(options?: RequestOptions): Promise<ClusterPodsRe
 /** Relative URL for log streaming (#47); does not fetch. */
 export function appLogsUrl(
   name: string,
-  opts: { follow?: boolean; pod?: string; tail?: number } = {},
+  opts: { follow?: boolean; pod?: string; tail?: number; previous?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
   if (opts.follow) params.set("follow", "true");
   if (opts.pod) params.set("pod", opts.pod);
   if (opts.tail !== undefined) params.set("tail", String(opts.tail));
+  if (opts.previous) params.set("previous", "true");
   const query = params.toString();
   return `/api/apps/${encodeURIComponent(name)}/logs${query ? `?${query}` : ""}`;
+}
+
+export function appPodLogsUrl(name: string, pod: string): string {
+  return appLogsUrl(name, { pod, tail: 500, previous: true });
 }
 
 /** Fetch plain text logs for an app (follow=false). */
 export function getAppLogsText(
   name: string,
-  opts: { pod?: string; tail?: number } = {},
+  opts: { pod?: string; tail?: number; previous?: boolean } = {},
   options?: RequestOptions,
 ): Promise<string> {
-  const url = appLogsUrl(name, { pod: opts.pod, tail: opts.tail });
+  const url = appLogsUrl(name, { pod: opts.pod, tail: opts.tail, previous: opts.previous });
   return request(url, { ...withSignal(options), parseAsText: true });
 }
