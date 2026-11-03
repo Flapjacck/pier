@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { listVolumes } from "../../api/client";
+import type { Volume } from "../../api/types";
 import { useAppDetail } from "./useAppDetail";
 import { formatRelativeTime, formatAbsoluteDate } from "../../lib/time";
 
@@ -7,6 +10,10 @@ import { formatRelativeTime, formatAbsoluteDate } from "../../lib/time";
  */
 export function AppDetailOverview() {
   const { app } = useAppDetail();
+  const [volumes, setVolumes] = useState<Volume[]>([]);
+  useEffect(() => {
+    void listVolumes().then(setVolumes).catch(() => undefined);
+  }, []);
 
   return (
     <dl className="space-y-4">
@@ -90,6 +97,19 @@ export function AppDetailOverview() {
           </time>
         </dd>
       </div>
+      {(app.volumes ?? []).length > 0 && (
+        <div className="flex gap-4">
+          <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Volumes</dt>
+          <dd className="m-0 text-[13px] text-pier-fg">
+            <ul className="m-0 p-0 list-none space-y-1">
+              {(app.volumes ?? []).map((mount) => {
+                const volume = volumes.find((item) => item.name === mount.name);
+                return <li key={mount.name}><code>{mount.name}</code> at <code>{mount.mountPath}</code> ({volume?.size ?? "unknown"})</li>;
+              })}
+            </ul>
+          </dd>
+        </div>
+      )}
     </dl>
   );
 }

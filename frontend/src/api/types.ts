@@ -30,7 +30,10 @@ export type App = {
   env?: Record<string, string>;
   /** CPU/RAM requests and limits (always set by current backends). */
   resources?: AppResources;
+  volumes?: { name: string; mountPath: string }[];
 };
+export type Volume = { name: string; size: string; status: "pending" | "bound" | "lost"; app?: string; mountPath?: string; createdAt: string };
+export type VolumeMount = { name: string; mountPath: string; size?: string };
 
 /** CPU and memory quantities, e.g. { cpu: "250m", memory: "256Mi" }. */
 export type ResourcePair = { cpu: string; memory: string };
@@ -114,6 +117,7 @@ export type CreateAppBody = {
   host?: string;
   env?: Record<string, string>;
   resources?: PartialAppResources;
+  volumes?: VolumeMount[];
 };
 
 /** PATCH /api/apps/:name body — at least one field; env replaces the whole set. */
@@ -123,6 +127,7 @@ export type UpdateAppBody = {
   replicas?: number;
   env?: Record<string, string>;
   resources?: PartialAppResources;
+  volumes?: VolumeMount[];
 };
 
 export type ScaleBody = {
@@ -132,6 +137,12 @@ export type ScaleBody = {
 export type RestartResult = {
   ok: true;
   restartedAt: string;
+};
+
+export type DeleteAppResult = {
+  ok: true;
+  dataRetained: boolean;
+  volumeErrors: string[];
 };
 
 export type ApiErrorBody = {

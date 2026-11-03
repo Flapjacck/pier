@@ -13,6 +13,7 @@ export type DeployFormValues = {
   publicUrl: boolean;
   /** Omitted or equal to DEFAULT_RESOURCES: nothing is sent and the backend defaults apply. */
   resources?: AppResources;
+  volume?: { name: string; mountPath: string; size?: string };
 };
 
 export type FieldErrors = {
@@ -24,6 +25,7 @@ export type FieldErrors = {
   form?: string; // Form-level error shown once
   env?: Record<string, string>; // Keyed by env row id
   resources?: ResourceErrors;
+  volume?: { name?: string; mountPath?: string; size?: string };
 };
 
 import type { AppResources, CreateAppBody } from "../api/client";
@@ -35,6 +37,7 @@ import {
   validateResources,
   type ResourceErrors,
 } from "./resources";
+import { mountPathError, volumeSizeError } from "./volumeValidation";
 
 export type ValidationResult =
   | { ok: true; body: CreateAppBody }
@@ -167,6 +170,17 @@ export function validateDeployForm(
 
   if (sendResources) {
     body.resources = resources;
+  }
+  if (values.volume) {
+    const volumeErrors: FieldErrors["volume"] = {};
+    if (!values.volume.name) volumeErrors.name = "Volume name is required";
+    if (mountPathError(values.volume.mountPath)) volumeErrors.mountPath = mountPathError(values.volume.mountPath);
+    if (values.volume.size && volumeSizeError(values.volume.size)) volumeErrors.size = volumeSizeError(values.volume.size);
+    if (Object.keys(volumeErrors).length) {
+      errors.volume = volumeErrors;
+      return { ok: false, errors };
+    }
+    body.volumes = [values.volume];
   }
 
   return { ok: true, body };

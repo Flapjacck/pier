@@ -9,6 +9,7 @@ import { DeployAlerts } from "./DeployAlerts";
 import { DeploySuccess } from "./DeploySuccess";
 import { useDeployForm } from "./useDeployForm";
 import { ResourcesFields } from "../../components/apps/ResourcesFields";
+import { VolumeFields } from "./VolumeFields";
 
 interface Props {
   ingressDomain: string | null;
@@ -50,6 +51,13 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
     deployedApp,
     handleSubmit,
     clearNavigateTimeout,
+    volume,
+    setVolume,
+    setVolumeName,
+    volumeMode,
+    setVolumeMode,
+    availableVolumes,
+    volumesLoading,
   } = useDeployForm({
     ingressDomain,
     onShowToast: showToast,
@@ -127,7 +135,7 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
       <Field
         id="deploy-replicas"
         label="Replicas"
-        hint="0–10"
+        hint={volume ? "Volume apps run at most 1 replica" : "0–10"}
         error={touched ? errors.replicas : undefined}
       >
         <Input
@@ -148,6 +156,10 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
         onChange={setResources}
         errors={touched ? errors.resources : undefined}
       />
+      <VolumeFields appName={name} volume={volume} mode={volumeMode} available={availableVolumes} loading={volumesLoading} errors={touched ? errors.volume : undefined} onModeChange={setVolumeMode} onNameChange={setVolumeName} onChange={(next) => {
+        setVolume(next);
+        if (next) setReplicas("1");
+      }} />
 
       {/* Public URL */}
       {ingressDomain ? (
@@ -202,7 +214,7 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
       <div className="flex gap-2 pt-4">
         <Button
           type="submit"
-          disabled={submitState === "pending" || (touched && Object.keys(errors).length > 0)}
+          disabled={Boolean(volume) || submitState === "pending" || (touched && Object.keys(errors).length > 0)}
         >
           {submitState === "pending" ? "Deploying..." : "Deploy"}
         </Button>

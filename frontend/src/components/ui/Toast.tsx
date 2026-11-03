@@ -11,7 +11,7 @@ import {
 import { cn } from "../../lib/cn";
 import { Button } from "./Button";
 
-export type ToastVariant = "success" | "error";
+export type ToastVariant = "success" | "error" | "warning";
 
 export interface ToastMessage {
   id: string;
@@ -53,6 +53,7 @@ function ToastItem({
         "flex gap-3 items-start p-3 rounded-pier-lg border shadow-md max-w-sm w-full",
         "bg-pier-bg border-pier-border",
         toast.variant === "error" && "border-pier-status-failed/40",
+        toast.variant === "warning" && "border-pier-status-warning/40",
       )}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}

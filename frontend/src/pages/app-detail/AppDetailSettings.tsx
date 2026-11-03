@@ -1,10 +1,8 @@
 import { useCallback, useState } from "react";
-import { deleteApp, restartApp, scaleApp } from "../../api/client";
+import { deleteApp, restartApp } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/Dialog";
-import { Field } from "../../components/ui/Field";
-import { Input } from "../../components/ui/Input";
 import { useToast } from "../../components/ui/Toast";
 import { formatAbsoluteDate } from "../../lib/time";
 import { useAppDetail } from "./useAppDetail";
@@ -12,6 +10,8 @@ import { useNavigate } from "react-router-dom";
 import { PierIcon } from "../../components/icons/PierIcon";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { AppConfigCard } from "./AppConfigCard";
+import { AppVolumesCard } from "./AppVolumesCard";
+import { AppScaleCard } from "./AppScaleCard";
 
 /**
  * Settings tab: configuration (AppConfigCard), scale, restart, and delete actions.
@@ -20,15 +20,9 @@ import { AppConfigCard } from "./AppConfigCard";
  * Delete: danger zone, type app name to enable, success navigates to /apps.
  */
 export function AppDetailSettings() {
-  const { app, refetch, setApp } = useAppDetail();
+  const { app, refetch } = useAppDetail();
   const { push: showToast } = useToast();
   const navigate = useNavigate();
-
-  // Scale
-  const [scaleValue, setScaleValue] = useState(String(app.replicas));
-  const [scaleError, setScaleError] = useState("");
-  const [scalePending, setScalePending] = useState(false);
-  const [scaleConfirm, setScaleConfirm] = useState(false);
 
   // Restart
   const [restartConfirm, setRestartConfirm] = useState(false);
@@ -38,43 +32,7 @@ export function AppDetailSettings() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteNameInput, setDeleteNameInput] = useState("");
   const [deletePending, setDeletePending] = useState(false);
-
-  // Validate scale input
-  const validateScale = (val: string): string => {
-    if (!val) return "Required";
-    const num = parseInt(val, 10);
-    if (Number.isNaN(num)) return "Must be a number";
-    if (num < 0 || num > 10) return "Must be 0–10";
-    return "";
-  };
-
-  const scaleInt = parseInt(scaleValue, 10);
-  const isScaleValid = !validateScale(scaleValue);
-  const isScaleUnchanged = scaleInt === app.replicas;
-  const isScaleDisabled = !isScaleValid || isScaleUnchanged || scalePending;
-
-  const handleScale = useCallback(async () => {
-    if (!isScaleValid) return;
-    setScalePending(true);
-    try {
-      const result = await scaleApp(app.name, scaleInt);
-      setApp(result);
-      showToast({
-        variant: "success",
-        title: `Scaled ${app.name} to ${scaleInt} replicas`,
-      });
-      setScaleConfirm(false);
-    } catch (err) {
-      const error = err instanceof ApiError ? err : ApiError.network(err);
-      showToast({
-        variant: "error",
-        title: "Scale failed",
-        description: error.message,
-      });
-    } finally {
-      setScalePending(false);
-    }
-  }, [app.name, scaleInt, isScaleValid, setApp, showToast]);
+  const [deleteVolumes, setDeleteVolumes] = useState(false);
 
   const handleRestart = useCallback(async () => {
     setRestartPending(true);
@@ -102,11 +60,18 @@ export function AppDetailSettings() {
   const handleDelete = useCallback(async () => {
     setDeletePending(true);
     try {
-      await deleteApp(app.name);
+      const result = await deleteApp(app.name, { deleteVolumes });
       showToast({
         variant: "success",
         title: `Deleted ${app.name}`,
       });
+      if (result.dataRetained || result.volumeErrors.length > 0) {
+        showToast({
+          variant: "warning",
+          title: "Some volume data was retained",
+          description: result.volumeErrors.length > 0 ? result.volumeErrors.join("; ") : "Volume cleanup requires manual action.",
+        });
+      }
       setDeleteConfirm(false);
       navigate("/apps", { replace: true });
     } catch (err) {
@@ -128,50 +93,14 @@ export function AppDetailSettings() {
     } finally {
       setDeletePending(false);
     }
-  }, [app.name, showToast, navigate]);
+  }, [app.name, deleteVolumes, showToast, navigate]);
 
   return (
     <div className="space-y-6">
       <AppConfigCard />
+      <AppVolumesCard />
 
-      {/* Scale section */}
-      <div className="border border-pier-border rounded-pier-lg p-5 bg-pier-surface">
-        <h3 className="m-0 text-[14px] font-semibold text-pier-fg mb-4">Scale</h3>
-        <div className="flex items-end gap-3">
-          <Field
-            id="scale-replicas"
-            label="Replicas"
-            hint="0–10 pods"
-            error={scaleError || validateScale(scaleValue)}
-            className="flex-1 max-w-xs"
-          >
-            <Input
-              type="number"
-              min="0"
-              max="10"
-              value={scaleValue}
-              onChange={(e) => {
-                setScaleValue(e.currentTarget.value);
-                setScaleError("");
-              }}
-              disabled={scalePending}
-            />
-          </Field>
-          <Button
-            onClick={handleScale}
-            disabled={isScaleDisabled}
-            title={
-              isScaleUnchanged
-                ? "No change"
-                : !isScaleValid
-                  ? "Invalid value"
-                  : undefined
-            }
-          >
-            {scalePending ? "Applying…" : "Apply"}
-          </Button>
-        </div>
-      </div>
+      <AppScaleCard />
 
       {/* Restart section */}
       <div className="border border-pier-border rounded-pier-lg p-5 bg-pier-surface">
@@ -208,15 +137,6 @@ export function AppDetailSettings() {
 
       {/* Confirm dialogs */}
       <ConfirmDialog
-        open={scaleConfirm}
-        onClose={() => setScaleConfirm(false)}
-        onConfirm={handleScale}
-        title="Confirm scaling"
-        description={`Scale ${app.name} to ${scaleInt} replica${scaleInt === 1 ? "" : "s"}?`}
-        confirmLabel="Scale"
-      />
-
-      <ConfirmDialog
         open={restartConfirm}
         onClose={() => setRestartConfirm(false)}
         onConfirm={handleRestart}
@@ -236,6 +156,9 @@ export function AppDetailSettings() {
         }}
         onConfirm={handleDelete}
         pending={deletePending}
+        volumeCount={app.volumes?.length}
+        deleteVolumes={deleteVolumes}
+        onDeleteVolumesChange={setDeleteVolumes}
       />
     </div>
   );
