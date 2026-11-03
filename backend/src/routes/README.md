@@ -842,8 +842,16 @@ App POST and PATCH accept `volumes` as a full replacement array of up to three
 a missing volume is created only when `size` is supplied. Volumes attached to
 another app return 409. Mount paths must be absolute, unique, non-overlapping,
 and outside system paths. Apps with volumes use `Recreate` and are capped at
-one replica; scale requests above one return 400. Removing the last volume
-restores `RollingUpdate`.
+one replica; scale requests above one return 400. A PATCH that attaches a
+volume to a multi-replica app without `replicas` scales it to 1; a paused app
+(0 replicas) stays at 0. Removing the last volume restores `RollingUpdate` and
+clears the volume's `pier.app` label. App responses include `volumes`
+(`[{name,mountPath}]`).
+
+If the Deployment patch fails, volumes created by that request are deleted and
+labels are left as they were. Once the patch succeeds, nothing is rolled back:
+label or Service follow-ups are best effort and logged, because the new pods
+may already be using the PVCs.
 
 `DELETE /apps/:name` keeps PVCs by default. Add
 `?deleteVolumes=true` to request cleanup; Pier flips each bound PV reclaim
