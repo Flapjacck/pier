@@ -17,7 +17,7 @@ describe("podToAppPod", () => {
         name: "app-pod-abc",
         creationTimestamp: new Date("2026-10-29T15:00:00.000Z"),
       },
-      spec: { nodeName: "node-1" },
+      spec: { nodeName: "node-1", containers: [{ image: "ghcr.io/example/hello:1" }] },
       status: {
         phase: "Running",
         startTime: new Date("2026-10-29T15:00:05.000Z"),
@@ -32,6 +32,7 @@ describe("podToAppPod", () => {
     assert.equal(appPod.readyContainers, "1/1");
     assert.equal(appPod.restarts, 0);
     assert.equal(appPod.node, "node-1");
+    assert.equal(appPod.image, "ghcr.io/example/hello:1");
     assert.equal(appPod.startedAt, "2026-10-29T15:00:05.000Z");
   });
 
@@ -65,6 +66,7 @@ describe("podToAppPod", () => {
     assert.equal(appPod.restarts, 5);
     assert.equal(appPod.waitingReason, "CrashLoopBackOff");
     assert.equal(appPod.lastTerminationReason, "Error");
+    assert.equal(appPod.lastExitCode, 1);
   });
 
   it("maps OOMKilled pod", () => {

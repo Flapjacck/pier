@@ -25,6 +25,10 @@ rules:
     resources: ["deployments/scale"]
     # update: app-actions scale (replaceNamespacedDeploymentScale is a PUT; never read or patched)
     verbs: ["update"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    # list: app-events UID matching
+    verbs: ["list"]
   - apiGroups: [""]
     resources: ["services"]
     # get: app-actions delete (exists check) | create: create-app
@@ -37,7 +41,11 @@ rules:
     verbs: ["list"]
   - apiGroups: [""]
     resources: ["pods"]
-    # list: app-pods, list-pods (cluster route). No single-pod reads.
+    # list: app-pods, list-pods (cluster route) | delete: per-pod restart
+    verbs: ["list", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    # list: app-events
     verbs: ["list"]
   - apiGroups: [""]
     resources: ["pods/log"]
