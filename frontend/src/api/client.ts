@@ -8,20 +8,33 @@ import {
   parseSessionInfo,
 } from "./guards";
 import { request, requestVoid, type RequestOptions } from "./request";
-import type { App, ClusterHealth, ClusterPodsResult, CreateAppBody, RestartResult, ScaleBody, SessionInfo } from "./types";
+import type {
+  App,
+  ClusterHealth,
+  ClusterPodsResult,
+  CreateAppBody,
+  RestartResult,
+  ScaleBody,
+  SessionInfo,
+  UpdateAppBody,
+} from "./types";
 
 export { ApiError, type ApiErrorKind } from "./errors";
 export type {
   App,
   AppPod,
+  AppResources,
   AppStatus,
   ClusterHealth,
   ClusterPodsResult,
   CreateAppBody,
+  PartialAppResources,
   PodSummary,
+  ResourcePair,
   RestartResult,
   ScaleBody,
   SessionInfo,
+  UpdateAppBody,
 } from "./types";
 
 function withSignal(options: RequestOptions | undefined, signal?: AbortSignal): RequestOptions {
@@ -79,6 +92,16 @@ export function createApp(body: CreateAppBody, options?: RequestOptions): Promis
 export function scaleApp(name: string, replicas: number, options?: RequestOptions): Promise<App> {
   const body: ScaleBody = { replicas };
   return request(`/api/apps/${encodeURIComponent(name)}/scale`, {
+    ...options,
+    method: "PATCH",
+    body,
+    parse: parseApp,
+  });
+}
+
+/** PATCH /api/apps/:name — change image, port, env, replicas and/or resources. */
+export function updateApp(name: string, body: UpdateAppBody, options?: RequestOptions): Promise<App> {
+  return request(`/api/apps/${encodeURIComponent(name)}`, {
     ...options,
     method: "PATCH",
     body,

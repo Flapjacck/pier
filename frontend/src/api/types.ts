@@ -5,7 +5,8 @@
  * - backend/src/k8s/list-pods.ts (PodSummary, ClusterPodsResult)
  * - backend/src/k8s/cluster-health.ts (ClusterHealth)
  * - backend/src/k8s/client.ts (KubeConfigMode)
- * - backend/src/routes/apps-schemas.ts (PostAppsBody, error bodies)
+ * - backend/src/k8s/resources.ts (AppResources, PartialAppResources)
+ * - backend/src/routes/apps-schemas.ts (PostAppsBody, PatchAppBody, error bodies)
  * - backend/src/routes/apps/restart.ts (RestartResult)
  * - backend/src/routes/session.ts (SessionInfo) — includes ingressDomain and tls
  */
@@ -24,6 +25,21 @@ export type App = {
   port?: number;
   host?: string;
   url?: string;
+  /** Plain env values; omitted when the app has none. */
+  env?: Record<string, string>;
+  /** CPU/RAM requests and limits (always set by current backends). */
+  resources?: AppResources;
+};
+
+/** CPU and memory quantities, e.g. { cpu: "250m", memory: "256Mi" }. */
+export type ResourcePair = { cpu: string; memory: string };
+
+export type AppResources = { requests: ResourcePair; limits: ResourcePair };
+
+/** Resources in a request body; missing fields keep the default (POST) or current value (PATCH). */
+export type PartialAppResources = {
+  requests?: Partial<ResourcePair>;
+  limits?: Partial<ResourcePair>;
 };
 
 export type AppPod = {
@@ -79,6 +95,16 @@ export type CreateAppBody = {
   replicas?: number;
   host?: string;
   env?: Record<string, string>;
+  resources?: PartialAppResources;
+};
+
+/** PATCH /api/apps/:name body — at least one field; env replaces the whole set. */
+export type UpdateAppBody = {
+  image?: string;
+  port?: number;
+  replicas?: number;
+  env?: Record<string, string>;
+  resources?: PartialAppResources;
 };
 
 export type ScaleBody = {

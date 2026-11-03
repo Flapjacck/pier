@@ -9,6 +9,8 @@ import {
 } from "../../lib/deployValidation";
 import { mapApiErrorToFields } from "./errorMapping";
 import type { EnvRow } from "./EnvRows";
+import type { AppResources, CreateAppBody } from "../../api/types";
+import { DEFAULT_RESOURCES } from "../../lib/resources";
 
 export type SubmitState = "idle" | "pending" | "success" | "error_unreachable";
 
@@ -36,6 +38,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   const [subdomain, setSubdomain] = useState("");
   const [nameFollowsSubdomain, setNameFollowsSubdomain] = useState(true);
   const [env, setEnv] = useState<EnvRow[]>([{ id: "1", key: "", value: "" }]);
+  const [resources, setResources] = useState<AppResources>(DEFAULT_RESOURCES);
 
   // Validation/submission state
   const [touched, setTouched] = useState(false);
@@ -46,21 +49,25 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   const nextEnvIdRef = useRef(2);
   const navigateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** Drop one field's error once the user edits it. */
+  const clearError = useCallback((field: keyof FieldErrors) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
   const handleNameChange = useCallback(
     (newName: string) => {
       setName(newName);
       if (nameFollowsSubdomain && publicUrl) {
         setSubdomain(newName.toLowerCase());
       }
-      if (errors.name) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next.name;
-          return next;
-        });
-      }
+      clearError("name");
     },
-    [nameFollowsSubdomain, publicUrl, errors.name],
+    [nameFollowsSubdomain, publicUrl, clearError],
   );
 
   const handleSubdomainChange = useCallback((newSubdomain: string) => {
@@ -89,7 +96,8 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
     setEnv((prev) => [...prev, { id: newId, key: "", value: "" }]);
   }, []);
 
-  const validate = useCallback((): boolean => {
+  /** Validate the form; returns the request body, or undefined after setting field errors. */
+  const validate = useCallback((): CreateAppBody | undefined => {
     const values: DeployFormValues = {
       name,
       image,
@@ -98,47 +106,32 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       host: subdomain,
       env,
       publicUrl,
+      resources,
     };
 
     const result = validateDeployForm(values, { ingressDomain });
     if (!result.ok) {
       setErrors(result.errors);
-      return false;
+      return undefined;
     }
 
     setErrors({});
-    return true;
-  }, [name, image, port, replicas, subdomain, env, publicUrl, ingressDomain]);
+    return result.body;
+  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, ingressDomain]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       setTouched(true);
 
-      if (!validate()) {
+      const body = validate();
+      if (!body) {
         return;
       }
 
       setSubmitState("pending");
       try {
-        const values: DeployFormValues = {
-          name,
-          image,
-          port,
-          replicas,
-          host: subdomain,
-          env,
-          publicUrl,
-        };
-
-        const result = validateDeployForm(values, { ingressDomain });
-        if (!result.ok) {
-          setErrors(result.errors);
-          setSubmitState("idle");
-          return;
-        }
-
-        const app = await api.createApp(result.body);
+        const app = await api.createApp(body);
 
         setDeployedApp(app.name);
         setSubmitState("success");
@@ -177,7 +170,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
         }
       }
     },
-    [validate, ingressDomain, name, image, port, replicas, subdomain, env, publicUrl, navigate, onShowToast],
+    [validate, navigate, onShowToast],
   );
 
   // Focus first error field on validation failure
@@ -207,35 +200,22 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
     image,
     setImage: (img: string) => {
       setImage(img);
-      if (errors.image) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next.image;
-          return next;
-        });
-      }
+      clearError("image");
     },
     port,
     setPort: (p: string) => {
       setPort(p);
-      if (errors.port) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next.port;
-          return next;
-        });
-      }
+      clearError("port");
     },
     replicas,
     setReplicas: (r: string) => {
       setReplicas(r);
-      if (errors.replicas) {
-        setErrors((prev) => {
-          const next = { ...prev };
-          delete next.replicas;
-          return next;
-        });
-      }
+      clearError("replicas");
+    },
+    resources,
+    setResources: (r: AppResources) => {
+      setResources(r);
+      clearError("resources");
     },
     publicUrl,
     setPublicUrl: handlePublicUrlChange,
@@ -253,12 +233,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
         delete newEnv[id];
         return { ...prev, env: Object.keys(newEnv).length > 0 ? newEnv : undefined };
       }),
-    clearHostError: () =>
-      setErrors((prev) => {
-        const next = { ...prev };
-        delete next.host;
-        return next;
-      }),
+    clearHostError: () => clearError("host"),
 
     // Submission state
     touched,

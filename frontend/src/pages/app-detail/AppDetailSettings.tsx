@@ -11,9 +11,10 @@ import { useAppDetail } from "./useAppDetail";
 import { useNavigate } from "react-router-dom";
 import { PierIcon } from "../../components/icons/PierIcon";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { AppConfigCard } from "./AppConfigCard";
 
 /**
- * Settings tab: scale, restart, and delete actions.
+ * Settings tab: configuration (AppConfigCard), scale, restart, and delete actions.
  * Scale: number input 0-10 with Apply button (disabled while pending/unchanged/invalid).
  * Restart: button opens confirm, success toast with timestamp, refetches app.
  * Delete: danger zone, type app name to enable, success navigates to /apps.
@@ -131,6 +132,8 @@ export function AppDetailSettings() {
 
   return (
     <div className="space-y-6">
+      <AppConfigCard />
+
       {/* Scale section */}
       <div className="border border-pier-border rounded-pier-lg p-5 bg-pier-surface">
         <h3 className="m-0 text-[14px] font-semibold text-pier-fg mb-4">Scale</h3>

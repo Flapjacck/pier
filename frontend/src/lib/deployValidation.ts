@@ -11,6 +11,8 @@ export type DeployFormValues = {
   host: string;
   env: Array<{ id: string; key: string; value: string }>;
   publicUrl: boolean;
+  /** Omitted or equal to DEFAULT_RESOURCES: nothing is sent and the backend defaults apply. */
+  resources?: AppResources;
 };
 
 export type FieldErrors = {
@@ -21,13 +23,38 @@ export type FieldErrors = {
   host?: string;
   form?: string; // Form-level error shown once
   env?: Record<string, string>; // Keyed by env row id
+  resources?: ResourceErrors;
 };
 
-import type { CreateAppBody } from "../api/client";
+import type { AppResources, CreateAppBody } from "../api/client";
+import { validateEnvRows } from "./envValidation";
+import {
+  DEFAULT_RESOURCES,
+  sameResources,
+  trimResources,
+  validateResources,
+  type ResourceErrors,
+} from "./resources";
 
 export type ValidationResult =
   | { ok: true; body: CreateAppBody }
   | { ok: false; errors: FieldErrors };
+
+/** Image rule shared with the Settings tab: 1–255 chars, no whitespace. Input is trimmed. */
+export function imageError(image: string): string | undefined {
+  if (!image) return "Image is required";
+  if (image.length > 255) return "Image must be ≤255 characters";
+  if (/\s/.test(image)) return "Image cannot contain whitespace";
+  return undefined;
+}
+
+/** Port rule shared with the Settings tab: integer 1–65535. Input is trimmed. */
+export function portError(port: string): string | undefined {
+  if (!port) return "Port is required";
+  const n = Number(port);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) return "Port must be an integer between 1 and 65535";
+  return undefined;
+}
 
 interface ValidationOptions {
   ingressDomain: string | null;
@@ -42,7 +69,6 @@ export function validateDeployForm(
   opts: ValidationOptions,
 ): ValidationResult {
   const errors: FieldErrors = {};
-  const envErrors: Record<string, string> = {};
 
   // Validate name: DNS-1035 — lowercase start, ≤63 chars total.
   // Pattern: ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$
@@ -55,24 +81,13 @@ export function validateDeployForm(
 
   // Validate image: 1–255 chars, no whitespace.
   const image = values.image.trim();
-  if (!image) {
-    errors.image = "Image is required";
-  } else if (image.length > 255) {
-    errors.image = "Image must be ≤255 characters";
-  } else if (/\s/.test(image)) {
-    errors.image = "Image cannot contain whitespace";
-  }
+  const imageMsg = imageError(image);
+  if (imageMsg) errors.image = imageMsg;
 
   // Validate port: 1–65535, must be an integer.
   const port = values.port.trim();
-  if (!port) {
-    errors.port = "Port is required";
-  } else {
-    const portNum = Number(port);
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
-      errors.port = "Port must be an integer between 1 and 65535";
-    }
-  }
+  const portMsg = portError(port);
+  if (portMsg) errors.port = portMsg;
 
   // Validate replicas: 0–10, must be an integer.
   const replicas = values.replicas.trim();
@@ -116,43 +131,21 @@ export function validateDeployForm(
     host = undefined;
   }
 
-  // Validate env: up to 50 keys, keys match ^[A-Za-z_][A-Za-z0-9_]*$, values ≤4096 chars.
-  const envMap: Record<string, string> = {};
-  const seenKeys = new Set<string>();
-  let envRowCount = 0;
-
-  for (const row of values.env) {
-    const key = row.key.trim();
-    const value = row.value.trim();
-
-    // Skip blank rows.
-    if (!key && !value) continue;
-
-    envRowCount++;
-
-    if (!key) {
-      envErrors[row.id] = "Key is required";
-    } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      envErrors[row.id] = "Key must start with a letter or underscore, contain only alphanumeric characters and underscores";
-    } else if (seenKeys.has(key)) {
-      envErrors[row.id] = "Duplicate key";
-    } else if (value.length > 4096) {
-      envErrors[row.id] = "Value must be ≤4096 characters";
-    } else {
-      seenKeys.add(key);
-      envMap[key] = value;
-    }
+  const { env: envMap, errors: envErrors } = validateEnvRows(values.env);
+  if (Object.keys(envErrors).length > 0) {
+    errors.env = envErrors;
   }
 
-  if (envRowCount > 50) {
-    errors.env = { "": "Maximum 50 environment variables" };
+  // Resources: only validated (and sent) when they differ from the backend defaults.
+  const resources = values.resources ? trimResources(values.resources) : undefined;
+  const sendResources = resources !== undefined && !sameResources(resources, DEFAULT_RESOURCES);
+  if (sendResources) {
+    const resourceErrors = validateResources(resources);
+    if (Object.keys(resourceErrors).length > 0) errors.resources = resourceErrors;
   }
 
   // If there are any field errors, return them.
-  if (Object.keys(errors).length > 0 || Object.keys(envErrors).length > 0) {
-    if (Object.keys(envErrors).length > 0) {
-      errors.env = envErrors;
-    }
+  if (Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
 
@@ -170,6 +163,10 @@ export function validateDeployForm(
 
   if (Object.keys(envMap).length > 0) {
     body.env = envMap;
+  }
+
+  if (sendResources) {
+    body.resources = resources;
   }
 
   return { ok: true, body };
