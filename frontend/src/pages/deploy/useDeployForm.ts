@@ -11,6 +11,7 @@ import { mapApiErrorToFields } from "./errorMapping";
 import type { EnvRow } from "./EnvRows";
 import type { AppResources, CreateAppBody } from "../../api/types";
 import { DEFAULT_RESOURCES } from "../../lib/resources";
+import { useVolumeField } from "./useVolumeField";
 
 export type SubmitState = "idle" | "pending" | "success" | "error_unreachable";
 
@@ -28,7 +29,6 @@ interface UseDeployFormOptions {
  */
 export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptions) {
   const navigate = useNavigate();
-
   // Form field state
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
@@ -39,13 +39,12 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   const [nameFollowsSubdomain, setNameFollowsSubdomain] = useState(true);
   const [env, setEnv] = useState<EnvRow[]>([{ id: "1", key: "", value: "" }]);
   const [resources, setResources] = useState<AppResources>(DEFAULT_RESOURCES);
-
+  const { volume, mode, setMode, available, loading, setVolume, setVolumeName } = useVolumeField(name);
   // Validation/submission state
   const [touched, setTouched] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [deployedApp, setDeployedApp] = useState("");
-
   const nextEnvIdRef = useRef(2);
   const navigateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -58,7 +57,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       return next;
     });
   }, []);
-
   const handleNameChange = useCallback(
     (newName: string) => {
       setName(newName);
@@ -82,20 +80,16 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       setNameFollowsSubdomain(true);
     }
   }, [name]);
-
   const handleEnvRowChange = useCallback((row: EnvRow) => {
     setEnv((prev) => prev.map((r) => (r.id === row.id ? row : r)));
   }, []);
-
   const handleEnvRowRemove = useCallback((id: string) => {
     setEnv((prev) => prev.filter((r) => r.id !== id));
   }, []);
-
   const handleEnvRowAdd = useCallback(() => {
     const newId = String(nextEnvIdRef.current++);
     setEnv((prev) => [...prev, { id: newId, key: "", value: "" }]);
   }, []);
-
   /** Validate the form; returns the request body, or undefined after setting field errors. */
   const validate = useCallback((): CreateAppBody | undefined => {
     const values: DeployFormValues = {
@@ -107,6 +101,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       env,
       publicUrl,
       resources,
+      volume,
     };
 
     const result = validateDeployForm(values, { ingressDomain });
@@ -117,7 +112,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
 
     setErrors({});
     return result.body;
-  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, ingressDomain]);
+  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, ingressDomain]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -217,6 +212,13 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       setResources(r);
       clearError("resources");
     },
+    volume,
+    setVolume,
+    setVolumeName,
+    volumeMode: mode,
+    setVolumeMode: setMode,
+    availableVolumes: available,
+    volumesLoading: loading,
     publicUrl,
     setPublicUrl: handlePublicUrlChange,
     subdomain,

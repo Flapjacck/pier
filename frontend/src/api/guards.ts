@@ -11,7 +11,9 @@ import type {
   PodSummary,
   ResourcePair,
   RestartResult,
+  DeleteAppResult,
   SessionInfo,
+  Volume,
 } from "./types";
 
 const APP_STATUSES: readonly AppStatus[] = ["running", "stopped", "building", "failed"];
@@ -31,6 +33,9 @@ function isKubeMode(value: unknown): value is KubeConfigMode {
 
 function isAppStatus(value: unknown): value is AppStatus {
   return typeof value === "string" && (APP_STATUSES as readonly string[]).includes(value);
+}
+function isVolumeStatus(value: unknown): value is Volume["status"] {
+  return value === "pending" || value === "bound" || value === "lost";
 }
 
 export function parseSessionInfo(json: unknown): SessionInfo {
@@ -72,7 +77,20 @@ export function parseApp(json: unknown): App {
   if (env) app.env = env;
   const resources = parseResources(json.resources);
   if (resources) app.resources = resources;
+  if (Array.isArray(json.volumes)) {
+    const volumes = json.volumes.flatMap((item) => isRecord(item) && typeof item.name === "string" && typeof item.mountPath === "string" ? [{ name: item.name, mountPath: item.mountPath }] : []);
+    if (volumes.length === json.volumes.length) app.volumes = volumes;
+  }
   return app;
+}
+
+export function parseVolume(json: unknown): Volume {
+  if (!isRecord(json) || typeof json.name !== "string" || typeof json.size !== "string" || !isVolumeStatus(json.status) || typeof json.createdAt !== "string") throw new SyntaxError("Invalid volume response");
+  return { name: json.name, size: json.size, status: json.status, createdAt: json.createdAt, ...(typeof json.app === "string" ? { app: json.app } : {}), ...(typeof json.mountPath === "string" ? { mountPath: json.mountPath } : {}) };
+}
+export function parseVolumeList(json: unknown): Volume[] {
+  if (!Array.isArray(json)) throw new SyntaxError("Invalid volume list");
+  return json.map(parseVolume);
 }
 
 function parseStringRecord(value: unknown): Record<string, string> | undefined {
@@ -220,4 +238,11 @@ export function parseRestartResult(json: unknown): RestartResult {
     throw new SyntaxError("Invalid restart response");
   }
   return { ok: true, restartedAt: json.restartedAt };
+}
+
+export function parseDeleteAppResult(json: unknown): DeleteAppResult {
+  if (!isRecord(json) || json.ok !== true || typeof json.dataRetained !== "boolean" || !Array.isArray(json.volumeErrors) || !json.volumeErrors.every((value) => typeof value === "string")) {
+    throw new SyntaxError("Invalid app delete response");
+  }
+  return { ok: true, dataRetained: json.dataRetained, volumeErrors: json.volumeErrors };
 }

@@ -11,6 +11,9 @@ interface DeleteConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   pending: boolean;
+  volumeCount?: number;
+  deleteVolumes?: boolean;
+  onDeleteVolumesChange?: (value: boolean) => void;
 }
 
 /**
@@ -25,6 +28,9 @@ export function DeleteConfirmDialog({
   onClose,
   onConfirm,
   pending,
+  volumeCount = 0,
+  deleteVolumes = false,
+  onDeleteVolumesChange,
 }: DeleteConfirmDialogProps) {
   const nameMatches = nameInput === appName;
 
@@ -36,6 +42,12 @@ export function DeleteConfirmDialog({
       <p className="m-0 mb-4 text-sm text-pier-muted">
         To confirm, type the app name:
       </p>
+      {volumeCount > 0 && (
+        <label className="flex items-center gap-2 mb-4 text-sm text-pier-muted">
+          <input type="checkbox" checked={deleteVolumes} onChange={(e) => onDeleteVolumesChange?.(e.target.checked)} disabled={pending} />
+          Also delete {volumeCount} volume{volumeCount === 1 ? "" : "s"} and their data
+        </label>
+      )}
       <Field
         id="delete-confirm-name"
         label="App name"

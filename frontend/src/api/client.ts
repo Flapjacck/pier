@@ -5,8 +5,10 @@ import {
   parseAppPodList,
   parseClusterHealth,
   parseClusterPodsResult,
+  parseDeleteAppResult,
   parseRestartResult,
   parseSessionInfo,
+  parseVolume, parseVolumeList,
 } from "./guards";
 import { request, requestVoid, type RequestOptions } from "./request";
 import type {
@@ -16,9 +18,11 @@ import type {
   ClusterPodsResult,
   CreateAppBody,
   RestartResult,
+  DeleteAppResult,
   ScaleBody,
   SessionInfo,
   UpdateAppBody,
+  Volume,
 } from "./types";
 
 export { ApiError, type ApiErrorKind } from "./errors";
@@ -39,6 +43,7 @@ export type {
   ScaleBody,
   SessionInfo,
   UpdateAppBody,
+  Volume, VolumeMount,
 } from "./types";
 
 function withSignal(options: RequestOptions | undefined, signal?: AbortSignal): RequestOptions {
@@ -121,11 +126,29 @@ export function restartApp(name: string, options?: RequestOptions): Promise<Rest
   });
 }
 
-export function deleteApp(name: string, options?: RequestOptions): Promise<void> {
-  return requestVoid(`/api/apps/${encodeURIComponent(name)}`, {
+export function deleteApp(name: string, opts: { deleteVolumes?: boolean } = {}, options?: RequestOptions): Promise<DeleteAppResult> {
+  const query = opts.deleteVolumes ? "?deleteVolumes=true" : "";
+  return request(`/api/apps/${encodeURIComponent(name)}${query}`, {
     ...options,
     method: "DELETE",
+    parse: parseDeleteAppResult,
   });
+}
+
+export function listVolumes(options?: RequestOptions): Promise<Volume[]> {
+  return request("/api/volumes", { ...withSignal(options), parse: parseVolumeList });
+}
+export function createVolume(body: { name: string; size: string }, options?: RequestOptions): Promise<Volume> {
+  return request("/api/volumes", { ...options, method: "POST", body, parse: parseVolume });
+}
+export function deleteVolume(name: string, options?: RequestOptions): Promise<{ ok: true; dataRetained: boolean }> {
+  return request(`/api/volumes/${encodeURIComponent(name)}`, { ...options, method: "DELETE", parse: (value) => {
+    if (!isRecordResponse(value)) throw new SyntaxError("Invalid volume delete response");
+    return { ok: true, dataRetained: value.dataRetained === true };
+  } });
+}
+function isRecordResponse(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && "dataRetained" in value && typeof value.dataRetained === "boolean";
 }
 
 export function listAppPods(name: string, options?: RequestOptions) {
