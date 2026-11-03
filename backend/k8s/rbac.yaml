@@ -18,6 +18,23 @@ rules:
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pier-backend-volumes
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+rules:
+  # get: volume store validates the pier-local StorageClass and bound PV
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get"]
+  # get/patch: volume deletion changes a bound PV to Delete before deleting its PVC
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: pier-backend-cluster-health
@@ -25,6 +42,22 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: pier-backend-cluster-health
+subjects:
+  - kind: ServiceAccount
+    name: pier-backend
+    namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pier-backend-volumes
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pier-backend-volumes
 subjects:
   - kind: ServiceAccount
     name: pier-backend

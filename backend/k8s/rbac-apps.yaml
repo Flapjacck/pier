@@ -35,6 +35,10 @@ rules:
     # patch: update-app (targetPort on a port change) | delete: app-actions, create-app rollback
     verbs: ["get", "create", "patch", "delete"]
   - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    # get/list: volume store | create: create volume | patch: attachment labels | delete: volume store
+    verbs: ["get", "list", "create", "patch", "delete"]
+  - apiGroups: [""]
     resources: ["resourcequotas", "limitranges"]
     # list: resource-fit pre-check (quota and container max are only enforced at pod
     # admission, so Pier checks them before patching). Read-only.

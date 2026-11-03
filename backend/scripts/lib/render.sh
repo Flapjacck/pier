@@ -17,9 +17,9 @@
 # ingress only with a host.
 manifest_names() {
   local name
-  for name in namespace rbac rbac-apps quota networkpolicies policy-services tls service; do
+  for name in namespace rbac rbac-apps storage quota networkpolicies policy-services tls service; do
     case "$name" in
-      quota | networkpolicies | policy-services)
+      storage | quota | networkpolicies | policy-services)
         [[ -f "$K8S_DIR/$name.yaml" ]] || continue
         ;;
       tls)
