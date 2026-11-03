@@ -39,3 +39,10 @@ export class VolumeQuotaExceededError extends Error {
     this.name = "VolumeQuotaExceededError";
   }
 }
+
+export class StorageClassMissingError extends Error {
+  constructor() {
+    super("StorageClass pier-local not found; re-run deploy-local.sh");
+    this.name = "StorageClassMissingError";
+  }
+}

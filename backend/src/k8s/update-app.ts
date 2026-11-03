@@ -1,4 +1,4 @@
-import type { AppsV1Api, CoreV1Api, NetworkingV1Api, V1EnvVar } from "@kubernetes/client-node";
+import type { AppsV1Api, CoreV1Api, NetworkingV1Api, StorageV1Api, V1EnvVar } from "@kubernetes/client-node";
 import { PatchStrategy, setHeaderOptions } from "@kubernetes/client-node";
 import type { App } from "./apps.js";
 import { deploymentPort } from "./apps.js";
@@ -99,7 +99,7 @@ export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources, 
   return ops;
 }
 
-type Clients = { apps: AppsV1Api; core: CoreV1Api; networking: NetworkingV1Api; storage?: import("@kubernetes/client-node").StorageV1Api };
+type Clients = { apps: AppsV1Api; core: CoreV1Api; networking: NetworkingV1Api; storage?: StorageV1Api };
 type Logger = { warn: (obj: object, msg: string) => void };
 
 /**
@@ -146,42 +146,41 @@ export async function updateApp(
     resolved = await resolveVolumes(clients, namespace, name, nextMounts, effectiveReplicas);
   }
 
-  await checkResourceFit(
-    clients.core,
-    namespace,
-    {
-      current: { resources: currentResources, replicas: currentReplicas },
-      next: { resources: nextResources ?? currentResources, replicas: effectiveReplicas },
-      surge: templateChanged && !effectiveMounts.length,
-    },
-    log,
-  );
-
   try {
+    await checkResourceFit(
+      clients.core,
+      namespace,
+      {
+        current: { resources: currentResources, replicas: currentReplicas },
+        next: { resources: nextResources ?? currentResources, replicas: effectiveReplicas },
+        surge: templateChanged && !effectiveMounts.length,
+      },
+      log,
+    );
     await clients.apps.patchNamespacedDeployment(
-      { namespace, name, body: buildUpdateOps(input, nextResources, effectiveReplicas) },
+      { namespace, name, body: buildUpdateOps(input, nextResources, currentReplicas) },
       setHeaderOptions("Content-Type", PatchStrategy.JsonPatch),
     );
+    if (nextMounts) {
+      const before = new Set(currentMounts.map((mount) => mount.name));
+      const after = new Set(nextMounts.map((mount) => mount.name));
+      for (const nameToLabel of after) if (!before.has(nameToLabel)) await setVolumeAppLabel(clients.core, namespace, nameToLabel, name);
+      for (const nameToUnlabel of before) if (!after.has(nameToUnlabel)) {
+        await setVolumeAppLabel(clients.core, namespace, nameToUnlabel, null);
+      }
+    }
+
+    if (portChanged && input.port !== undefined) {
+      await patchServiceTargetPort(clients.core, namespace, name, input.port);
+    }
+
+    const app = await getApp(clients, namespace, name);
+    if (!app) throw new AppNotFoundError(name);
+    return app;
   } catch (err) {
     if (resolved) await rollbackResolvedVolumes(clients, namespace, resolved);
     throw err;
   }
-  if (nextMounts) {
-    const before = new Set(currentMounts.map((mount) => mount.name));
-    const after = new Set(nextMounts.map((mount) => mount.name));
-    for (const nameToLabel of after) if (!before.has(nameToLabel)) await setVolumeAppLabel(clients.core, namespace, nameToLabel, name);
-    for (const nameToUnlabel of before) if (!after.has(nameToUnlabel)) {
-      try { await setVolumeAppLabel(clients.core, namespace, nameToUnlabel, null); } catch (err) { log?.warn({ err, name: nameToUnlabel }, "volume detach label failed"); }
-    }
-  }
-
-  if (portChanged && input.port !== undefined) {
-    await patchServiceTargetPort(clients.core, namespace, name, input.port);
-  }
-
-  const app = await getApp(clients, namespace, name);
-  if (!app) throw new AppNotFoundError(name);
-  return app;
 }
 
 /** Point the app's Service (port 80) at the new container port. A missing Service is ignored. */

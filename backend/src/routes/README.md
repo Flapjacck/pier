@@ -826,7 +826,7 @@ the size.
 |---|---|---|---|
 | GET | `/volumes` | 200, volume list | 401, 503 |
 | GET | `/volumes/:name` | 200, one volume | 400 invalid name, 401, 404, 503 |
-| POST | `/volumes` | 201, `{ok:true,data}` | 400 invalid input, 401, 403 quota exceeded, 409 exists, 503 |
+| POST | `/volumes` | 201, volume | 400 invalid input, 401, 403 quota exceeded, 409 exists, 503 storage unavailable |
 | DELETE | `/volumes/:name` | 200, `{ok:true,dataRetained}` | 400 invalid name, 401, 404, 409 in use, 503 |
 
 ```bash
@@ -848,4 +848,6 @@ restores `RollingUpdate`.
 `DELETE /apps/:name` keeps PVCs by default. Add
 `?deleteVolumes=true` to request cleanup; Pier flips each bound PV reclaim
 policy to `Delete` before deleting its PVC. Cleanup failures are returned as
-`volumeErrors` and `dataRetained` without failing the app deletion.
+`volumeErrors` and `dataRetained` without failing the app deletion. Storage
+class failures return 503 with
+`{error:"storage unavailable",details:"StorageClass pier-local not found; re-run deploy-local.sh"}`.

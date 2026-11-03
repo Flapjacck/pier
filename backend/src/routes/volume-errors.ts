@@ -5,6 +5,7 @@ import {
   VolumeInUseError,
   VolumeNotFoundError,
   VolumeQuotaExceededError,
+  StorageClassMissingError,
   VolumesReplicaError,
 } from "../k8s/volumes/errors.js";
 
@@ -27,6 +28,10 @@ export function mapVolumeError(err: unknown, reply: FastifyReply): boolean {
   }
   if (err instanceof VolumeQuotaExceededError) {
     reply.status(403).send({ ok: false, error: "quota exceeded", details: err.message });
+    return true;
+  }
+  if (err instanceof StorageClassMissingError) {
+    reply.status(503).send({ ok: false, error: "storage unavailable", details: err.message });
     return true;
   }
   return false;

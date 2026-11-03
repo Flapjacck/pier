@@ -1,4 +1,4 @@
-import type { AppsV1Api, CoreV1Api, NetworkingV1Api } from "@kubernetes/client-node";
+import type { AppsV1Api, CoreV1Api, NetworkingV1Api, StorageV1Api } from "@kubernetes/client-node";
 import { PatchStrategy, setHeaderOptions } from "@kubernetes/client-node";
 import { deploymentToApp, type App } from "./apps.js";
 import { getLiveApp } from "./app-lookup.js";
@@ -21,7 +21,7 @@ type K8sClients = {
   apps: AppsV1Api;
   core: CoreV1Api;
   networking: NetworkingV1Api;
-  storage?: import("@kubernetes/client-node").StorageV1Api;
+  storage?: StorageV1Api;
 };
 
 async function deleteIfExists(
@@ -183,7 +183,7 @@ export async function deleteApp(
     for (const volume of volumes) {
       try {
         if (deleteVolumes) {
-          const result = await deleteVolumeUnchecked(clients, namespace, volume.name);
+          const result = await deleteVolumeUnchecked(clients, namespace, volume.name, log);
           dataRetained ||= result.dataRetained;
         } else {
           await setVolumeAppLabel(core, namespace, volume.name, null);

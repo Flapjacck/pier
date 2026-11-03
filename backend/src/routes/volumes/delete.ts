@@ -23,7 +23,7 @@ export function deleteVolumeRoutes(deps: VolumeRouteDeps): FastifyPluginAsync {
     }, async (req, reply) => {
       if (!deps.k8s.ok) return reply.status(503).send({ ok: false, error: "cluster unreachable" });
       try {
-        return reply.send({ ok: true, ...(await deleteVolume(deps.k8s.clients, deps.namespace, req.params.name)) });
+        return reply.send({ ok: true, ...(await deleteVolume(deps.k8s.clients, deps.namespace, req.params.name, req.log)) });
       } catch (err) {
         if (mapVolumeError(err, reply)) return;
         req.log.error({ err }, "delete volume failed");

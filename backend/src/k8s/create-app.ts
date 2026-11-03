@@ -1,4 +1,4 @@
-import type { AppsV1Api, CoreV1Api, NetworkingV1Api } from "@kubernetes/client-node";
+import type { AppsV1Api, CoreV1Api, NetworkingV1Api, StorageV1Api } from "@kubernetes/client-node";
 import type { FastifyBaseLogger } from "fastify";
 import { buildDeployment, buildService, buildIngress, type CreateAppInput } from "./manifests/index.js";
 import { deploymentToApp, type App } from "./apps.js";
@@ -37,7 +37,7 @@ export class HostInUseError extends Error {
 type K8sClients = {
   apps: AppsV1Api;
   core: CoreV1Api;
-  storage?: import("@kubernetes/client-node").StorageV1Api;
+  storage?: StorageV1Api;
   networking: NetworkingV1Api;
 };
 /**
@@ -65,7 +65,7 @@ export async function createApp(
     }
     const code = apiStatusCode(err);
     if (code === 404) {
-      // Deployment does not exist; continue.
+      // Expected: app doesn't exist yet.
     } else if (code === 409) {
       // Race condition: app was just created.
       throw new AppExistsError(`app "${input.name}" already exists`);
@@ -164,7 +164,7 @@ export async function createApp(
       try { await clients.core.deleteNamespacedPersistentVolumeClaim({ name: volume, namespace }); }
       catch (rollbackErr) { logger?.warn({ kind: "persistentvolumeclaim", name: volume, err: rollbackErr }, "rollback delete failed"); }
     }
-    for (const volume of resolved.attached) {
+    for (const volume of resolved.newlyAttached) {
       if (resolved.created.includes(volume)) continue;
       try { await setVolumeAppLabel(clients.core, namespace, volume, null); }
       catch (rollbackErr) { logger?.warn({ kind: "persistentvolumeclaim", name: volume, err: rollbackErr }, "rollback label reset failed"); }
