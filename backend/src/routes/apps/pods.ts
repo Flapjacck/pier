@@ -22,6 +22,9 @@ const appPodSchema = {
     startedAt: { type: "string" },
     waitingReason: { type: "string" },
     lastTerminationReason: { type: "string" },
+    image: { type: "string" },
+    lastExitCode: { type: "number" },
+    lastExitReason: { type: "string" },
   },
   required: ["name", "phase", "ready", "readyContainers", "restarts"],
 } as const;

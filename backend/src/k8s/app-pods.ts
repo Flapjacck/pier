@@ -12,6 +12,8 @@ export type AppPod = {
   startedAt?: string;
   waitingReason?: string;
   lastTerminationReason?: string;
+  image?: string;
+  lastExitCode?: number;
 };
 
 /**
@@ -68,6 +70,15 @@ function getLastTerminationReason(pod: V1Pod): string | undefined {
   return undefined;
 }
 
+function getLastTermination(pod: V1Pod): { code?: number; reason?: string } {
+  const statuses = pod.status?.containerStatuses ?? [];
+  for (const status of statuses) {
+    const terminated = status.lastState?.terminated;
+    if (terminated) return { code: terminated.exitCode, reason: terminated.reason };
+  }
+  return {};
+}
+
 /**
  * Format pod startTime as ISO string if present.
  */
@@ -79,6 +90,8 @@ function formatStartTime(startTime?: Date): string | undefined {
  * Map a Kubernetes Pod to an AppPod summary.
  */
 export function podToAppPod(pod: V1Pod): AppPod {
+  const container = pod.spec?.containers?.[0];
+  const lastExit = getLastTermination(pod);
   return {
     name: pod.metadata?.name ?? "",
     phase: pod.status?.phase ?? "Unknown",
@@ -89,6 +102,8 @@ export function podToAppPod(pod: V1Pod): AppPod {
     startedAt: formatStartTime(pod.status?.startTime),
     waitingReason: getWaitingReason(pod),
     lastTerminationReason: getLastTerminationReason(pod),
+    image: container?.image,
+    lastExitCode: lastExit.code,
   };
 }
 
