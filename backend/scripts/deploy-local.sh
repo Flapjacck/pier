@@ -128,7 +128,8 @@ if [[ "$MODE" == render ]]; then
     OUT_DIR="$(mktemp -d -t pier-render.XXXXXX)"
   fi
   mkdir -p "$OUT_DIR"
-  rm -f "$OUT_DIR"/[0-9][0-9]-*.yaml
+  # Clear earlier renders (NNN- since #29, NN- before) so lint only sees this run.
+  rm -f "$OUT_DIR"/[0-9][0-9]-*.yaml "$OUT_DIR"/[0-9][0-9][0-9]-*.yaml
   echo "==> Rendering manifests for $RENDER_IMAGE into $OUT_DIR"
   render_to_dir "$OUT_DIR"
   ls -1 "$OUT_DIR"
