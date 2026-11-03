@@ -10,3 +10,8 @@ export function volumeSizeError(size: string): string | undefined {
   const value = Number(size.slice(0, -2)) * (size.endsWith("Gi") ? 1024 : 1);
   return value < 100 || value > 10240 ? "Size must be between 100Mi and 10Gi" : undefined;
 }
+
+export function volumeNameError(name: string): string | undefined {
+  if (!name) return "Volume name is required";
+  return /^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$/.test(name) ? undefined : "Use lowercase letters, digits and dashes (start with a letter)";
+}
