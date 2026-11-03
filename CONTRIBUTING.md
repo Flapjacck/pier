@@ -71,6 +71,7 @@ Examples:
    pnpm --dir backend audit --prod --audit-level high && pnpm --dir frontend audit --prod --audit-level high
    shellcheck -x backend/scripts/*.sh backend/scripts/lib/*.sh   # if you touched backend/scripts
    ./backend/scripts/deploy-local.sh --render                      # if you touched backend/k8s or scripts; offline
+   docker build -f backend/Dockerfile -t pier-backend:ci .         # if you touched a Dockerfile, package files or tsconfigs
    ```
 
 4. **Push your branch** and create a pull request against `main`:
@@ -79,7 +80,7 @@ Examples:
    gh pr create --base main
    ```
 
-5. **CI must pass** (GitHub Actions workflow: `backend` and `frontend` jobs both green). Each job runs install, `pnpm audit --prod --audit-level high`, lint, typecheck, test and build; the backend job also runs `bash -n` and `shellcheck` on `backend/scripts/`. Actions are pinned to full commit SHAs, and Dependabot (`.github/dependabot.yml`) opens weekly PRs to bump them. Don't switch a pin back to a tag.
+5. **CI must pass** (GitHub Actions workflow: `backend`, `frontend` and `image` jobs all green). The `backend` and `frontend` jobs run install, `pnpm audit --prod --audit-level high`, lint, typecheck, test and build; the backend job also runs `bash -n` and `shellcheck` on `backend/scripts/`. The `image` job builds `backend/Dockerfile` from the repo root exactly like `deploy-local.sh` does (never pushed), so a Dockerfile that can't build fails the PR instead of the deploy. Actions are pinned to full commit SHAs. Dependabot (`.github/dependabot.yml`) opens weekly PRs for the actions, the npm dependencies of `backend/` and `frontend/` (minor and patch grouped, majors separate, `chore(deps)` commits), and the digest-pinned Node base image in `backend/Dockerfile`. Don't switch a pin back to a tag.
 
 6. **No direct pushes to `main`** — all changes go through pull requests. The `main` branch is protected.
 
@@ -114,8 +115,8 @@ The `main` branch is protected by a ruleset that enforces:
 
 - Fast-forward-only merges (no merge commits allowed)
 - Pull request required (even for solo contributor)
-- **Status checks required**: both `backend` and `frontend` CI jobs must be green
+- **Status checks required**: the `backend`, `frontend` and `image` CI jobs must be green
 - Branch deletion prevented
 - Force push prevented
 
-Once your PR is open and both CI jobs pass, you can merge your own PR.
+Once your PR is open and all CI jobs pass, you can merge your own PR.

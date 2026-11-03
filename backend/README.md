@@ -188,7 +188,7 @@ The kubeconfig is loaded once at startup. Loading only reads files and makes no 
 |------|--------------|-------|
 | (none) | Build, import over SSH, apply, wait for rollout. | Docker, SSH, cluster, `K3S_HOST`, `K3S_SSH_USER`, `PIER_API_TOKEN` |
 | `--dry-run` | `kubectl apply --dry-run=server` on every manifest. No build, no SSH, nothing changed. | Cluster, `PIER_API_TOKEN` |
-| `--render [--out DIR]` | Render every manifest to `DIR` (default: new temp dir) as `NNN-<name>.yaml` in apply order, then lint offline: no `__PLACEHOLDER__` left, and every file parses (`kubectl kustomize`; `apply --dry-run=client` can't run without a cluster). The Secret is rendered with the value `REDACTED`. | `kubectl` on PATH only |
+| `--render [--out DIR]` | Render every manifest to `DIR` (default: new temp dir) as `NNN-<name>.yaml` in apply order, then lint offline: no `__PLACEHOLDER__` left, and every file parses (`kubectl kustomize`; `apply --dry-run=client` can't run without a cluster). The Secret is rendered with the value `REDACTED`. Re-rendering into the same `DIR` first deletes earlier `NNN-`/`NN-` files, so lint only sees the current run. | `kubectl` on PATH only |
 | `-h`, `--help` | Print usage. | |
 
 `TAG` defaults to the git short SHA (plus `-dirty`). It may only contain letters, digits, `.`, `_` and `-`. `PIER_ENV_FILE` overrides the env file path (default `backend/.env`); variables already set in the shell win over the file.
@@ -297,7 +297,7 @@ For RBAC, Pod Security, ResourceQuota, NetworkPolicies, and the Service-type adm
 | `src/routes/` | HTTP handlers. See [src/routes/README.md](src/routes/README.md). |
 | `src/k8s/` | Kubernetes client and mapping helpers. See [src/k8s/README.md](src/k8s/README.md). |
 | `tests/` | `node:test` suites mirroring `src/` (config, auth, routes, k8s mappers). Routes are tested with injected fakes. |
-| `tests/scripts/` | `load-env.test.ts` (parser cases, incl. `set -euo pipefail`) and `deploy-local.test.ts` (runs the script against shim `kubectl`/`docker`/`ssh` that log argv: `--render` offline, no token in any argv, flag errors). |
+| `tests/scripts/` | `load-env.test.ts` (parser cases, incl. `set -euo pipefail`) and `deploy-local.test.ts` (runs the script against shim `kubectl`/`docker`/`ssh` that log argv: `--render` offline, re-rendering into the same dir, no token in any argv, flag errors). |
 | `tests/helpers/` | `fake-clients.ts` (fake `K8sClientsResult` for `buildApp(config, { k8s })`), `fake-kubeconfig-loader.ts` (counting loader for `buildApp(config, { loadKubeConfig })`), `test-config.ts` (`testConfig()` and `authHeader`), `run-bash.ts` (`runBash` in a clean env, `withTempDir`). |
 | `tests/fixtures/` | Test data: `kubeconfig.yaml` (valid but fake kubeconfig for testing). |
 | `k8s/` | Manifests. See [k8s/README.md](k8s/README.md). |
