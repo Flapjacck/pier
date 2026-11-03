@@ -61,7 +61,8 @@ export async function createVolume(clients: Clients, namespace: string, name: st
 }
 
 export async function setVolumeAppLabel(core: CoreV1Api, namespace: string, name: string, app: string | null): Promise<void> {
-  const labels = app ? { [MANAGED_BY_LABEL]: MANAGED_BY_VALUE, "pier.volume": name, "pier.app": app } : { [MANAGED_BY_LABEL]: MANAGED_BY_VALUE, "pier.volume": name };
+  // Merge patch keeps keys that are left out, so detaching must send pier.app: null to remove it.
+  const labels: Record<string, string | null> = { [MANAGED_BY_LABEL]: MANAGED_BY_VALUE, "pier.volume": name, "pier.app": app };
   await core.patchNamespacedPersistentVolumeClaim(
     { namespace, name, body: { metadata: { labels } } },
     setHeaderOptions("Content-Type", PatchStrategy.MergePatch),
@@ -120,11 +121,17 @@ async function deleteVolumeResource(
       );
       }
     } catch (err) {
+      // A PV that is already gone has no data left to retain.
+      if (apiStatusCode(err) === 404) return deletePvc(clients.core, namespace, name, dataRetained);
       dataRetained = true;
       // The PVC is still deleted; operators can clean up the retained PV manually.
       logger?.warn({ err, volume: name, pv: pvName }, "unable to flip volume PV reclaim policy");
     }
   }
-  await clients.core.deleteNamespacedPersistentVolumeClaim({ namespace, name });
+  return deletePvc(clients.core, namespace, name, dataRetained);
+}
+
+async function deletePvc(core: CoreV1Api, namespace: string, name: string, dataRetained: boolean): Promise<{ dataRetained: boolean }> {
+  await core.deleteNamespacedPersistentVolumeClaim({ namespace, name });
   return { dataRetained };
 }

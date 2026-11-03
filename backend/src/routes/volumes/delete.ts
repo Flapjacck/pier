@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { isValidAppName } from "../../k8s/names.js";
 import { deleteVolume } from "../../k8s/volumes/volume-store.js";
 import { errorSchema } from "../apps-schemas.js";
 import { mapVolumeError } from "../volume-errors.js";
@@ -14,6 +15,7 @@ export function deleteVolumeRoutes(deps: VolumeRouteDeps): FastifyPluginAsync {
             properties: { ok: { type: "boolean" }, dataRetained: { type: "boolean" } },
             required: ["ok", "dataRetained"],
           },
+          400: errorSchema,
           401: errorSchema,
           404: errorSchema,
           409: errorSchema,
@@ -22,6 +24,9 @@ export function deleteVolumeRoutes(deps: VolumeRouteDeps): FastifyPluginAsync {
       },
     }, async (req, reply) => {
       if (!deps.k8s.ok) return reply.status(503).send({ ok: false, error: "cluster unreachable" });
+      if (!isValidAppName(req.params.name)) {
+        return reply.status(400).send({ ok: false, error: "invalid request", details: "name must match DNS-1035 pattern" });
+      }
       try {
         return reply.send({ ok: true, ...(await deleteVolume(deps.k8s.clients, deps.namespace, req.params.name, req.log)) });
       } catch (err) {
