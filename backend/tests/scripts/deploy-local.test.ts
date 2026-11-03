@@ -167,6 +167,29 @@ test("deploy-local.sh --render: PIER_TLS_ISSUER adds the CA issuer and dashboard
   });
 });
 
+test("deploy-local.sh --render: re-rendering into the same dir replaces old files", { skip }, () => {
+  withTempDir((dir) => {
+    const out = path.join(dir, "out");
+    const env = { PIER_INGRESS_DOMAIN: "192.0.2.10.nip.io" };
+    const first = deploy(["--render", "--out", out, "t8"], { ...env, PIER_TLS_ISSUER: "pier-ca" }, dir);
+    assert.strictEqual(first.status, 0, first.stderr);
+    assert.ok(fs.readdirSync(out).some((n) => n.endsWith("-tls.yaml")));
+    fs.writeFileSync(path.join(out, "05-old.yaml"), "kind: ConfigMap\n");
+
+    // deploy() makes its shim dir per call, so each run gets its own temp dir.
+    withTempDir((dir2) => {
+      const again = deploy(["--render", "--out", out, "t8"], env, dir2);
+      assert.strictEqual(again.status, 0, again.stderr);
+    });
+    withTempDir((dir3) => {
+      const fresh = path.join(dir3, "fresh");
+      const run = deploy(["--render", "--out", fresh, "t8"], env, dir3);
+      assert.strictEqual(run.status, 0, run.stderr);
+      assert.deepStrictEqual(fs.readdirSync(out).sort(), fs.readdirSync(fresh).sort());
+    });
+  });
+});
+
 test("deploy-local.sh: PIER_TLS_ISSUER without cert-manager fails before applying", { skip }, () => {
   withTempDir((dir) => {
     const run = deploy(["--dry-run", "t7"], {
