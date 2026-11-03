@@ -4,17 +4,24 @@ import { deploymentToApp, type App } from "./apps.js";
 import { getLiveApp } from "./app-lookup.js";
 import { apiStatusCode } from "./api-errors.js";
 import { APP_LABEL } from "./labels.js";
+import { deleteVolumeUnchecked, setVolumeAppLabel } from "./volumes/volume-store.js";
+import { volumeMountsOf } from "./volumes/attachments.js";
+import { VolumesReplicaError } from "./volumes/errors.js";
 
 export type DeletedAppResource = "deployment" | "service" | "ingress";
 
 export type DeleteAppResult = {
   deleted: DeletedAppResource[];
+  volumeErrors: string[];
+  dataRetained: boolean;
 };
+type Logger = { warn: (obj: object, msg: string) => void };
 
 type K8sClients = {
   apps: AppsV1Api;
   core: CoreV1Api;
   networking: NetworkingV1Api;
+  storage?: import("@kubernetes/client-node").StorageV1Api;
 };
 
 async function deleteIfExists(
@@ -65,6 +72,7 @@ export async function scaleApp(
   if (!existing) {
     throw new Error("app not found");
   }
+  if (replicas > 1 && volumeMountsOf(existing).length) throw new VolumesReplicaError("apps with volumes run at most 1 replica");
 
   await apps.replaceNamespacedDeploymentScale({
     namespace,
@@ -143,13 +151,18 @@ export async function deleteApp(
   clients: K8sClients,
   namespace: string,
   name: string,
+  deleteVolumes = false,
+  log?: Logger,
 ): Promise<DeleteAppResult> {
   const { networking, core, apps } = clients;
   const deleted: DeletedAppResource[] = [];
+  const volumeErrors: string[] = [];
+  let dataRetained = false;
 
   const deployment = await getLiveApp(apps, namespace, name);
 
   if (deployment) {
+    const volumes = volumeMountsOf(deployment);
     if (
       await deleteIfExists(() =>
         apps.deleteNamespacedDeployment({
@@ -167,7 +180,21 @@ export async function deleteApp(
     if (await deleteIfExists(() => networking.deleteNamespacedIngress({ namespace, name }))) {
       deleted.push("ingress");
     }
-    return { deleted };
+    for (const volume of volumes) {
+      try {
+        if (deleteVolumes) {
+          const result = await deleteVolumeUnchecked(clients, namespace, volume.name);
+          dataRetained ||= result.dataRetained;
+        } else {
+          await setVolumeAppLabel(core, namespace, volume.name, null);
+        }
+      } catch (err) {
+        const message = `${volume.name}: ${err instanceof Error ? err.message : String(err)}`;
+        volumeErrors.push(message);
+        log?.warn({ err, volume: volume.name }, "volume cleanup failed");
+      }
+    }
+    return { deleted, volumeErrors, dataRetained };
   }
 
   if (
@@ -190,5 +217,5 @@ export async function deleteApp(
     deleted.push("ingress");
   }
 
-  return { deleted };
+  return { deleted, volumeErrors, dataRetained };
 }

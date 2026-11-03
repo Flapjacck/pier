@@ -12,13 +12,27 @@ type DeleteRouteDeps = {
 /** DELETE /apps/:name — delete an app (Deployment, Service, and Ingress). */
 export function deleteAppRoutesWithDeps(deps: DeleteRouteDeps): FastifyPluginAsync {
   return async (app) => {
-    app.delete<{ Params: { name: string } }>(
+    app.delete<{ Params: { name: string }; Querystring: { deleteVolumes?: boolean } }>(
       "/apps/:name",
       {
         schema: {
+          querystring: {
+            type: "object",
+            properties: { deleteVolumes: { type: "boolean", default: false } },
+            additionalProperties: false,
+          },
           response: {
             204: {
               type: "null",
+            },
+            200: {
+              type: "object",
+              properties: {
+                ok: { type: "boolean" },
+                dataRetained: { type: "boolean" },
+                volumeErrors: { type: "array", items: { type: "string" } },
+              },
+              required: ["ok", "dataRetained", "volumeErrors"],
             },
             400: errorSchema,
             401: errorSchema,
@@ -46,11 +60,18 @@ export function deleteAppRoutesWithDeps(deps: DeleteRouteDeps): FastifyPluginAsy
         }
 
         try {
-          const result = await deleteApp(deps.k8s.clients, deps.namespace, name);
+          const result = await deleteApp(deps.k8s.clients, deps.namespace, name, req.query.deleteVolumes === true, req.log);
           if (result.deleted.length === 0) {
             return reply.status(404).send({
               ok: false,
               error: "app not found",
+            });
+          }
+          if (req.query.deleteVolumes) {
+            return reply.status(200).send({
+              ok: true,
+              dataRetained: result.dataRetained,
+              volumeErrors: result.volumeErrors,
             });
           }
           return reply.status(204).send();
