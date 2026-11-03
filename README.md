@@ -32,6 +32,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 ## What it does
 
 - **Deploy apps:** Push a Docker image, get a URL instantly via ingress (optional HTTPS through cert-manager)
+- **Persistent volumes:** Attach retained local-path storage to apps; volume apps use one replica and Recreate updates.
 - **Logs & monitoring:** Stream live logs, check pod status, see resource usage
 - **Scaling:** Scale replicas up/down, pause with zero replicas
 - **App settings:** Change image, port, env and CPU/RAM on a running app (with a quota pre-check)
