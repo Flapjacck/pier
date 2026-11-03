@@ -60,8 +60,10 @@ All cluster and app routes are served under the `/api` prefix. The health endpoi
 | GET | `/api/apps` | auth | Deployments in `PIER_NAMESPACE` labelled `pier.app`. |
 | POST | `/api/apps` | auth | Create Deployment, Service, and optional Ingress. Accepts JSON: `{ name, image, port, replicas?, host?, env? }`. Returns `201` with App; `400` for validation; `409` if name or host exists; `503` if cluster unreachable. |
 | GET | `/api/apps/:name` | auth | Retrieve a single app. Returns `200` with App; `400` if name is invalid; `404` if not found; `503` if cluster unreachable. |
-| GET | `/api/apps/:name/pods` | auth | List pods for an app. Returns `200 [ { name, namespace, phase, ready, … } ]`; `404` if app not found; `503` if cluster unreachable. |
-| GET | `/api/apps/:name/logs` | auth | Stream logs from an app pod (plain text or SSE). Query params: `pod`, `tail` (1–5000, default 200), `follow` (true/false). Returns `200` plain text or `200 text/event-stream`; `400` if params invalid; `404` if app/pod not found; `503` if unreachable. |
+| GET | `/api/apps/:name/pods` | auth | List pods for an app, including image and last exit code. |
+| DELETE | `/api/apps/:name/pods/:pod` | auth | Delete one app pod so its Deployment replaces it; returns `202`. |
+| GET | `/api/apps/:name/events` | auth | List recent app workload events, newest first. |
+| GET | `/api/apps/:name/logs` | auth | Stream logs from an app pod (plain text or SSE). Query params: `pod`, `tail` (1–5000, default 200), `follow` (true/false), `previous` (true/false). |
 | PATCH | `/api/apps/:name/scale` | auth | Scale an app to 0–10 replicas. Accepts JSON: `{ replicas }`. Returns `200` with App; `404` if app unknown or terminating; `400`/`503` on error. |
 | POST | `/api/apps/:name/restart` | auth | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt }`; `404` if app unknown; `400`/`503` on error. |
 | DELETE | `/api/apps/:name` | auth | Delete an app (Deployment, Service, Ingress). No body. Returns `204` empty (idempotent); `404` if app unknown or already gone; `400`/`503` on error. |

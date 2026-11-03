@@ -7,7 +7,7 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 | `health.ts` | `GET /health`, `GET /api/health` |
 | `session.ts` | `POST /api/login`, `POST /api/logout`, `GET /api/session` |
 | `cluster.ts` | `GET /api/cluster/health`, `GET /api/cluster/pods` |
-| `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps`, `PATCH /api/apps/:name` (`apps/patch.ts`), scale, restart, delete, pods, logs |
+| `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps`, `PATCH /api/apps/:name` (`apps/patch.ts`), scale, restart, delete, pods, pod actions, logs, events |
 
 ## Common behaviour
 
@@ -267,7 +267,7 @@ List pods for an app Deployment. Returns the pod summary list with status and re
 
 ```json
 [
-  { "name": "hello-5b8c6d4c9-abc12", "namespace": "pier-apps", "phase": "Running", "ready": "1/1", "nodeName": "k3s-node", "startedAt": "2026-10-31T15:00:00.000Z" },
+  { "name": "hello-5b8c6d4c9-abc12", "phase": "Running", "ready": true, "readyContainers": "1/1", "restarts": 0, "node": "k3s-node", "startedAt": "2026-10-31T15:00:00.000Z", "image": "nginx:1.27" },
   { "name": "hello-5b8c6d4c9-def34", "namespace": "pier-apps", "phase": "Running", "ready": "1/1", "nodeName": "k3s-node", "startedAt": "2026-10-31T15:00:05.000Z" }
 ]
 ```
@@ -276,8 +276,47 @@ List pods for an app Deployment. Returns the pod summary list with status and re
 - `namespace`: pod namespace (`pier-apps`)
 - `phase`: pod phase (`Pending`, `Running`, `Succeeded`, `Failed`, `Unknown`)
 - `ready`: X/Y ready containers
-- `nodeName` (optional): node name if scheduled
+- `node` (optional): node name if scheduled
 - `startedAt` (optional): container start time if set
+- `image` (optional): image of the `app` container
+- `lastExitCode` (optional): exit code from the previous terminated `app` container
+
+## `DELETE /api/apps/:name/pods/:pod`
+
+Deletes one pod after verifying it belongs to the labelled app. The Deployment creates its replacement.
+
+**202 (success):** `{ "ok": true, "pod": "hello-..." }`
+
+| Status | Error | Reason |
+|--------|-------|--------|
+| 400 | `invalid request` | Invalid app or pod name |
+| 401 | `unauthorized` | Missing or wrong bearer token |
+| 404 | `app not found` / `pod not found` | App or owned pod is absent |
+| 503 | `cluster unreachable` | Kubernetes API unavailable |
+
+```bash
+curl -si -X DELETE "${AUTH[@]}" \
+  http://192.0.2.10.nip.io/api/apps/hello/pods/hello-5b8c6d4c9-abc12
+```
+
+## `GET /api/apps/:name/events`
+
+Lists up to 100 recent events for the Deployment, its ReplicaSets, and its Pods. Use `limit=1..200` to change the cap.
+
+**Request:** `GET /api/apps/hello/events?limit=100`
+
+**200:** `{ "events": [{ "type": "Warning", "reason": "BackOff", "message": "...", "summary": "...", "object": { "kind": "Pod", "name": "..." }, "count": 2, "lastSeen": "..." }] }`
+
+| Status | Error | Reason |
+|--------|-------|--------|
+| 400 | `invalid request` | Invalid app name or limit |
+| 401 | `unauthorized` | Missing or wrong bearer token |
+| 404 | `app not found` | Deployment is absent, terminating, or unlabelled |
+| 503 | `cluster unreachable` | Kubernetes API unavailable |
+
+```bash
+curl -s "${AUTH[@]}" "http://192.0.2.10.nip.io/api/apps/hello/events?limit=100" | jq
+```
 
 | Status | Error | Reason |
 |--------|-------|--------|
@@ -437,6 +476,7 @@ Stream logs from a running pod's container. Supports both plain-text (follow=fal
 | `pod` | string | (first pod) | DNS-1123 subdomain, ≤253 chars | Pod name to stream from. If omitted, defaults to the first pod. |
 | `tail` | integer | 200 | 1–5000 | Number of lines to stream from the end of the log. |
 | `follow` | boolean | false | true/false | Stream new lines as they arrive (SSE) or just the historical tail (plain text). |
+| `previous` | boolean | false | true/false | Read the previous terminated `app` container; cannot be combined with `follow=true`. |
 
 ### Response
 
@@ -493,6 +533,12 @@ or
 
 ```json
 { "ok": false, "error": "pod not found" }
+```
+
+With `previous=true`, a pod without a terminated previous container returns:
+
+```json
+{ "ok": false, "error": "no previous logs" }
 ```
 
 **503 (cluster unreachable)**: Kubernetes API unreachable or request failed.
