@@ -816,3 +816,36 @@ curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
 wait
 # Result: exactly one 201 with an app created, one 409 with "host already in use"
 ```
+## Volumes
+
+Volumes are managed PVCs in `pier-apps`. Requested size is a quota
+reservation; Rancher local-path stores a plain directory and does not enforce
+the size.
+
+| Method | Path | Success | Common errors |
+|---|---|---|---|
+| GET | `/volumes` | 200, volume list | 401, 503 |
+| GET | `/volumes/:name` | 200, one volume | 400 invalid name, 401, 404, 503 |
+| POST | `/volumes` | 201, `{ok:true,data}` | 400 invalid input, 401, 403 quota exceeded, 409 exists, 503 |
+| DELETE | `/volumes/:name` | 200, `{ok:true,dataRetained}` | 400 invalid name, 401, 404, 409 in use, 503 |
+
+```bash
+API=http://pier.192.0.2.10.nip.io/api
+curl -H "Authorization: Bearer $PIER_API_TOKEN" "$API/volumes"
+curl -X POST -H "Authorization: Bearer $PIER_API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"web-data","size":"1Gi"}' "$API/volumes"
+curl -X DELETE -H "Authorization: Bearer $PIER_API_TOKEN" "$API/volumes/web-data"
+```
+
+App POST and PATCH accept `volumes` as a full replacement array of up to three
+`{name,mountPath,size?}` entries. An existing unattached volume is attached;
+a missing volume is created only when `size` is supplied. Volumes attached to
+another app return 409. Mount paths must be absolute, unique, non-overlapping,
+and outside system paths. Apps with volumes use `Recreate` and are capped at
+one replica; scale requests above one return 400. Removing the last volume
+restores `RollingUpdate`.
+
+`DELETE /apps/:name` keeps PVCs by default. Add
+`?deleteVolumes=true` to request cleanup; Pier flips each bound PV reclaim
+policy to `Delete` before deleting its PVC. Cleanup failures are returned as
+`volumeErrors` and `dataRetained` without failing the app deletion.

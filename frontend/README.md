@@ -155,9 +155,9 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/login` → public sign-in (no shell)
 - `/` → redirect to `/apps` (requires session)
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
-- `/apps/new` → Deploy form (create new app with validation and error mapping; CPU & memory presets or custom values, sent only when not the defaults)
+- `/apps/new` → Deploy form (create new app with validation and error mapping; optional persistent volume)
 - `/apps/:name` → nested routes with `AppDetailLayout`:
-  - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created)
+  - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created, attached volumes)
   - `/:name/pods` → Pods tab (pod status, image, restart/previous logs actions, and recent Kubernetes events; refreshes every 5s while visible)
   - `/:name/logs` → Logs tab (live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
   - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete

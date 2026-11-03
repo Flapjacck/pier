@@ -9,6 +9,7 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 | [namespace.yaml](namespace.yaml) | Namespace `pier-apps`, with Pod Security labels: enforce `baseline`, warn and audit `restricted`, all at version `latest`. |
 | [rbac.yaml](rbac.yaml) | ServiceAccount `default/pier-backend`; ClusterRole and ClusterRoleBinding `pier-backend-cluster-health`. |
 | [rbac-apps.yaml](rbac-apps.yaml) | Role and RoleBinding `pier-app-manager` in `pier-apps`, bound to `default/pier-backend`. |
+| [storage.yaml](storage.yaml) | StorageClass `pier-local` for retained local-path PVCs. |
 | [quota.yaml](quota.yaml) | ResourceQuota `pier-apps-quota` and LimitRange `pier-apps-limits` in `pier-apps` (optional, applied if present). |
 | [networkpolicies.yaml](networkpolicies.yaml) | Four NetworkPolicies in `pier-apps`: default-deny, allow-ingress-from-traefik, allow-dns-egress, allow-internet-egress (optional, applied if present). |
 | [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps` (optional, applied if present). |
@@ -24,11 +25,12 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 1. `namespace.yaml` — creates `pier-apps` namespace with Pod Security labels
 2. `rbac.yaml` — ServiceAccount and ClusterRole for cluster health check
 3. `rbac-apps.yaml` — Role for app management in `pier-apps`
-4. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
-5. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
-6. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
-7. **Optional:** `tls.yaml` (only when `PIER_TLS_ISSUER` is set) — CA issuers and HTTPS redirect Middlewares. The script stops early if cert-manager's CRDs are missing.
-8. `service.yaml` — Service for pier-backend
+4. `storage.yaml` — `pier-local` StorageClass
+5. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
+6. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
+7. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
+8. **Optional:** `tls.yaml` (only when `PIER_TLS_ISSUER` is set) — CA issuers and HTTPS redirect Middlewares. The script stops early if cert-manager's CRDs are missing.
+9. `service.yaml` — Service for pier-backend
 9. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
 10. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
    - `__IMAGE__` → `pier-backend:$TAG` (the built image)
@@ -95,6 +97,7 @@ curl -sI --cacert pier-root-ca.crt https://<app>.<domain>   # 200
 |---------|-------|--------|
 | `pier-backend-cluster-health` (ClusterRole) | cluster | `get`/`list` on `nodes`; `get` on `/version`, `/healthz`, `/livez`, `/readyz`. |
 | `pier-app-manager` (Role) | `pier-apps` | Only what the backend calls (see the comments in [rbac-apps.yaml](rbac-apps.yaml)), below. |
+| `pier-backend-volumes` (ClusterRole + RoleBinding) | cluster read/patch and `pier-apps` PVCs | Reads the `pier-local` StorageClass and bound PVs; creates, patches, and deletes managed PVCs. |
 
 `pier-app-manager` verbs:
 
@@ -109,6 +112,18 @@ curl -sI --cacert pier-root-ca.crt https://<app>.<domain>   # 200
 | `events` | `list` | app events |
 | `pods/log` | `get` | logs and live logs (`follow` is still a `get`) |
 | `ingresses` | `get`, `list`, `create`, `delete` | lookup, host conflict check, create, delete |
+| `persistentvolumeclaims` | `get`, `list`, `create`, `patch`, `delete` | volume CRUD and app attachment labels |
+
+The volume ClusterRole grants `get` on `storageclasses` and `get`/`patch` on
+`persistentvolumes`. These are the only cluster-scoped permissions used by the
+volume API:
+
+```bash
+kubectl auth can-i create persistentvolumeclaims -n pier-apps --as=$SA       # yes
+kubectl auth can-i delete persistentvolumeclaims -n pier-apps --as=$SA       # yes
+kubectl auth can-i get storageclasses --as=$SA                               # yes
+kubectl auth can-i patch persistentvolumes --as=$SA                           # yes
+```
 
 No `watch` (there are no watches or informers) and no `update` on whole objects (nothing PUTs a Deployment, Service or Ingress). If you add a k8s call, add its verb here and in `rbac-apps.yaml`.
 
@@ -132,6 +147,22 @@ kubectl auth can-i watch events -n pier-apps --as=$SA               # no
 kubectl auth can-i create deployments -n default --as=$SA         # no
 kubectl auth can-i delete nodes --as=$SA                          # no
 ```
+
+## Volumes and storage
+
+`pier-local` uses Rancher local-path with `Retain` and
+`WaitForFirstConsumer`. A normal app delete, namespace deletion, or direct
+`kubectl delete pvc` therefore preserves data. Pier's explicit volume delete
+first changes a bound PV's reclaim policy to `Delete`, then deletes the PVC so
+local-path removes its directory. If the PV cannot be read or patched, Pier
+still deletes the PVC and reports `dataRetained: true`; operators must clean up
+the released PV and its directory manually.
+
+Data is stored on the selected node at
+`/var/lib/rancher/k3s/storage/<pv>_pier-apps_<pvc>`. local-path is a directory
+provisioner: requested sizes reserve quota but do not hard-limit disk usage,
+and PVC expansion is disabled. Full backups require a hypervisor/node snapshot;
+in-VM backups are tracked separately in #84.
 
 ## Pod Security (`pier-apps`)
 
@@ -167,7 +198,10 @@ The ResourceQuota is a ceiling on the namespace's total, not a reservation. Noth
 | `services.nodeports` | 0 | No node ports. The Service-type policy blocks these as well. |
 | `services.loadbalancers` | 0 | No ServiceLB. The Service-type policy blocks these as well. |
 | `count/ingresses.networking.k8s.io` | 20 | Max 20 ingress routes; usually one per app with some headroom. |
-| `persistentvolumeclaims` | 0 | No persistent storage yet. |
+| `persistentvolumeclaims` | 10 | Maximum Pier volumes in `pier-apps`. |
+| `requests.storage` | 20Gi | Total PVC quota. |
+| `pier-local.storageclass.storage.k8s.io/requests.storage` | 20Gi | Total quota for Pier's class. |
+| `local-path.storageclass.storage.k8s.io/persistentvolumeclaims` | 0 | Prevents use of the shared default class. |
 
 Because `requests.*` and `limits.*` are in the quota, every container needs them. The LimitRange (type `Container`) fills them in when a container doesn't set them:
 
