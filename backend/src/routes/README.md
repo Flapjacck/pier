@@ -7,7 +7,7 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 | `health.ts` | `GET /health`, `GET /api/health` |
 | `session.ts` | `POST /api/login`, `POST /api/logout`, `GET /api/session` |
 | `cluster.ts` | `GET /api/cluster/health`, `GET /api/cluster/pods` |
-| `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps` |
+| `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps`, `PATCH /api/apps/:name` (`apps/patch.ts`), scale, restart, delete, pods, logs |
 
 ## Common behaviour
 
@@ -231,7 +231,7 @@ Retrieves a single Deployment by name, fetching both the Deployment and its Ingr
 { "name": "hello", "image": "nginx:1.27", "replicas": 1, "ready": 1, "status": "running", "createdAt": "2026-10-31T16:00:00.000Z", "port": 8080, "host": "hello.192.0.2.10.nip.io", "url": "http://hello.192.0.2.10.nip.io" }
 ```
 
-Fields are the same as `GET /api/apps`: `port` comes from the container, `host`/`url` are omitted if no active Ingress is found.
+Fields are the same as `GET /api/apps`: `port` comes from the container, `host`/`url` are omitted if no active Ingress is found. Apps also carry `resources` (`{ requests: { cpu, memory }, limits: { cpu, memory } }`) and `env` (plain values only; omitted when empty).
 
 | Status | Error | Reason |
 |--------|-------|--------|
@@ -318,6 +318,7 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 | `replicas` | integer | No | 0–10, default 1 | Desired replicas. Use 0 to pause an app. |
 | `host` | string | No | 1–253 chars, DNS-1123 format, must end with `.PIER_INGRESS_DOMAIN` | Ingress hostname. Requires `PIER_INGRESS_DOMAIN` to be configured. Automatically lowercased. |
 | `env` | object | No | ≤50 keys, key pattern `^[A-Za-z_][A-Za-z0-9_]*$`, values ≤4096 chars | Environment variables. |
+| `resources` | object | No | `{ requests?, limits? }`, each `{ cpu?, memory? }`; CPU `250m` or `0.5`, memory `256Mi`/`1Gi`; limit ≥ request | Merged onto the defaults (50m/64Mi requests, 500m/256Mi limits). When sent, the LimitRange max and ResourceQuota are pre-checked (403 `quota exceeded`, 400 over the max). |
 
 **Unknown properties are rejected** — the request body schema uses `additionalProperties: false`, so any field not listed above returns 400.
 
@@ -366,7 +367,7 @@ The creation process is orchestrated by `src/k8s/create-app.ts`:
 Apps created by POST /apps run in `pier-apps` namespace, which enforces **Pod Security baseline** with **restricted** on warning. The Deployment spec includes:
 - **Pod Security Context**: `seccompProfile.type: RuntimeDefault`, `automountServiceAccountToken: false`.
 - **Container Security Context**: `allowPrivilegeEscalation: false`, `capabilities: drop: ["ALL"]`.
-- **Resources**: requests `cpu: 50m, memory: 64Mi, ephemeral-storage: 64Mi`; limits `cpu: 500m, memory: 256Mi, ephemeral-storage: 1Gi`.
+- **Resources**: default requests `cpu: 50m, memory: 64Mi`; limits `cpu: 500m, memory: 256Mi` (override with `resources` on POST or PATCH). Ephemeral storage is always `64Mi` request / `1Gi` limit.
 - **Readiness probe**: TCP socket on the container port, `initialDelaySeconds: 2, periodSeconds: 5` (waits 2s before first check; rechecks every 5s).
 - **Labels**: `pier.app: <name>` (app identity), `app.kubernetes.io/managed-by: pier` (owner tracking for garbage collection).
 
@@ -545,6 +546,55 @@ Note: `-N` disables buffering; remove it to enable buffering (not recommended fo
 ```bash
 AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
 curl -N "${AUTH[@]}" "http://192.0.2.10.nip.io/api/apps/myapp/logs?pod=myapp-xyz-abc&follow=true"
+```
+
+## `PATCH /api/apps/:name`
+
+Change an app's settings in place. Send only what you want to change; at least one field is required. Pods roll out one by one (the Deployment's default rolling update).
+
+### Request
+
+```json
+{
+  "image": "nginx:1.28",
+  "port": 8080,
+  "env": { "LOG_LEVEL": "debug" },
+  "resources": { "limits": { "memory": "512Mi" } }
+}
+```
+
+| Field | Notes |
+|-------|-------|
+| `image` | Same rules as POST. |
+| `port` | 1–65535. Updates the container port, readiness probe and the Service `targetPort`. |
+| `env` | **Replaces** the whole env set; `{}` clears it. Same rules as POST. |
+| `resources` | **Merged** onto the current values, so `{ "limits": { "memory": "512Mi" } }` changes only that. Limit must be ≥ request. |
+| `replicas` | Optional, 0–10 (same as scale). |
+
+Unknown fields and `{}` return 400.
+
+**Quota pre-check.** ResourceQuota and LimitRange are enforced when pods are admitted, not when a Deployment is patched, so a bad PATCH would otherwise succeed and leave new pods stuck. Before patching, the backend checks the LimitRange `max` per container and the ResourceQuota against both the final usage and the rolling-update peak (one extra new pod while the old ones still run). If it can't list quotas or limit ranges (403/404) it skips the check and logs a warning.
+
+### Response
+
+**200**: the updated App (same shape as `GET /api/apps/:name`, without `host`/`url`).
+
+| Status | Error | Reason |
+|--------|-------|--------|
+| **400** | `invalid request` | Bad name or body, limit below request, or over the LimitRange max (`details` says which). |
+| **401** | `unauthorized` | Missing or wrong token. |
+| **403** | `quota exceeded` | The change wouldn't fit the namespace ResourceQuota (`details` lists the resource, need and limit). |
+| **404** | `app not found` | Same rules as the other app routes. |
+| **422** | `rejected by cluster` | The API server rejected the patch (400/422). |
+| **503** | `cluster unreachable` | Anything else. |
+
+### Example
+
+```bash
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+curl -s -X PATCH "${AUTH[@]}" -H "Content-Type: application/json" \
+  -d '{"image":"nginx:1.28","resources":{"limits":{"memory":"512Mi"}}}' \
+  http://192.0.2.10.nip.io/api/apps/hello | jq
 ```
 
 ## `PATCH /api/apps/:name/scale`
