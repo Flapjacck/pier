@@ -158,6 +158,10 @@ local-path removes its directory. If the PV cannot be read or patched, Pier
 still deletes the PVC and reports `dataRetained: true`; operators must clean up
 the released PV and its directory manually.
 
+If `pier-local` is missing, volume creation returns
+`StorageClass pier-local not found; re-run deploy-local.sh`; run the deployment
+script to restore the StorageClass before retrying.
+
 Data is stored on the selected node at
 `/var/lib/rancher/k3s/storage/<pv>_pier-apps_<pvc>`. local-path is a directory
 provisioner: requested sizes reserve quota but do not hard-limit disk usage,
