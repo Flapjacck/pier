@@ -92,7 +92,7 @@ export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources, 
     ops.push({ op: "add", path: "/spec/template/spec/volumes", value: podSpec.volumes ?? [] });
     ops.push({ op: "add", path: `${CONTAINER}/volumeMounts`, value: podSpec.containers[0]?.volumeMounts ?? [] });
     ops.push({ op: "add", path: "/spec/strategy", value: strategyFor(mounts) });
-    if (mounts.length && currentReplicas > 1) {
+    if (mounts.length && input.replicas === undefined && currentReplicas > 1) {
       ops.push({ op: "add", path: "/spec/replicas", value: 1 });
     }
   }
@@ -135,7 +135,8 @@ export async function updateApp(
   const currentMounts = volumeMountsOf(deployment);
   const nextMounts = input.volumes;
   const effectiveMounts = nextMounts ?? currentMounts;
-  const effectiveReplicas = input.replicas ?? currentReplicas;
+  // Attaching volumes to an app running >1 replica scales it down to 1 (paused apps stay at 0).
+  const effectiveReplicas = input.replicas ?? (nextMounts?.length ? Math.min(currentReplicas, 1) : currentReplicas);
   if (effectiveMounts.length && effectiveReplicas > 1) {
     throw new VolumesReplicaError();
   }
@@ -161,25 +162,40 @@ export async function updateApp(
       { namespace, name, body: buildUpdateOps(input, nextResources, currentReplicas) },
       setHeaderOptions("Content-Type", PatchStrategy.JsonPatch),
     );
-    if (nextMounts) {
-      const before = new Set(currentMounts.map((mount) => mount.name));
-      const after = new Set(nextMounts.map((mount) => mount.name));
-      for (const nameToLabel of after) if (!before.has(nameToLabel)) await setVolumeAppLabel(clients.core, namespace, nameToLabel, name);
-      for (const nameToUnlabel of before) if (!after.has(nameToUnlabel)) {
-        await setVolumeAppLabel(clients.core, namespace, nameToUnlabel, null);
-      }
-    }
-
-    if (portChanged && input.port !== undefined) {
-      await patchServiceTargetPort(clients.core, namespace, name, input.port);
-    }
-
-    const app = await getApp(clients, namespace, name);
-    if (!app) throw new AppNotFoundError(name);
-    return app;
   } catch (err) {
+    // Only undo volume work while the Deployment is unchanged; once the patch lands the
+    // live app references those PVCs, so later failures must not delete them.
     if (resolved) await rollbackResolvedVolumes(clients, namespace, resolved);
     throw err;
+  }
+
+  if (nextMounts) await relabelDetached(clients.core, namespace, currentMounts, nextMounts, log);
+
+  if (portChanged && input.port !== undefined) {
+    await patchServiceTargetPort(clients.core, namespace, name, input.port);
+  }
+
+  const app = await getApp(clients, namespace, name);
+  if (!app) throw new AppNotFoundError(name);
+  return app;
+}
+
+/** Drop the pier.app label from volumes the patch detached (best effort; resolveVolumes labelled the rest). */
+async function relabelDetached(
+  core: CoreV1Api,
+  namespace: string,
+  before: VolumeMount[],
+  after: VolumeMount[],
+  log?: Logger,
+): Promise<void> {
+  const kept = new Set(after.map((mount) => mount.name));
+  for (const mount of before) {
+    if (kept.has(mount.name)) continue;
+    try {
+      await setVolumeAppLabel(core, namespace, mount.name, null);
+    } catch (err) {
+      log?.warn({ err, volume: mount.name }, "volume detach label failed");
+    }
   }
 }
 

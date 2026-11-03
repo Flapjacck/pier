@@ -138,7 +138,14 @@ export const appSchema = {
         requests: resourcePairResponse,
         limits: resourcePairResponse,
       },
-      volumes: volumesSchema,
+    },
+    volumes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { name: { type: "string" }, mountPath: { type: "string" } },
+        required: ["name", "mountPath"],
+      },
     },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
