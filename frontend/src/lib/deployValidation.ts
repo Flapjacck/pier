@@ -37,7 +37,7 @@ import {
   validateResources,
   type ResourceErrors,
 } from "./resources";
-import { mountPathError, volumeSizeError } from "./volumeValidation";
+import { mountPathError, volumeNameError, volumeSizeError } from "./volumeValidation";
 
 export type ValidationResult =
   | { ok: true; body: CreateAppBody }
@@ -176,7 +176,7 @@ export function validateDeployForm(
   }
   if (values.volume) {
     const volumeErrors: FieldErrors["volume"] = {};
-    if (!values.volume.name) volumeErrors.name = "Volume name is required";
+    if (volumeNameError(values.volume.name)) volumeErrors.name = volumeNameError(values.volume.name);
     if (mountPathError(values.volume.mountPath)) volumeErrors.mountPath = mountPathError(values.volume.mountPath);
     if (values.volume.size && volumeSizeError(values.volume.size)) volumeErrors.size = volumeSizeError(values.volume.size);
     if (Object.keys(volumeErrors).length) {

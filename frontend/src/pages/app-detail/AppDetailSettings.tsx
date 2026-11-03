@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { deleteVolumesWarning } from "../../lib/deleteResult";
 import { deleteApp, restartApp } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import { Button } from "../../components/ui/Button";
@@ -65,13 +66,8 @@ export function AppDetailSettings() {
         variant: "success",
         title: `Deleted ${app.name}`,
       });
-      if (result.dataRetained || result.volumeErrors.length > 0) {
-        showToast({
-          variant: "warning",
-          title: "Some volume data was retained",
-          description: result.volumeErrors.length > 0 ? result.volumeErrors.join("; ") : "Volume cleanup requires manual action.",
-        });
-      }
+      const warning = deleteVolumesWarning(result);
+      if (warning) showToast({ variant: "warning", title: "Some volume data was retained", description: warning });
       setDeleteConfirm(false);
       navigate("/apps", { replace: true });
     } catch (err) {
