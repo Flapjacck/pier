@@ -242,6 +242,7 @@ export function parseRestartResult(json: unknown): RestartResult {
 }
 
 export function parseDeleteAppResult(json: unknown): DeleteAppResult {
+  if (json === null) return { ok: true, dataRetained: false, volumeErrors: [] }; // 204: deleted, volumes kept
   if (!isRecord(json) || json.ok !== true || typeof json.dataRetained !== "boolean" || !Array.isArray(json.volumeErrors) || !json.volumeErrors.every((value) => typeof value === "string")) {
     throw new SyntaxError("Invalid app delete response");
   }
