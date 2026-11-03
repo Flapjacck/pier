@@ -1,6 +1,7 @@
-import type { V1Deployment, V1ObjectMeta, V1PodSpec, V1PodTemplateSpec, V1Container, V1Probe, V1SecurityContext, V1PodSecurityContext, V1ResourceRequirements, V1EnvVar, V1Service, V1ServiceSpec, V1ServicePort, V1OwnerReference, V1DeploymentSpec } from "@kubernetes/client-node";
+import type { V1Deployment, V1ObjectMeta, V1PodSpec, V1PodTemplateSpec, V1Container, V1Probe, V1SecurityContext, V1PodSecurityContext, V1EnvVar, V1Service, V1ServiceSpec, V1ServicePort, V1OwnerReference, V1DeploymentSpec } from "@kubernetes/client-node";
 import { APP_LABEL, appLabels } from "../labels.js";
-import { CPU_REQUEST, CPU_LIMIT, MEMORY_REQUEST, MEMORY_LIMIT, EPHEMERAL_STORAGE_REQUEST, EPHEMERAL_STORAGE_LIMIT, PROGRESS_DEADLINE_SECONDS } from "./constants.js";
+import { PROGRESS_DEADLINE_SECONDS } from "./constants.js";
+import { DEFAULT_RESOURCES, mergeResources, toContainerResources, type PartialAppResources } from "../resources.js";
 
 /** Input for building Deployment, Service, and Ingress manifests. */
 export type CreateAppInput = {
@@ -10,6 +11,8 @@ export type CreateAppInput = {
   replicas: number;
   host?: string;
   env?: Record<string, string>;
+  /** CPU/RAM requests and limits; missing fields default to DEFAULT_RESOURCES. */
+  resources?: PartialAppResources;
   /** cert-manager ClusterIssuer (PIER_TLS_ISSUER). Set: the Ingress gets TLS. */
   tlsIssuer?: string;
 };
@@ -31,18 +34,7 @@ export function buildDeployment(input: CreateAppInput): V1Deployment {
     }
   }
 
-  const resources: V1ResourceRequirements = {
-    requests: {
-      cpu: CPU_REQUEST,
-      memory: MEMORY_REQUEST,
-      "ephemeral-storage": EPHEMERAL_STORAGE_REQUEST,
-    },
-    limits: {
-      cpu: CPU_LIMIT,
-      memory: MEMORY_LIMIT,
-      "ephemeral-storage": EPHEMERAL_STORAGE_LIMIT,
-    },
-  };
+  const resources = toContainerResources(mergeResources(DEFAULT_RESOURCES, input.resources));
 
   const readinessProbe: V1Probe = {
     tcpSocket: {

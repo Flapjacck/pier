@@ -1,5 +1,6 @@
 import type { AppsV1Api, NetworkingV1Api, V1Deployment, V1DeploymentCondition, V1Ingress } from "@kubernetes/client-node";
 import { APP_LABEL, appSelector, MANAGED_BY_LABEL, MANAGED_BY_VALUE } from "./labels.js";
+import { resourcesFromContainer, type AppResources } from "./resources.js";
 
 export type AppStatus = "running" | "stopped" | "building" | "failed";
 
@@ -13,6 +14,10 @@ export type App = {
   port?: number;
   host?: string;
   url?: string;
+  /** Plain env values (valueFrom entries are skipped). Omitted when there are none. */
+  env?: Record<string, string>;
+  /** CPU/RAM requests and limits (defaults filled in for anything unset). */
+  resources: AppResources;
 };
 
 function condition(
@@ -125,8 +130,8 @@ export function deploymentToApp(d: V1Deployment, host?: string, tls = false): Ap
   const ready = d.status?.readyReplicas ?? 0;
   const name =
     d.metadata?.labels?.[APP_LABEL] ?? d.metadata?.name ?? "";
-  const image =
-    d.spec?.template?.spec?.containers?.[0]?.image ?? "";
+  const container = d.spec?.template?.spec?.containers?.[0];
+  const image = container?.image ?? "";
   const port = deploymentPort(d);
 
   const app: App = {
@@ -136,7 +141,17 @@ export function deploymentToApp(d: V1Deployment, host?: string, tls = false): Ap
     ready,
     status: deriveStatus(d),
     createdAt: creationTimestampIso(d),
+    resources: resourcesFromContainer(container),
   };
+
+  const env = Object.fromEntries(
+    (container?.env ?? []).flatMap((e) =>
+      typeof e.value === "string" ? [[e.name, e.value] as const] : [],
+    ),
+  );
+  if (Object.keys(env).length > 0) {
+    app.env = env;
+  }
 
   if (port !== undefined) {
     app.port = port;
