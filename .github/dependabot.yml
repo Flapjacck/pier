@@ -1,4 +1,7 @@
-# Keeps the SHA-pinned GitHub Actions in .github/workflows/ up to date.
+# Keeps dependencies current with weekly PRs:
+# - github-actions: the SHA-pinned actions in .github/workflows/
+# - npm: backend/ and frontend/, each with its own pnpm-lock.yaml
+# - docker: the digest-pinned node base image in backend/Dockerfile
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -11,3 +14,25 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories: ["/backend", "/frontend"]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope # chore(deps): ... / chore(deps-dev): ...
+    groups:
+      # Minor and patch bumps land together; majors get their own PR.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
