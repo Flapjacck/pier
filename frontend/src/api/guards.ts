@@ -79,7 +79,8 @@ export function parseApp(json: unknown): App {
   if (resources) app.resources = resources;
   if (Array.isArray(json.volumes)) {
     const volumes = json.volumes.flatMap((item) => isRecord(item) && typeof item.name === "string" && typeof item.mountPath === "string" ? [{ name: item.name, mountPath: item.mountPath }] : []);
-    if (volumes.length === json.volumes.length) app.volumes = volumes;
+    if (volumes.length !== json.volumes.length) throw new SyntaxError("Invalid app volumes");
+    app.volumes = volumes;
   }
   return app;
 }

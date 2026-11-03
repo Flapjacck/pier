@@ -143,6 +143,7 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
           type="number"
           value={replicas}
           onChange={(e) => setReplicas(e.target.value)}
+          disabled={Boolean(volume)}
           onBlur={() => {}}
           placeholder="1"
           invalid={touched && Boolean(errors.replicas)}
@@ -214,7 +215,7 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
       <div className="flex gap-2 pt-4">
         <Button
           type="submit"
-          disabled={Boolean(volume) || submitState === "pending" || (touched && Object.keys(errors).length > 0)}
+          disabled={submitState === "pending" || (touched && Object.keys(errors).length > 0)}
         >
           {submitState === "pending" ? "Deploying..." : "Deploy"}
         </Button>
