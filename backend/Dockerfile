@@ -12,6 +12,7 @@ RUN cd frontend && pnpm build
 # Build stage: compile TypeScript backend and prune to production dependencies.
 # Pinned to digest for reproducibility; update by running:
 #   docker pull node:22-alpine && docker inspect --format '{{index .RepoDigests 0}}' node:22-alpine
+# Must stay on Node 22.13 or later: the backend uses the built-in node:sqlite (#80).
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
 WORKDIR /app
 RUN corepack enable pnpm
