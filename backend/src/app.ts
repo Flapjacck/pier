@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import fastifyCookie from "@fastify/cookie";
 import type { Config } from "./config";
 import { setupAuth } from "./plugins/auth";
+import { setupAudit } from "./plugins/audit";
 import { setupStaticServing } from "./plugins/static";
 import type { KubeConfigLoader } from "./k8s/client";
 import { createK8sClients, type K8sClientsResult } from "./k8s/clients";
@@ -88,6 +89,9 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
 
   // Setup auth hooks on the root app before registering routes.
   setupAuth(app, config.apiToken);
+
+  // Record successful mutating requests in the audit log.
+  setupAudit(app, { db });
 
   // Register health at root.
   app.register(healthRoutes);
