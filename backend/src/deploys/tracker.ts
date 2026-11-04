@@ -13,11 +13,16 @@ export type DeployHandle = {
   fail: (step: StepName, reason: string) => void;
   /** Delete the record (the request never touched this app, e.g. 409 exists or 404). */
   discard: () => void;
-  /** The change reached the cluster: save the applied spec and start tracking the rollout. */
+  /**
+   * The change reached the cluster: cancel the app's older running deploys (superseded),
+   * save the applied spec and start tracking the rollout. A rejected change never
+   * supersedes anything, because the older rollout is still the one in the cluster.
+   */
   applied: (spec: DeploySpec) => void;
 };
 
 export type DeployTracker = {
+  /** Record a deploy (Validate running). Returns null when the database fails. */
   begin: (app: string, trigger: DeployTrigger, spec: DeploySpec) => DeployHandle | null;
   subscribe: (id: number, listener: () => void) => () => void;
   cancelApp: (app: string, reason: string) => void;
@@ -117,7 +122,6 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
     let id: number;
     try {
       id = insertDeployment(db, { app, trigger, spec, now: now() });
-      supersede(app, id);
     } catch (err) {
       log.error({ err, app }, "could not record the deploy");
       return null;
@@ -130,6 +134,7 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
       applied: (applied) =>
         safe("apply", id, () => {
           const at = now();
+          supersede(app, id);
           setDeploySpec(db, id, applied);
           setStepStatus(db, id, "validate", "succeeded", at);
           setStepStatus(db, id, "apply", "succeeded", at);

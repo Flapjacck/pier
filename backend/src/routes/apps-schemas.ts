@@ -147,6 +147,7 @@ export const appSchema = {
         required: ["name", "mountPath"],
       },
     },
+    deploymentId: { type: "integer", description: "Deploy record started by this request (#81)" },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
 } as const;

@@ -11,6 +11,8 @@ import { mapPostAppsError } from "./post-errors.js";
 import { checkResourceFit } from "../../k8s/resource-fit.js";
 import { DEFAULT_RESOURCES, mergeResources, resourcesProblem } from "../../k8s/resources.js";
 import { InvalidResourcesError } from "../../k8s/update-app.js";
+import type { DeployTracker } from "../../deploys/tracker.js";
+import { recordDeployError, specFromApp, specFromCreateBody, withDeploymentId } from "./deploy-hooks.js";
 
 type PostAppsRouteDeps = {
   k8s: K8sClientsResult;
@@ -19,6 +21,8 @@ type PostAppsRouteDeps = {
   dashboardHost: string | undefined;
   /** cert-manager ClusterIssuer for app Ingresses (PIER_TLS_ISSUER); unset = HTTP only. */
   tlsIssuer?: string;
+  /** Records the create as a deploy (#81); unset in tests that do not need it. */
+  tracker?: DeployTracker;
 };
 
 /** POST /apps — create a new Deployment, Service, and optionally Ingress. */
@@ -101,6 +105,8 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           }
         }
 
+        // Record the deploy once the request is well-formed; the resource fit is its Validate step.
+        const deploy = deps.tracker?.begin(name, "create", specFromCreateBody(req.body)) ?? null;
         try {
           // Only check resources the client set; the defaults always fit the shipped quota.
           if (resources) {
@@ -130,9 +136,11 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
             },
             req.log,
           );
-          return reply.status(201).send(app);
+          deploy?.applied(specFromApp(app));
+          return reply.status(201).send(withDeploymentId(app, deploy));
         } catch (err) {
           req.log.error({ err }, "create app failed");
+          recordDeployError(deploy, err);
           mapPostAppsError(err, reply);
           return;
         }

@@ -3,10 +3,13 @@ import { deleteApp } from "../../k8s/app-actions.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { isValidAppName } from "../../k8s/names.js";
 import { errorSchema } from "../apps-schemas.js";
+import type { DeployTracker } from "../../deploys/tracker.js";
 
 type DeleteRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
+  /** Cancels the app's running deploys (#81). */
+  tracker?: DeployTracker;
 };
 
 /** DELETE /apps/:name — delete an app (Deployment, Service, and Ingress). */
@@ -67,6 +70,7 @@ export function deleteAppRoutesWithDeps(deps: DeleteRouteDeps): FastifyPluginAsy
               error: "app not found",
             });
           }
+          deps.tracker?.cancelApp(name, "The app was deleted.");
           if (req.query.deleteVolumes) {
             return reply.status(200).send({
               ok: true,

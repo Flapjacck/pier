@@ -17,6 +17,8 @@ export type Config = {
   dbPath: string;
   /** Audit rows older than this many days are pruned (PIER_AUDIT_RETENTION_DAYS). */
   auditRetentionDays: number;
+  /** A deploy still rolling out after this many seconds fails (PIER_DEPLOY_TIMEOUT_SECONDS). */
+  deployTimeoutSeconds: number;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -49,6 +51,16 @@ function parseRetentionDays(raw: string | undefined): number {
     );
   }
   return days;
+}
+
+function parseDeployTimeout(raw: string | undefined): number {
+  const value = raw?.trim() ?? "";
+  if (value === "") return 300;
+  const seconds = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isInteger(seconds) || seconds < 30 || seconds > 3600) {
+    throw new Error(`Invalid PIER_DEPLOY_TIMEOUT_SECONDS "${raw}": must be an integer between 30 and 3600`);
+  }
+  return seconds;
 }
 
 function optionalNonEmpty(value: string | undefined): string | undefined {
@@ -169,5 +181,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     tlsIssuer: tlsIssuerRaw,
     dbPath: optionalNonEmpty(env.PIER_DB_PATH) ?? "./data/pier.db",
     auditRetentionDays: parseRetentionDays(env.PIER_AUDIT_RETENTION_DAYS),
+    deployTimeoutSeconds: parseDeployTimeout(env.PIER_DEPLOY_TIMEOUT_SECONDS),
   };
 }
