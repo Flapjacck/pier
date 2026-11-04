@@ -1,5 +1,5 @@
 # Build stage for frontend: compile React + Vite output.
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS web
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS web
 WORKDIR /app
 RUN corepack enable pnpm
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
@@ -13,7 +13,7 @@ RUN cd frontend && pnpm build
 # Pinned to digest for reproducibility; update by running:
 #   docker pull node:22-alpine && docker inspect --format '{{index .RepoDigests 0}}' node:22-alpine
 # Must stay on Node 22.13 or later: the backend uses the built-in node:sqlite (#80).
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS build
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS build
 WORKDIR /app
 RUN corepack enable pnpm
 COPY backend/package.json backend/pnpm-lock.yaml ./backend/
@@ -24,7 +24,7 @@ COPY backend/src ./backend/src
 RUN cd backend && pnpm run build && pnpm prune --prod
 
 # Runtime stage: copy only built artifacts and pruned deps, no network access.
-FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PIER_PUBLIC_DIR=/app/public
