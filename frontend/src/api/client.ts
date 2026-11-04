@@ -10,10 +10,12 @@ import {
   parseSessionInfo,
   parseVolume, parseVolumeList,
 } from "./guards";
+import { parseAuditPage } from "./auditGuards";
 import { request, requestVoid, type RequestOptions } from "./request";
 import type {
   App,
   AppEventList,
+  AuditPage,
   ClusterHealth,
   ClusterPodsResult,
   CreateAppBody,
@@ -33,6 +35,9 @@ export type {
   AppPod,
   AppResources,
   AppStatus,
+  AuditDetailValue,
+  AuditEntry,
+  AuditPage,
   ClusterHealth,
   ClusterPodsResult,
   CreateAppBody,
@@ -177,6 +182,16 @@ export function listAppEvents(name: string, options?: RequestOptions & { limit?:
     ...(limit === undefined ? {} : { query: { limit } }),
     parse: parseAppEventList,
   });
+}
+
+export type AuditQuery = { limit?: number; before?: number; app?: string };
+
+/** GET /api/audit — newest first; pass page.nextBefore as `before` for older entries. */
+export function listAudit(query: AuditQuery = {}, options?: RequestOptions): Promise<AuditPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+  const qs = params.toString();
+  return request(`/api/audit${qs ? `?${qs}` : ""}`, { ...withSignal(options), parse: parseAuditPage });
 }
 
 export function listClusterPods(options?: RequestOptions): Promise<ClusterPodsResult> {
