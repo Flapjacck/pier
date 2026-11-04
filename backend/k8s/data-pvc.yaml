@@ -1,0 +1,19 @@
+# Pier's own SQLite database (audit log, login limiter), mounted at /data in pier-backend.
+# ReadWriteOnce on a local-path volume: only one pod can use it, so the Deployment uses
+# strategy Recreate. pier-local reclaims with Retain, so deleting this PVC keeps the data
+# on the node (see k8s/README.md).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pier-backend-data
+  namespace: default
+  labels:
+    app: pier-backend
+    app.kubernetes.io/part-of: pier
+spec:
+  storageClassName: pier-local
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
