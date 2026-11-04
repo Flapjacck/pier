@@ -40,6 +40,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 - **Pod actions:** Restart one pod, inspect previous container logs, and read recent app events
 - **Networking:** Apps reach public internet; isolated from each other and from the host LAN by default (configurable)
 - **Cluster health:** Check API server status and node readiness
+- **Activity log:** Every deploy, change, scale, restart, delete and sign-in is recorded (without secrets) in a small SQLite database and shown on the Activity page
 
 ## Architecture
 
@@ -77,7 +78,7 @@ Before you start, ensure your k3s node has:
 - **kubectl** pointed at the cluster (via `KUBECONFIG`)
 - **Docker** on your local machine (to build and push images to the cluster)
 - **SSH key access** to the k3s node with passwordless `sudo k3s ctr` (for image import)
-- **Node.js** ≥ 22, **pnpm** ≥ 9 (for local development)
+- **Node.js** ≥ 22.13 (the backend uses the built-in `node:sqlite`), **pnpm** ≥ 9 (for local development)
 - **Wildcard DNS** (e.g. `*.192.0.2.10.nip.io` or your own resolver; apps use `<name>.<domain>`)
 
 ## Setup from a blank k3s node

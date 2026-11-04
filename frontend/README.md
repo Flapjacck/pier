@@ -161,6 +161,7 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
   - `/:name/pods` → Pods tab (pod status, image, restart/previous logs actions, and recent Kubernetes events; refreshes every 5s while visible)
   - `/:name/logs` → Logs tab (live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
   - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete
+- `/activity` → Activity page: audit log from `GET /api/audit` (newest first, Load more, links to apps); `?app=<name>` shows one app
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
 - Dev only: `/__boom` throws to test the error boundary

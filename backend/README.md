@@ -4,7 +4,7 @@ Fastify + TypeScript control-plane API for **pier**. It reads cluster state from
 
 ## Setup
 
-Needs Node ≥ 20 and pnpm ≥ 9 (`packageManager` pins pnpm). The backend is its own pnpm package, so install it from `backend/`:
+Needs Node ≥ 22.13 (for the built-in `node:sqlite`) and pnpm ≥ 9 (`packageManager` pins pnpm). The backend is its own pnpm package, so install it from `backend/`:
 
 ```bash
 cd backend
@@ -28,6 +28,8 @@ pnpm dev               # http://127.0.0.1:3000
 | `PIER_TRUST_PROXY` | unset (false) | server | Set to `true` when behind a reverse proxy (Traefik, Nginx) to trust `X-Forwarded-Proto` and `X-Forwarded-For` headers. Unsafe if exposed directly to untrusted networks. |
 | `PIER_DASHBOARD_HOST` | unset | server, `deploy-local.sh` | Optional DNS hostname for the dashboard (e.g. `pier.example.com`). Reserved in POST `/api/apps` to prevent app name collision. Used by `deploy-local.sh` to render dashboard ingress. |
 | `PIER_TLS_ISSUER` | unset (HTTP only) | server, `deploy-local.sh` | Name of a cert-manager ClusterIssuer (e.g. `pier-ca`). When set, app and dashboard Ingresses get TLS plus an HTTP to HTTPS redirect, app URLs are `https://`, and `GET /api/session` reports `tls: true`. Must be a lowercase DNS name. Needs cert-manager; see [k8s/README.md#tls](k8s/README.md#tls). |
+| `PIER_DB_PATH` | `./data/pier.db` | server | SQLite file for the audit log and login limiter. The directory is created if missing. The Deployment sets `/data/pier.db` on the `pier-backend-data` PVC. See [Database](#database). |
+| `PIER_AUDIT_RETENTION_DAYS` | `90` | server | Days to keep audit rows (integer 1–3650, otherwise startup fails). Older rows are pruned at startup and hourly. |
 | `KUBECONFIG` | `~/.kube/config` | server (outside a pod, at startup) | Read once at startup via `loadKubeConfig()`. Use an absolute path; `~` is not expanded in `.env`. Ignored in-cluster. Changes require a server restart. |
 | `K3S_HOST` | none | `deploy-local.sh` | k3s node address for the SSH image import. |
 | `K3S_SSH_USER` | none | `deploy-local.sh` | SSH user on the k3s node (needs passwordless `sudo k3s ctr`). |
@@ -67,6 +69,7 @@ All cluster and app routes are served under the `/api` prefix. The health endpoi
 | PATCH | `/api/apps/:name/scale` | auth | Scale an app to 0–10 replicas. Accepts JSON: `{ replicas }`. Returns `200` with App; `404` if app unknown or terminating; `400`/`503` on error. |
 | POST | `/api/apps/:name/restart` | auth | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt }`; `404` if app unknown; `400`/`503` on error. |
 | DELETE | `/api/apps/:name` | auth | Delete an app (Deployment, Service, Ingress). No body. Returns `204` empty (idempotent); `404` if app unknown or already gone; `400`/`503` on error. |
+| GET | `/api/audit` | auth | Audit log, newest first. Query: `limit` (1–200, default 50), `before` (entry id cursor), `app`. Returns `{ ok, entries, nextBefore }`; `500` if the database can't be read. See [src/routes/README.md](src/routes/README.md#get-apiaudit). |
 
 \* Public endpoints; `POST /api/login` returns `400` if auth is disabled.  
 \*\* Requires bearer token or valid session cookie (see "Authentication" below).
@@ -115,6 +118,7 @@ curl -b jar -c jar -X POST http://192.0.2.10.nip.io/api/logout
 - `POST /api/login` limits failed attempts per IP to 5 within 60 seconds.
 - After the 6th failure, the request is rejected with `429 { ok: false, error: "too many attempts" }` until the window passes.
 - Successful login clears the rate limit entry for that IP.
+- Attempts are stored in SQLite (`login_attempts`), so a pod restart does not reset the limit.
 
 **No token configured** (loopback only):
 - Only available on loopback (`HOST` is `127.*`, `::1`, or `localhost`).
@@ -283,6 +287,26 @@ kubectl -n default logs -l app=pier-backend -f
 kubectl -n default rollout undo deploy/pier-backend
 ```
 
+### Database
+
+Pier's SQLite database (audit log and login limiter) lives at `PIER_DB_PATH`, which is `/data/pier.db` on the `pier-backend-data` PVC in the cluster. Migrations run on every startup and are idempotent. Details are in [src/db/README.md](src/db/README.md).
+
+Because the PVC is `ReadWriteOnce`, the Deployment uses `strategy: Recreate`: the old pod stops before the new one starts, so each deploy or restart has a short downtime (a few seconds until the readiness probe passes).
+
+**Backup.** The DB runs in WAL mode, so recent writes may sit in `pier.db-wal` until a checkpoint. Copy the file while the backend is stopped so the copy is consistent:
+
+```bash
+kubectl -n default scale deploy/pier-backend --replicas=0
+kubectl -n default wait --for=delete pod -l app=pier-backend --timeout=60s
+# The PV is a local-path directory on the node:
+kubectl get pv "$(kubectl -n default get pvc pier-backend-data -o jsonpath='{.spec.volumeName}')" \
+  -o jsonpath='{.spec.hostPath.path}{.spec.local.path}{"\n"}'
+# On the node: sudo cp <that dir>/pier.db* /some/backup/dir/
+kubectl -n default scale deploy/pier-backend --replicas=1
+```
+
+After a clean shutdown the `-wal` file is checkpointed into `pier.db`; copy any `pier.db-wal` and `pier.db-shm` too if they exist. To restore, stop the backend the same way and put the files back.
+
 ### Manifests and configuration
 
 For RBAC, Pod Security, ResourceQuota, NetworkPolicies, and the Service-type admission policy, see [k8s/README.md](k8s/README.md).
@@ -296,6 +320,8 @@ For RBAC, Pod Security, ResourceQuota, NetworkPolicies, and the Service-type adm
 | `src/config.ts` | `loadConfig()`: env parsing and the "no token on a non-loopback host" check. |
 | `src/shutdown.ts` | One-shot SIGINT/SIGTERM handler. Forces exit after 10s if `app.close()` hangs. |
 | `src/plugins/auth.ts` | Bearer token `onRequest` hook (SHA-256 + `timingSafeEqual`). Skips `/health`. |
+| `src/plugins/audit.ts`, `src/plugins/audit-routes.ts` | `onResponse` audit hook and the route-to-action map. Startup fails if a mutating route has no rule. |
+| `src/db/` | SQLite database, migrations, audit log, login limiter, pruning. See [src/db/README.md](src/db/README.md). |
 | `src/routes/` | HTTP handlers. See [src/routes/README.md](src/routes/README.md). |
 | `src/k8s/` | Kubernetes client and mapping helpers. See [src/k8s/README.md](src/k8s/README.md). |
 | `tests/` | `node:test` suites mirroring `src/` (config, auth, routes, k8s mappers). Routes are tested with injected fakes. |

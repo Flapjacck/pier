@@ -15,7 +15,8 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 | [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps` (optional, applied if present). |
 | [tls.yaml](tls.yaml) | cert-manager ClusterIssuers `pier-selfsigned` and `pier-ca`, the root Certificate `cert-manager/pier-root-ca`, and the Traefik Middleware `pier-https-redirect` in `pier-apps` and `default`. Applied only when `PIER_TLS_ISSUER` is set; needs cert-manager (see [TLS](#tls)). |
 | [service.yaml](service.yaml) | ClusterIP Service `pier-backend` in `default`. |
-| [deployment.yaml.tmpl](deployment.yaml.tmpl) | Deployment `pier-backend` in `default` (template; rendered with `__IMAGE__`, `__TOKEN_SHA256__`, `__INGRESS_DOMAIN__`, `__DASHBOARD_HOST__`, `__TLS_ISSUER__`). |
+| [data-pvc.yaml](data-pvc.yaml) | PVC `pier-backend-data` in `default` (`pier-local`, `ReadWriteOnce`, 1Gi) for Pier's SQLite database (see [pier-backend data](#pier-backend-data)). |
+| [deployment.yaml.tmpl](deployment.yaml.tmpl) | Deployment `pier-backend` in `default`, `strategy: Recreate`, PVC `pier-backend-data` mounted at `/data` (template; rendered with `__IMAGE__`, `__TOKEN_SHA256__`, `__INGRESS_DOMAIN__`, `__DASHBOARD_HOST__`, `__TLS_ISSUER__`). |
 | [ingress.yaml.tmpl](ingress.yaml.tmpl) | Ingress `pier-backend-dashboard` for the dashboard (template; rendered with `__DASHBOARD_HOST__` and `__TLS_ISSUER__`; lines ending in `# tls-only` are kept only when `PIER_TLS_ISSUER` is set; applied only if dashboard host is set). |
 
 ## Apply order
@@ -31,14 +32,15 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 7. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
 8. **Optional:** `tls.yaml` (only when `PIER_TLS_ISSUER` is set) — CA issuers and HTTPS redirect Middlewares. The script stops early if cert-manager's CRDs are missing.
 9. `service.yaml` — Service for pier-backend
-9. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
-10. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
+10. `data-pvc.yaml` — PVC `pier-backend-data` for the database. It must exist before the Deployment that mounts it.
+11. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
+12. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
    - `__IMAGE__` → `pier-backend:$TAG` (the built image)
    - `__TOKEN_SHA256__` → SHA256 hash of `PIER_API_TOKEN` (for restart detection)
    - `__INGRESS_DOMAIN__` → `PIER_INGRESS_DOMAIN` env var
    - `__DASHBOARD_HOST__` → `PIER_DASHBOARD_HOST` or derived value
    - `__TLS_ISSUER__` → `PIER_TLS_ISSUER` (empty when TLS is off)
-11. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`. With TLS on it also gets the cert-manager issuer annotation, the redirect Middleware and a `tls` block (Secret `pier-backend-tls`).
+13. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`. With TLS on it also gets the cert-manager issuer annotation, the redirect Middleware and a `tls` block (Secret `pier-backend-tls`).
 
 Namespace and RBAC must exist before namespaced objects.
 
@@ -167,6 +169,14 @@ Data is stored on the selected node at
 provisioner: requested sizes reserve quota but do not hard-limit disk usage,
 and PVC expansion is disabled. Full backups require a hypervisor/node snapshot;
 in-VM backups are tracked separately in #84.
+
+### pier-backend data
+
+`data-pvc.yaml` gives the backend its own volume: PVC `pier-backend-data` in `default`, class `pier-local`, `ReadWriteOnce`, 1Gi. The Deployment mounts it at `/data` and sets `PIER_DB_PATH=/data/pier.db` (audit log and login limiter; see [../src/db/README.md](../src/db/README.md)).
+
+- **Recreate.** A `ReadWriteOnce` local-path volume can't be shared by an old and a new pod, so the Deployment uses `strategy: Recreate`. Each deploy or restart stops the old pod first, which means a short downtime.
+- **Retain.** `pier-local` reclaims with `Retain`, so deleting the PVC (or the Deployment) keeps the data directory on the node; the PV goes to `Released` and has to be cleaned up by hand. `deploy-local.sh` never deletes the PVC.
+- **Backups:** see [../README.md#database](../README.md#database).
 
 ## Pod Security (`pier-apps`)
 
