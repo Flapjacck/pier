@@ -7,6 +7,7 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 | `health.ts` | `GET /health`, `GET /api/health` |
 | `session.ts` | `POST /api/login`, `POST /api/logout`, `GET /api/session` |
 | `cluster.ts` | `GET /api/cluster/health`, `GET /api/cluster/pods` |
+| `audit.ts` | `GET /api/audit` |
 | `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps`, `PATCH /api/apps/:name` (`apps/patch.ts`), scale, restart, delete, pods, pod actions, logs, events |
 
 ## Common behaviour
@@ -32,6 +33,7 @@ New routes for cluster or app operations should follow the pattern of existing r
 3. Return `503` with the generic body when `deps.k8s.ok` is false or the call throws, and log the error with `req.log.error`.
 4. Register it in `buildApp()` with the shared `k8sResult`. Don't call `loadKubeConfig()` or `createK8sClients()` in a route.
 5. Test through `buildApp(testConfig(), { logger: false, k8s: createFakeClientsResult({ ... }) })` so auth and registration are covered too.
+6. A new POST, PUT, PATCH or DELETE route needs an entry in `AUDITED_ROUTES` (or `UNAUDITED_ROUTES`) in [`../plugins/audit-routes.ts`](../plugins/audit-routes.ts), or startup fails with `mutating route X has no audit rule`. Pick only details that are safe to keep: never env values, tokens or cookies.
 
 ```ts
 // restartApp would live in ../k8s/apps.ts
@@ -86,7 +88,7 @@ The `Secure` flag is only set when the connection is HTTPS.
 
 **401 (wrong token)**: `{ "ok": false, "error": "unauthorized" }` when the token does not match.
 
-**429 (rate limited)**: `{ "ok": false, "error": "too many attempts" }` after 5 failed attempts within 60 seconds from the same IP address. Clients should back off; the limit clears after the window passes or on a successful login.
+**429 (rate limited)**: `{ "ok": false, "error": "too many attempts" }` after 5 failed attempts within 60 seconds from the same IP address. Clients should back off; the limit clears after the window passes or on a successful login. The counts live in SQLite (`login_attempts`), so they survive a backend restart.
 
 ### Examples
 
@@ -817,6 +819,56 @@ curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
 wait
 # Result: exactly one 201 with an app created, one 409 with "host already in use"
 ```
+## `GET /api/audit`
+
+Audit log of successful mutating requests, newest first. Requires auth. One row is written per 2xx response of an audited route (see [`../db/README.md`](../db/README.md#audit-log)); failed requests, GETs and logout are not recorded.
+
+### Query
+
+| Param | Type | Rule |
+|-------|------|------|
+| `limit` | integer | 1–200, default 50 |
+| `before` | integer | ≥ 1. Return entries with an `id` below this (the previous page's `nextBefore`). |
+| `app` | string | DNS-1035 app name; only entries for that app. |
+
+Unknown params return 400.
+
+### Response
+
+```json
+{
+  "ok": true,
+  "entries": [
+    {
+      "id": 42,
+      "ts": "2026-11-04T15:04:05.000Z",
+      "actor": "token",
+      "ip": "192.0.2.1",
+      "action": "app.update",
+      "app": "web",
+      "target": null,
+      "status": 200,
+      "details": { "fields": ["env", "image"], "envKeys": ["API_KEY"] }
+    }
+  ],
+  "nextBefore": 42
+}
+```
+
+`actor` is `token` (Bearer header) or `session` (cookie). `nextBefore` is `null` on the last page. Actions: `app.create`, `app.update`, `app.scale`, `app.restart`, `app.delete`, `pod.delete`, `volume.create`, `volume.delete`, `session.login`.
+
+| Status | Error | Reason |
+|--------|-------|--------|
+| 400 | `invalid request` | `limit`, `before` or `app` out of range, or an unknown param |
+| 401 | `unauthorized` | Missing or wrong token or cookie |
+| 500 | `audit log unavailable` | The database read failed (logged server-side) |
+
+```bash
+API=http://pier.192.0.2.10.nip.io/api
+curl -H "Authorization: Bearer $PIER_API_TOKEN" "$API/audit?limit=20"
+curl -H "Authorization: Bearer $PIER_API_TOKEN" "$API/audit?app=web&before=42"
+```
+
 ## Volumes
 
 Volumes are managed PVCs in `pier-apps`. Requested size is a quota
