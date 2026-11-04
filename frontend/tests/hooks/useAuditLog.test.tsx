@@ -61,4 +61,38 @@ describe("useAuditLog", () => {
     expect(result.current.entries.map((e) => e.id)).toEqual([5]);
     expect(result.current.hasMore).toBe(true);
   });
+
+  it("fetches a page once even if loadMore is called twice in one render", async () => {
+    listAudit.mockResolvedValueOnce(page([5], 5)).mockResolvedValueOnce(page([4], null));
+    const { result } = renderHook(() => useAuditLog());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.loadMore();
+      result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.entries.map((e) => e.id)).toEqual([5, 4]));
+    expect(listAudit).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears a pending loadMore when the app filter changes", async () => {
+    let resolveMore: (p: AuditPage) => void = () => {};
+    listAudit
+      .mockResolvedValueOnce(page([5], 5))
+      .mockReturnValueOnce(new Promise<AuditPage>((r) => { resolveMore = r; }))
+      .mockResolvedValueOnce(page([8], 8))
+      .mockResolvedValueOnce(page([7], null));
+    const { result, rerender } = renderHook(({ app }) => useAuditLog(app), { initialProps: { app: "web" } });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.loadMore());
+    expect(result.current.loadingMore).toBe(true);
+    rerender({ app: "api" });
+    await waitFor(() => expect(result.current.entries.map((e) => e.id)).toEqual([8]));
+    expect(result.current.loadingMore).toBe(false);
+    await act(async () => resolveMore(page([4], null)));
+    expect(result.current.entries.map((e) => e.id)).toEqual([8]);
+    expect(result.current.hasMore).toBe(true);
+    act(() => result.current.loadMore());
+    expect(listAudit).toHaveBeenLastCalledWith({ limit: AUDIT_PAGE_SIZE, before: 8, app: "api" }, expect.anything());
+    await waitFor(() => expect(result.current.entries.map((e) => e.id)).toEqual([8, 7]));
+  });
 });
