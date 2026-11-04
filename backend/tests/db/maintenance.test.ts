@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { DatabaseSync } from "node:sqlite";
 import { insertAudit, listAudit } from "../../src/db/audit.js";
+import { finishDeployment, insertDeployment } from "../../src/db/deployments.js";
 import { SqliteLoginLimiter } from "../../src/db/login-limiter.js";
 import { pruneOnce, startPruning } from "../../src/db/maintenance.js";
 import { openDatabase } from "../../src/db/open.js";
@@ -27,7 +28,7 @@ describe("database pruning", () => {
     limiter.recordFailure("old", 0);
     limiter.recordFailure("live", NOW);
     const { log } = logger();
-    assert.deepEqual(pruneOnce({ db, limiter, retentionDays: 90, log, now: () => NOW }), { audit: 1, logins: 1 });
+    assert.deepEqual(pruneOnce({ db, limiter, retentionDays: 90, log, now: () => NOW }), { audit: 1, logins: 1, deployments: 0 });
     assert.equal(listAudit(db, { limit: 10 }).entries.length, 1);
     assert.equal(limiter.isLimited("live", NOW), false);
   });
@@ -37,7 +38,7 @@ describe("database pruning", () => {
     const limiter = new SqliteLoginLimiter(db);
     db.close();
     const { log, errors } = logger();
-    assert.deepEqual(pruneOnce({ db, limiter, retentionDays: 90, log }), { audit: 0, logins: 0 });
+    assert.deepEqual(pruneOnce({ db, limiter, retentionDays: 90, log }), { audit: 0, logins: 0, deployments: 0 });
     assert.deepEqual(errors, ["database prune failed"]);
   });
 
@@ -49,5 +50,16 @@ describe("database pruning", () => {
     const stop = startPruning({ db, limiter, retentionDays: 1, log, now: () => NOW }, 10);
     assert.equal(listAudit(db, { limit: 10 }).entries.length, 0);
     stop();
+  });
+});
+
+describe("deploy pruning", () => {
+  it("prunes finished deploys with the audit retention", () => {
+    const db = openDatabase(":memory:");
+    const limiter = new SqliteLoginLimiter(db);
+    const id = insertDeployment(db, { app: "web", trigger: "create", spec: {}, now: 0 });
+    finishDeployment(db, id, { status: "succeeded", reason: null, now: NOW - 91 * DAY });
+    const { log } = logger();
+    assert.deepEqual(pruneOnce({ db, limiter, retentionDays: 90, log, now: () => NOW }), { audit: 0, logins: 0, deployments: 1 });
   });
 });

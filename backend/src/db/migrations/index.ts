@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { migration001 } from "./001_init.js";
+import { migration002 } from "./002_deployments.js";
 
 /**
  * A schema change. SQL lives in TypeScript (not .sql files) so tsup bundles it
@@ -8,7 +9,7 @@ import { migration001 } from "./001_init.js";
 export type Migration = { version: number; name: string; sql: string };
 
 /** Every migration, in order. Versions must be unique and increasing. */
-export const MIGRATIONS: readonly Migration[] = [migration001];
+export const MIGRATIONS: readonly Migration[] = [migration001, migration002];
 
 /**
  * Apply every migration newer than the recorded version. Each one runs in its own
