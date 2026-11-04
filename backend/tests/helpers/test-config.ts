@@ -15,6 +15,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     trustProxy: false,
     dashboardHost: undefined,
     tlsIssuer: undefined,
+    dbPath: ":memory:",
+    auditRetentionDays: 90,
     ...overrides,
   };
 }

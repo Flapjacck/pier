@@ -24,3 +24,6 @@ frontend/dist/
 frontend/.env
 
 pier-brand-kit/
+
+# Backend SQLite database (local dev default PIER_DB_PATH=./data/pier.db)
+backend/data/
