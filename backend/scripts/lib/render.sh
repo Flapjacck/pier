@@ -14,12 +14,12 @@
 
 # manifest_names: prints the manifests to apply, in order, one per line.
 # Optional files are listed only if they exist; tls only with an issuer; the
-# ingress only with a host.
+# ingress only with a host. data-pvc is required: the Deployment mounts it.
 manifest_names() {
   local name
   for name in namespace rbac rbac-apps storage quota networkpolicies policy-services tls service data-pvc; do
     case "$name" in
-      storage | quota | networkpolicies | policy-services | data-pvc)
+      storage | quota | networkpolicies | policy-services)
         [[ -f "$K8S_DIR/$name.yaml" ]] || continue
         ;;
       tls)
