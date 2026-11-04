@@ -31,12 +31,17 @@ export function useAuditLog(app?: string): UseAuditLogResult {
   const [tick, setTick] = useState(0);
   const generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  // Synchronous guard: two clicks in one render must not fetch the same page twice.
+  const moreInFlight = useRef(false);
 
   useEffect(() => {
     const id = ++generation.current;
     controller.current?.abort();
     const ctrl = new AbortController();
     controller.current = ctrl;
+    // A load-more from the previous filter is now stale; never leave it spinning.
+    moreInFlight.current = false;
+    setLoadingMore(false);
     setLoading(true);
     setError(undefined);
     listAudit({ limit: AUDIT_PAGE_SIZE, app }, { signal: ctrl.signal })
@@ -57,9 +62,10 @@ export function useAuditLog(app?: string): UseAuditLogResult {
   }, [app, tick]);
 
   const loadMore = useCallback(() => {
-    if (nextBefore === null || loadingMore) return;
+    if (nextBefore === null || moreInFlight.current) return;
     const id = generation.current;
     const ctrl = controller.current;
+    moreInFlight.current = true;
     setLoadingMore(true);
     setError(undefined);
     listAudit({ limit: AUDIT_PAGE_SIZE, before: nextBefore, app }, { signal: ctrl?.signal })
@@ -73,9 +79,11 @@ export function useAuditLog(app?: string): UseAuditLogResult {
         setError(toApiError(err));
       })
       .finally(() => {
-        if (generation.current === id) setLoadingMore(false);
+        if (generation.current !== id) return;
+        moreInFlight.current = false;
+        setLoadingMore(false);
       });
-  }, [app, nextBefore, loadingMore]);
+  }, [app, nextBefore]);
 
   const refetch = useCallback(() => setTick((n) => n + 1), []);
 
