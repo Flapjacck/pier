@@ -37,5 +37,6 @@ test("deploy-local.sh --render: data PVC before the Deployment, mounted at /data
     assert.match(deployment, /claimName: pier-backend-data/);
     assert.match(deployment, /- name: data\n\s+mountPath: \/data/);
     assert.match(deployment, /name: PIER_DB_PATH\n\s+value: "\/data\/pier\.db"/);
+    assert.match(deployment, /name: PIER_TRUST_PROXY\n\s+value: "10\.42\.0\.0\/16"/);
   });
 });

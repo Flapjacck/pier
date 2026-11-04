@@ -14,8 +14,8 @@ type SessionRouteDeps = {
 
 /**
  * Extract the client IP from the request.
- * If trustProxy is enabled, respects X-Forwarded-For header from one proxy hop (Traefik).
- * Otherwise, uses req.ip directly (local development or direct connection).
+ * req.ip honours X-Forwarded-For only from peers PIER_TRUST_PROXY trusts (see
+ * trust-proxy.ts), so a client cannot pick its own limiter key.
  */
 function getClientIp(req: FastifyRequest): string {
   return req.ip ?? "unknown";

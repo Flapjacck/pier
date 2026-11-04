@@ -46,7 +46,6 @@ describe("static configuration", () => {
     });
 
     // Just verify the app builds and the config is accepted.
-    // In production, trustProxy="1" enables X-Forwarded-Proto/For handling.
     const res = await app.inject({ method: "GET", url: "/health" });
     assert.equal(res.statusCode, 200);
 

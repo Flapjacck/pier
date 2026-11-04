@@ -1,4 +1,5 @@
 /** Runtime settings from environment (no secrets in repo). */
+import { parseTrustProxy, type TrustProxy } from "./trust-proxy.js";
 
 export type Config = {
   port: number;
@@ -8,7 +9,8 @@ export type Config = {
   namespace: string;
   ingressDomain: string | undefined;
   publicDir: string | undefined;
-  trustProxy: boolean;
+  /** Peers allowed to set X-Forwarded-* (PIER_TRUST_PROXY); see trust-proxy.ts. */
+  trustProxy: TrustProxy;
   dashboardHost: string | undefined;
   tlsIssuer: string | undefined;
   /** SQLite file for the audit log and login limiter (PIER_DB_PATH). ":memory:" in tests. */
@@ -58,11 +60,6 @@ function optionalNonEmpty(value: string | undefined): string | undefined {
  * Parse a boolean flag from a string.
  * "true" or "1" → true, anything else → false (no error).
  */
-function parseBoolean(raw: string | undefined): boolean {
-  const trimmed = raw?.trim().toLowerCase();
-  return trimmed === "true" || trimmed === "1";
-}
-
 /**
  * Parse and validate an ingress domain.
  * Format: lowercase DNS name with 2+ labels, ≤253 chars total.
@@ -167,7 +164,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     namespace: env.PIER_NAMESPACE?.trim() || "pier-apps",
     ingressDomain,
     publicDir: optionalNonEmpty(env.PIER_PUBLIC_DIR),
-    trustProxy: parseBoolean(env.PIER_TRUST_PROXY),
+    trustProxy: parseTrustProxy(env.PIER_TRUST_PROXY),
     dashboardHost,
     tlsIssuer: tlsIssuerRaw,
     dbPath: optionalNonEmpty(env.PIER_DB_PATH) ?? "./data/pier.db",
