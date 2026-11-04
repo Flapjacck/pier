@@ -115,7 +115,9 @@ RENDER_IMAGE="pier-backend:$TAG"
 RENDER_INGRESS_DOMAIN="${PIER_INGRESS_DOMAIN:-}"
 RENDER_DASHBOARD_HOST="$DASHBOARD_HOST"
 RENDER_TLS_ISSUER="$TLS_ISSUER"
+RENDER_TRAEFIK_CONFIG=""
 if [[ "$MODE" == render ]]; then
+  RENDER_TRAEFIK_CONFIG=1
   RENDER_TOKEN="REDACTED"
 else
   RENDER_TOKEN="$PIER_API_TOKEN"
@@ -145,6 +147,20 @@ kubectl get nodes >/dev/null 2>&1 || die "kubectl cannot reach the cluster. Chec
 # TLS needs cert-manager's CRDs before tls.yaml can apply (or dry-run).
 if [[ -n "$TLS_ISSUER" ]] && ! kubectl get crd clusterissuers.cert-manager.io >/dev/null 2>&1; then
   die "PIER_TLS_ISSUER is set but cert-manager isn't installed. Run ./scripts/install-cert-manager.sh first."
+fi
+
+# k3s Traefik settings (k8s/traefik-config.yaml: client source IP). Rendered always;
+# applied only on k3s, unless opted out or someone else's traefik HelmChartConfig exists.
+RENDER_TRAEFIK_CONFIG=""
+if [[ "${PIER_TRAEFIK_CONFIG:-true}" == false ]]; then
+  echo "==> Skipping traefik-config (PIER_TRAEFIK_CONFIG=false)"
+elif ! kubectl get crd helmchartconfigs.helm.cattle.io >/dev/null 2>&1; then
+  echo "==> Skipping traefik-config (not a k3s cluster: no HelmChartConfig CRD)"
+elif kubectl -n kube-system get helmchartconfig traefik >/dev/null 2>&1 &&
+  [[ "$(kubectl -n kube-system get helmchartconfig traefik -o jsonpath='{.metadata.labels.app\.kubernetes\.io/managed-by}')" != pier ]]; then
+  echo "==> Skipping traefik-config: kube-system/traefik HelmChartConfig exists and isn't Pier's; merge k8s/traefik-config.yaml into it by hand"
+else
+  RENDER_TRAEFIK_CONFIG=1
 fi
 
 # Build and import image (real deploys only).

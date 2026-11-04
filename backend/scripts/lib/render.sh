@@ -11,10 +11,12 @@
 #   RENDER_INGRESS_DOMAIN  may be empty
 #   RENDER_DASHBOARD_HOST  may be empty; the dashboard ingress is skipped if so
 #   RENDER_TLS_ISSUER      may be empty; no tls manifest and no dashboard TLS if so
+#   RENDER_TRAEFIK_CONFIG  non-empty to include traefik-config (k3s Traefik settings)
 
 # manifest_names: prints the manifests to apply, in order, one per line.
 # Optional files are listed only if they exist; tls only with an issuer; the
 # ingress only with a host. data-pvc is required: the Deployment mounts it.
+# traefik-config (cluster-wide, kube-system) comes last and only on request.
 manifest_names() {
   local name
   for name in namespace rbac rbac-apps storage quota networkpolicies policy-services tls service data-pvc; do
@@ -32,6 +34,9 @@ manifest_names() {
   echo deployment
   if [[ -n "$RENDER_DASHBOARD_HOST" ]]; then
     echo ingress
+  fi
+  if [[ -n "${RENDER_TRAEFIK_CONFIG:-}" && -f "$K8S_DIR/traefik-config.yaml" ]]; then
+    echo traefik-config
   fi
 }
 
