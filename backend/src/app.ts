@@ -8,6 +8,7 @@ import { setupStaticServing } from "./plugins/static";
 import type { KubeConfigLoader } from "./k8s/client";
 import { createK8sClients, type K8sClientsResult } from "./k8s/clients";
 import { appsRoutesWithDeps } from "./routes/apps";
+import { auditRoutesWithDeps } from "./routes/audit";
 import { clusterRoutesWithDeps } from "./routes/cluster";
 import { healthRoutes } from "./routes/health";
 import { sessionRoutesWithDeps } from "./routes/session";
@@ -103,6 +104,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
+    await api.register(auditRoutesWithDeps({ db }));
   }, { prefix: "/api" });
 
   // Register static file serving (dashboard SPA) after API routes.
