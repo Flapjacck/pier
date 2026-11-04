@@ -150,3 +150,28 @@ export type ApiErrorBody = {
   error: string;
   details?: string;
 };
+
+/** One audit detail value. The backend never stores env values, tokens or cookies. */
+export type AuditDetailValue = string | number | boolean | string[];
+
+/** GET /api/audit entry: one successful change made through Pier. */
+export type AuditEntry = {
+  id: number;
+  /** ISO 8601 time of the request. */
+  ts: string;
+  actor: "token" | "session";
+  ip: string;
+  /** e.g. "app.create", "app.scale", "volume.delete", "session.login". */
+  action: string;
+  app: string | null;
+  /** Pod or volume name when that, not the app, was acted on. */
+  target: string | null;
+  status: number;
+  details: Record<string, AuditDetailValue>;
+};
+
+export type AuditPage = {
+  entries: AuditEntry[];
+  /** Pass as `before` for the next (older) page; null when there are no more. */
+  nextBefore: number | null;
+};

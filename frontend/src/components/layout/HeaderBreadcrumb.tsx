@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useApps } from "../../hooks/useApps";
 import { cn } from "../../lib/cn";
 import { IconChevronDown } from "../icons/InlineIcons";
@@ -9,7 +9,7 @@ const crumb =
   "text-[13px] text-pier-muted hover:text-pier-fg transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pier-focus rounded-pier";
 
 /**
- * Breadcrumb navigation: Pier / Apps / <app>.
+ * Breadcrumb navigation: Pier / Apps / <app>, or Pier / Activity on the audit log.
  * App segment is a dropdown menu (Menu) listing all real apps from useApps.
  * Loading state shows crumb without switcher.
  * Error state shows crumb without switcher.
@@ -17,6 +17,7 @@ const crumb =
 export function HeaderBreadcrumb() {
   const { name } = useParams<{ name?: string }>();
   const navigate = useNavigate();
+  const onActivity = useLocation().pathname.startsWith("/activity");
   const { apps, loading } = useApps();
 
   // Sort app names for consistent order
@@ -39,9 +40,15 @@ export function HeaderBreadcrumb() {
       <span className="text-pier-subtle text-[13px]" aria-hidden>
         /
       </span>
-      <Link to="/apps" className={cn(crumb, name ? "" : "text-pier-fg font-semibold")}>
-        Apps
-      </Link>
+      {onActivity ? (
+        <Link to="/activity" className={cn(crumb, "text-pier-fg font-semibold")}>
+          Activity
+        </Link>
+      ) : (
+        <Link to="/apps" className={cn(crumb, name ? "" : "text-pier-fg font-semibold")}>
+          Apps
+        </Link>
+      )}
       {name && (
         <>
           <span className="text-pier-subtle text-[13px]" aria-hidden>
