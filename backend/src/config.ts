@@ -11,6 +11,10 @@ export type Config = {
   trustProxy: boolean;
   dashboardHost: string | undefined;
   tlsIssuer: string | undefined;
+  /** SQLite file for the audit log and login limiter (PIER_DB_PATH). ":memory:" in tests. */
+  dbPath: string;
+  /** Audit rows older than this many days are pruned (PIER_AUDIT_RETENTION_DAYS). */
+  auditRetentionDays: number;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -31,6 +35,18 @@ function parsePort(raw: string | undefined): number {
   }
 
   return port;
+}
+
+function parseRetentionDays(raw: string | undefined): number {
+  const value = raw?.trim() ?? "";
+  if (value === "") return 90;
+  const days = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isInteger(days) || days < 1 || days > 3650) {
+    throw new Error(
+      `Invalid PIER_AUDIT_RETENTION_DAYS "${raw}": must be an integer between 1 and 3650`,
+    );
+  }
+  return days;
 }
 
 function optionalNonEmpty(value: string | undefined): string | undefined {
@@ -154,5 +170,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: parseBoolean(env.PIER_TRUST_PROXY),
     dashboardHost,
     tlsIssuer: tlsIssuerRaw,
+    dbPath: optionalNonEmpty(env.PIER_DB_PATH) ?? "./data/pier.db",
+    auditRetentionDays: parseRetentionDays(env.PIER_AUDIT_RETENTION_DAYS),
   };
 }

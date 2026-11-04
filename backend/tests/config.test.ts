@@ -172,4 +172,20 @@ describe("loadConfig", () => {
       assert.throws(() => loadConfig({ PIER_TLS_ISSUER: bad }), /Invalid PIER_TLS_ISSUER/);
     });
   }
+  it("defaults PIER_DB_PATH to ./data/pier.db and trims a set value", () => {
+    assert.equal(loadConfig({}).dbPath, "./data/pier.db");
+    assert.equal(loadConfig({ PIER_DB_PATH: "  " }).dbPath, "./data/pier.db");
+    assert.equal(loadConfig({ PIER_DB_PATH: " /data/pier.db " }).dbPath, "/data/pier.db");
+  });
+
+  it("defaults audit retention to 90 days and parses PIER_AUDIT_RETENTION_DAYS", () => {
+    assert.equal(loadConfig({}).auditRetentionDays, 90);
+    assert.equal(loadConfig({ PIER_AUDIT_RETENTION_DAYS: "30" }).auditRetentionDays, 30);
+  });
+
+  for (const bad of ["0", "-1", "1.5", "abc", "3651"]) {
+    it(`rejects PIER_AUDIT_RETENTION_DAYS "${bad}"`, () => {
+      assert.throws(() => loadConfig({ PIER_AUDIT_RETENTION_DAYS: bad }), /Invalid PIER_AUDIT_RETENTION_DAYS/);
+    });
+  }
 });
