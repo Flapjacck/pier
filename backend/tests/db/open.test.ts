@@ -3,6 +3,7 @@ import { mkdtempSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { MIGRATIONS } from "../../src/db/migrations/index.js";
 import { openDatabase } from "../../src/db/open.js";
 
 describe("openDatabase", () => {
@@ -15,11 +16,11 @@ describe("openDatabase", () => {
       assert.equal(db.prepare("PRAGMA journal_mode").get()?.journal_mode, "wal");
       assert.equal(db.prepare("PRAGMA busy_timeout").get()?.timeout, 5000);
       assert.equal(db.prepare("PRAGMA foreign_keys").get()?.foreign_keys, 1);
-      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()?.n, 1);
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()?.n, MIGRATIONS.length);
       db.close();
       // Reopening the same file is fine and doesn't re-run anything.
       const again = openDatabase(path);
-      assert.equal(again.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()?.n, 1);
+      assert.equal(again.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()?.n, MIGRATIONS.length);
       again.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

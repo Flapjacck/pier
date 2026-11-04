@@ -13,10 +13,20 @@ function tables(db: DatabaseSync): string[] {
 describe("runMigrations", () => {
   it("creates every table on a fresh database and records each version", () => {
     const db = new DatabaseSync(":memory:");
-    assert.deepEqual(runMigrations(db, MIGRATIONS, () => 1234), [1]);
-    assert.deepEqual(tables(db), ["audit_log", "login_attempts", "schema_migrations"]);
-    const rows = db.prepare("SELECT version, name, applied_at FROM schema_migrations").all();
-    assert.deepEqual(rows.map((r) => ({ ...r })), [{ version: 1, name: "init", applied_at: 1234 }]);
+    assert.deepEqual(runMigrations(db, MIGRATIONS, () => 1234), [1, 2]);
+    assert.deepEqual(tables(db), [
+      "audit_log",
+      "deployment_logs",
+      "deployment_steps",
+      "deployments",
+      "login_attempts",
+      "schema_migrations",
+    ]);
+    const rows = db.prepare("SELECT version, name, applied_at FROM schema_migrations ORDER BY version").all();
+    assert.deepEqual(rows.map((r) => ({ ...r })), [
+      { version: 1, name: "init", applied_at: 1234 },
+      { version: 2, name: "deployments", applied_at: 1234 },
+    ]);
     db.close();
   });
 
@@ -25,7 +35,7 @@ describe("runMigrations", () => {
     runMigrations(db);
     db.prepare("INSERT INTO login_attempts (ip, count, reset_at) VALUES ('ip', 1, 1)").run();
     assert.deepEqual(runMigrations(db), []);
-    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()?.n, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get()?.n, MIGRATIONS.length);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM login_attempts").get()?.n, 1, "data kept");
     db.close();
   });
@@ -33,8 +43,8 @@ describe("runMigrations", () => {
   it("applies only migrations newer than the recorded version", () => {
     const db = new DatabaseSync(":memory:");
     runMigrations(db);
-    const next: Migration = { version: 2, name: "extra", sql: "CREATE TABLE extra (id INTEGER)" };
-    assert.deepEqual(runMigrations(db, [...MIGRATIONS, next]), [2]);
+    const next: Migration = { version: 99, name: "extra", sql: "CREATE TABLE extra (id INTEGER)" };
+    assert.deepEqual(runMigrations(db, [...MIGRATIONS, next]), [99]);
     assert.ok(tables(db).includes("extra"));
     db.close();
   });
@@ -53,6 +63,26 @@ describe("runMigrations", () => {
     const a: Migration = { version: 2, name: "a", sql: "SELECT 1" };
     const b: Migration = { version: 1, name: "b", sql: "SELECT 1" };
     assert.throws(() => runMigrations(db, [a, b]), /out of order/);
+    db.close();
+  });
+
+  it("upgrades a database that only has migration 001, keeping its rows", () => {
+    const db = new DatabaseSync(":memory:");
+    runMigrations(db, MIGRATIONS.slice(0, 1));
+    db.prepare("INSERT INTO login_attempts (ip, count, reset_at) VALUES ('ip', 1, 1)").run();
+    assert.deepEqual(runMigrations(db), [2]);
+    assert.ok(tables(db).includes("deployments"));
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM login_attempts").get()?.n, 1);
+    db.close();
+  });
+
+  it("002 rejects unknown triggers and statuses", () => {
+    const db = new DatabaseSync(":memory:");
+    runMigrations(db);
+    assert.throws(() => db.prepare("INSERT INTO deployments (app, trigger, status, started_at) VALUES ('a', 'nope', 'running', 1)").run(), /CHECK/);
+    assert.throws(() => db.prepare("INSERT INTO deployments (app, trigger, status, started_at) VALUES ('a', 'create', 'nope', 1)").run(), /CHECK/);
+    db.prepare("INSERT INTO deployments (app, trigger, status, started_at) VALUES ('a', 'rollback', 'running', 1)").run();
+    db.prepare("INSERT INTO deployments (app, trigger, status, started_at) VALUES ('a', 'build', 'running', 1)").run();
     db.close();
   });
 });
