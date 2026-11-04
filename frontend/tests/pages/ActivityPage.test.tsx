@@ -64,7 +64,8 @@ describe("ActivityPage", () => {
   it("filters by ?app= and offers a way back to everything", async () => {
     listAudit.mockResolvedValue({ entries: [], nextBefore: null });
     renderAt("/activity?app=web");
-    expect(await screen.findByText("No activity yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No activity for web yet.")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Audit log" })).toHaveAttribute("aria-busy", "false");
     expect(listAudit).toHaveBeenCalledWith({ limit: 50, app: "web" }, expect.anything());
     expect(screen.getByRole("link", { name: "Show all" })).toHaveAttribute("href", "/activity");
   });
@@ -72,6 +73,8 @@ describe("ActivityPage", () => {
   it("shows an error from the backend", async () => {
     listAudit.mockRejectedValueOnce(new TypeError("offline"));
     renderAt("/activity");
+    expect(screen.getByRole("table", { name: "Audit log" })).toHaveAttribute("aria-busy", "true");
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the backend.");
+    expect(screen.queryByText("No activity yet.")).not.toBeInTheDocument();
   });
 });

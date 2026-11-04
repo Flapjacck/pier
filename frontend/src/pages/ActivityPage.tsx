@@ -68,7 +68,7 @@ export function ActivityPage() {
           </p>
         )}
 
-        <Table aria-label="Audit log">
+        <Table aria-label="Audit log" aria-busy={loading}>
           <TableHead>
             <TableRow>
               {COLUMNS.map((c) => <TableHeaderCell key={c}>{c}</TableHeaderCell>)}
@@ -82,7 +82,7 @@ export function ActivityPage() {
                 </TableRow>
               ))
             ) : entries.length === 0 ? (
-              !error && <TableEmpty colSpan={COLUMNS.length}>No activity yet.</TableEmpty>
+              !error && <TableEmpty colSpan={COLUMNS.length}>{app ? `No activity for ${app} yet.` : "No activity yet."}</TableEmpty>
             ) : (
               entries.map((entry) => <EntryRow key={entry.id} entry={entry} />)
             )}
