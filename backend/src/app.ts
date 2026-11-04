@@ -56,7 +56,8 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
 
   const app = Fastify({
     logger,
-    trustProxy: config.trustProxy ? "1" : false, // Trust exactly one hop (Traefik); unsafe if exposed directly
+    // false, true, or the proxy IPs/CIDRs allowed to set X-Forwarded-For (req.ip feeds the login limiter and audit log).
+    trustProxy: config.trustProxy,
     ajv: {
       customOptions: {
         removeAdditional: false, // Reject unknown keys instead of silently stripping them

@@ -66,8 +66,10 @@ spec:
               value: "pier-apps"
             - name: PIER_INGRESS_DOMAIN
               value: "__INGRESS_DOMAIN__"
+            # Only Traefik (in the k3s pod CIDR) may set X-Forwarded-For, so req.ip is the
+            # real client for the login limiter and audit log and cannot be spoofed.
             - name: PIER_TRUST_PROXY
-              value: "true"
+              value: "10.42.0.0/16"
             - name: PIER_DASHBOARD_HOST
               value: "__DASHBOARD_HOST__"
             - name: PIER_TLS_ISSUER
