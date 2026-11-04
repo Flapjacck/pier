@@ -1,0 +1,27 @@
+# traefik-config.yaml
+# Optional: k3s HelmChartConfig for the packaged Traefik. Applied by deploy-local.sh
+# only when the HelmChartConfig CRD exists (k3s) and no traefik HelmChartConfig that
+# Pier doesn't manage is already there. Opt out with PIER_TRAEFIK_CONFIG=false.
+#
+# Why: with the default externalTrafficPolicy: Cluster, ServiceLB (svclb) SNATs
+# every connection, so Traefik and Pier see the CNI gateway (10.42.0.1) instead of
+# the client. The login limiter then puts every client in one bucket and the audit
+# log can't say who did what. Local keeps the client source IP. It is safe on a
+# single node (Traefik always runs where ServiceLB receives traffic). On a multi-node
+# cluster only nodes running a Traefik pod receive traffic.
+#
+# Traefik's forwardedHeaders stay at their default (trust no one), so a client's
+# own X-Forwarded-For is replaced, never passed through.
+# Applying this makes helm-controller upgrade Traefik (a brief restart).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: pier
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local

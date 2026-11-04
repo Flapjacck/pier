@@ -40,3 +40,29 @@ test("deploy-local.sh --render: data PVC before the Deployment, mounted at /data
     assert.match(deployment, /name: PIER_TRUST_PROXY\n\s+value: "10\.42\.0\.0\/16"/);
   });
 });
+
+test("deploy-local.sh --render: traefik-config last, keeping the client source IP", { skip: hasKubectl ? false : "kubectl not installed" }, () => {
+  withTempDir((dir) => {
+    const out = path.join(dir, "out");
+    const run = runBash(`"${script}" --render --out '${out}' t1`, {
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+      HOME: dir,
+      PIER_ENV_FILE: path.join(dir, "no-such.env"),
+      PIER_INGRESS_DOMAIN: "192.0.2.10.nip.io",
+    });
+    assert.strictEqual(run.status, 0, run.stderr);
+    const files = fs.readdirSync(out).sort();
+    assert.match(files.at(-1) ?? "", /^\d+-traefik-config\.yaml$/, files.join(", "));
+    const cfg = fs
+      .readFileSync(path.join(out, files.at(-1) ?? ""), "utf-8")
+      .split("\n")
+      .filter((line) => !line.startsWith("#"))
+      .join("\n");
+    assert.match(cfg, /kind: HelmChartConfig/);
+    assert.match(cfg, /^ {2}name: traefik$/m);
+    assert.match(cfg, /^ {2}namespace: kube-system$/m);
+    assert.match(cfg, /app\.kubernetes\.io\/managed-by: pier/);
+    assert.match(cfg, /externalTrafficPolicy: Local/);
+    assert.doesNotMatch(cfg, /forwardedHeaders|insecure|hostNetwork/);
+  });
+});

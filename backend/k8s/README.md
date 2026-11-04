@@ -18,6 +18,7 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 | [data-pvc.yaml](data-pvc.yaml) | PVC `pier-backend-data` in `default` (`pier-local`, `ReadWriteOnce`, 1Gi) for Pier's SQLite database (see [pier-backend data](#pier-backend-data)). |
 | [deployment.yaml.tmpl](deployment.yaml.tmpl) | Deployment `pier-backend` in `default`, `strategy: Recreate`, PVC `pier-backend-data` mounted at `/data` (template; rendered with `__IMAGE__`, `__TOKEN_SHA256__`, `__INGRESS_DOMAIN__`, `__DASHBOARD_HOST__`, `__TLS_ISSUER__`). |
 | [ingress.yaml.tmpl](ingress.yaml.tmpl) | Ingress `pier-backend-dashboard` for the dashboard (template; rendered with `__DASHBOARD_HOST__` and `__TLS_ISSUER__`; lines ending in `# tls-only` are kept only when `PIER_TLS_ISSUER` is set; applied only if dashboard host is set). |
+| [traefik-config.yaml](traefik-config.yaml) | Optional k3s HelmChartConfig `kube-system/traefik`: sets the packaged Traefik Service to `externalTrafficPolicy: Local` so the client source IP reaches Traefik and Pier (see [Client IP](#client-ip)). |
 
 ## Apply order
 
@@ -42,12 +43,28 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
    - `__TLS_ISSUER__` → `PIER_TLS_ISSUER` (empty when TLS is off)
 13. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`. With TLS on it also gets the cert-manager issuer annotation, the redirect Middleware and a `tls` block (Secret `pier-backend-tls`).
 
+14. **Optional (k3s):** `traefik-config.yaml` — HelmChartConfig for the packaged Traefik (client source IP). Applied only when the `helmchartconfigs.helm.cattle.io` CRD exists, `PIER_TRAEFIK_CONFIG` isn't `false`, and there is no `kube-system/traefik` HelmChartConfig that Pier doesn't manage (label `app.kubernetes.io/managed-by=pier`); otherwise the script prints why it skipped it. `--render` always includes it.
+
 Namespace and RBAC must exist before namespaced objects.
 
 To check changes here without touching the cluster:
 
 - `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NNN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
 - `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed).
+
+## Client IP
+
+The login limiter and the audit log key on `req.ip`. Two layers have to cooperate for that to be the real client:
+
+1. **ServiceLB → Traefik.** With the default `externalTrafficPolicy: Cluster`, the svclb pod DNATs to the Traefik ClusterIP and masquerades, so Traefik sees the CNI gateway (`10.42.0.1`) for every client. `traefik-config.yaml` switches the Service to `Local`, which keeps the source IP. On this single node Traefik always runs where ServiceLB receives traffic; on a multi-node cluster only nodes with a Traefik pod get traffic.
+2. **Traefik → Pier.** Traefik overwrites `X-Forwarded-For` with the peer it saw (its `forwardedHeaders` trust no one by default, and `traefik-config.yaml` keeps it that way). Pier trusts that header only from `PIER_TRUST_PROXY=10.42.0.0/16`, the pod CIDR Traefik lives in. A client's own `X-Forwarded-For` therefore never reaches `req.ip`.
+
+Applying or removing `traefik-config.yaml` makes helm-controller upgrade Traefik, a restart of a few seconds. To undo it: `kubectl -n kube-system delete helmchartconfig traefik`.
+
+```bash
+kubectl -n kube-system get svc traefik -o jsonpath='{.spec.externalTrafficPolicy}'   # Local
+curl -s -H "Authorization: Bearer $PIER_API_TOKEN" "$API/audit?limit=1"               # ip = your LAN address
+```
 
 ## TLS
 
