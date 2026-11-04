@@ -17,6 +17,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     tlsIssuer: undefined,
     dbPath: ":memory:",
     auditRetentionDays: 90,
+    deployTimeoutSeconds: 300,
     ...overrides,
   };
 }

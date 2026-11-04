@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { K8sClientsResult } from "../k8s/clients.js";
+import type { DeployTracker } from "../deploys/tracker.js";
 import { getAppsRoutesWithDeps } from "./apps/get.js";
 import { getAppRoutesWithDeps } from "./apps/get-one.js";
 import { postAppsRoutesWithDeps } from "./apps/post.js";
@@ -19,6 +20,8 @@ export type AppsRouteDeps = {
   dashboardHost: string | undefined;
   /** cert-manager ClusterIssuer for app Ingresses (PIER_TLS_ISSUER); unset = HTTP only. */
   tlsIssuer?: string;
+  /** Records create/PATCH/restart as deploys (#81). */
+  tracker?: DeployTracker;
 };
 
 /** Factory keeps apps routes testable without a live cluster. */

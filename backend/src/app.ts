@@ -17,6 +17,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "./db/open";
 import { SqliteLoginLimiter } from "./db/login-limiter";
 import { startPruning } from "./db/maintenance";
+import { createDeployTracker } from "./deploys/tracker";
+import { deploymentsRoutesWithDeps } from "./routes/deployments";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -28,6 +30,8 @@ type BuildAppOptions = {
   publicDir?: string;
   /** Prebuilt database (tests). The caller owns it, so buildApp won't close it. */
   db?: DatabaseSync;
+  /** Deploy tracker poll interval in ms (tests shorten it). Default 2000. */
+  deployPollMs?: number;
 };
 
 /**
@@ -81,7 +85,19 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
   const db = opts.db ?? openDatabase(config.dbPath);
   const limiter = new SqliteLoginLimiter(db);
   const stopPruning = startPruning({ db, limiter, retentionDays: config.auditRetentionDays, log: app.log });
+  // Deploy history (#81): records create/PATCH/restart and follows each rollout.
+  const tracker = createDeployTracker({
+    db,
+    k8s: k8sResult,
+    namespace: config.namespace,
+    log: app.log,
+    timeoutMs: config.deployTimeoutSeconds * 1000,
+    pollMs: opts.deployPollMs,
+  });
+  // Pick up deploys that were running when Pier last stopped.
+  if (k8sResult.ok) tracker.resume();
   app.addHook("onClose", async () => {
+    tracker.stop();
     stopPruning();
     if (!opts.db) db.close();
   });
@@ -103,7 +119,8 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(healthRoutes);
     await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined, limiter }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
-    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer }));
+    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer, tracker }));
+    await api.register(deploymentsRoutesWithDeps({ db, tracker }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(auditRoutesWithDeps({ db }));
   }, { prefix: "/api" });

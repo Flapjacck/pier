@@ -188,4 +188,16 @@ describe("loadConfig", () => {
       assert.throws(() => loadConfig({ PIER_AUDIT_RETENTION_DAYS: bad }), /Invalid PIER_AUDIT_RETENTION_DAYS/);
     });
   }
+
+  it("defaults the deploy timeout to 300 s and parses PIER_DEPLOY_TIMEOUT_SECONDS", () => {
+    assert.equal(loadConfig({}).deployTimeoutSeconds, 300);
+    assert.equal(loadConfig({ PIER_DEPLOY_TIMEOUT_SECONDS: " 30 " }).deployTimeoutSeconds, 30);
+    assert.equal(loadConfig({ PIER_DEPLOY_TIMEOUT_SECONDS: "3600" }).deployTimeoutSeconds, 3600);
+  });
+
+  for (const bad of ["29", "3601", "1.5", "abc", "-5"]) {
+    it(`rejects PIER_DEPLOY_TIMEOUT_SECONDS "${bad}"`, () => {
+      assert.throws(() => loadConfig({ PIER_DEPLOY_TIMEOUT_SECONDS: bad }), /Invalid PIER_DEPLOY_TIMEOUT_SECONDS/);
+    });
+  }
 });

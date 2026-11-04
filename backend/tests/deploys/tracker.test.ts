@@ -79,11 +79,15 @@ describe("deploy tracker", () => {
     const first = tracker.begin("web", "patch", {});
     first?.applied({});
     const second = tracker.begin("web", "restart", {});
+    second?.fail("validate", "rejected");
+    assert.equal(status(db, first?.id ?? 0), "running", "a rejected change does not supersede");
+    const third = tracker.begin("web", "restart", {});
+    third?.applied({});
     assert.equal(status(db, first?.id ?? 0), "cancelled");
-    assert.equal(getDeployment(db, first?.id ?? 0)?.reason, `Superseded by deploy #${second?.id}.`);
+    assert.equal(getDeployment(db, first?.id ?? 0)?.reason, `Superseded by deploy #${third?.id}.`);
     tracker.cancelApp("web", "The app was deleted.");
-    assert.equal(status(db, second?.id ?? 0), "cancelled");
-    assert.equal(getDeployment(db, second?.id ?? 0)?.reason, "The app was deleted.");
+    assert.equal(status(db, third?.id ?? 0), "cancelled");
+    assert.equal(getDeployment(db, third?.id ?? 0)?.reason, "The app was deleted.");
     tracker.stop();
   });
 

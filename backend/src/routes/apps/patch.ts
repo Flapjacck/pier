@@ -1,4 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { DeployTracker } from "../../deploys/tracker.js";
+import { recordDeployError, specFromApp, specFromPatch, withDeploymentId } from "./deploy-hooks.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { isValidAppName } from "../../k8s/names.js";
 import { AppNotFoundError, updateApp } from "../../k8s/update-app.js";
@@ -9,6 +11,8 @@ import { mapVolumeError } from "../volume-errors.js";
 type PatchAppRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
+  /** Records the change as a deploy (#81). */
+  tracker?: DeployTracker;
 };
 
 /**
@@ -49,10 +53,13 @@ export function patchAppRoutesWithDeps(deps: PatchAppRouteDeps): FastifyPluginAs
           });
         }
 
+        const deploy = deps.tracker?.begin(name, "patch", specFromPatch(req.body)) ?? null;
         try {
           const updated = await updateApp(deps.k8s.clients, deps.namespace, name, req.body, req.log);
-          return reply.status(200).send(updated);
+          deploy?.applied(specFromApp(updated));
+          return reply.status(200).send(withDeploymentId(updated, deploy));
         } catch (err) {
+          recordDeployError(deploy, err);
           if (err instanceof AppNotFoundError) {
             return reply.status(404).send({ ok: false, error: "app not found" });
           }
