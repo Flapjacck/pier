@@ -19,13 +19,14 @@
     "format": [
       "esm"
     ],
-    "target": "node20",
+    "target": "node22",
+    "removeNodeProtocol": false,
     "sourcemap": true,
     "clean": true
   },
   "packageManager": "pnpm@12.4.1",
   "engines": {
-    "node": ">=20",
+    "node": ">=22.13",
     "pnpm": ">=9"
   },
   "dependencies": {
