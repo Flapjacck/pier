@@ -11,6 +11,10 @@ import { clusterRoutesWithDeps } from "./routes/cluster";
 import { healthRoutes } from "./routes/health";
 import { sessionRoutesWithDeps } from "./routes/session";
 import { volumesRoutesWithDeps } from "./routes/volumes";
+import type { DatabaseSync } from "node:sqlite";
+import { openDatabase } from "./db/open";
+import { SqliteLoginLimiter } from "./db/login-limiter";
+import { startPruning } from "./db/maintenance";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -20,6 +24,8 @@ type BuildAppOptions = {
   loadKubeConfig?: KubeConfigLoader;
   /** Override publicDir for tests. */
   publicDir?: string;
+  /** Prebuilt database (tests). The caller owns it, so buildApp won't close it. */
+  db?: DatabaseSync;
 };
 
 /**
@@ -68,6 +74,15 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
   // Decorate the app instance with config for routes to access.
   app.decorate("config", config);
 
+  // Pier's own data (audit log, login limiter). Kubernetes stays the source of truth for apps.
+  const db = opts.db ?? openDatabase(config.dbPath);
+  const limiter = new SqliteLoginLimiter(db);
+  const stopPruning = startPruning({ db, limiter, retentionDays: config.auditRetentionDays, log: app.log });
+  app.addHook("onClose", async () => {
+    stopPruning();
+    if (!opts.db) db.close();
+  });
+
   // Register cookie parser plugin before auth hook so cookies are available.
   await app.register(fastifyCookie);
 
@@ -80,7 +95,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
   // Register all API routes under /api prefix (health, session, cluster, apps).
   await app.register(async (api) => {
     await api.register(healthRoutes);
-    await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined }));
+    await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined, limiter }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { beforeEach, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import { buildApp } from "../../src/app.js";
 import { createFakeClientsResult } from "../helpers/fake-clients.js";
 import { authHeader, TEST_TOKEN, testConfig } from "../helpers/test-config.js";
-import { rateLimiter } from "../../src/routes/session.js";
 
 const UNAUTHORIZED = { ok: false, error: "unauthorized" };
 const AUTH_DISABLED = { ok: false, error: "auth disabled" };
@@ -27,10 +26,6 @@ async function appWithClients(apiToken?: string) {
 }
 
 describe("POST /api/login", () => {
-  beforeEach(() => {
-    rateLimiter.clearAll();
-  });
-
   it("returns 204 and sets pier_session cookie with correct token", async () => {
     const app = await appWithClients(TEST_TOKEN);
     const res = await app.inject({

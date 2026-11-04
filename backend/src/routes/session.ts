@@ -1,68 +1,16 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import { createSession } from "../plugins/session.js";
 import { tokensMatch } from "../plugins/auth.js";
+import type { LoginLimiter } from "../db/login-limiter.js";
 
 type SessionRouteDeps = {
   apiToken: string | undefined;
   ingressDomain: string | undefined;
   /** True when app Ingresses get TLS (PIER_TLS_ISSUER set). */
   tls?: boolean;
+  /** Failed-login limiter (SQLite-backed, survives restarts). */
+  limiter: LoginLimiter;
 };
-
-/**
- * In-memory rate limiter for login attempts.
- * Tracks failed attempts per IP address, resetting after the window passes.
- */
-class RateLimiter {
-  private attempts: Map<string, { count: number; resetTime: number }> = new Map();
-
-  /**
-   * Check if an IP has exceeded the rate limit.
-   * After 5 failures within 60s, return true (rate limited).
-   */
-  isLimited(ip: string, now: number): boolean {
-    const entry = this.attempts.get(ip);
-
-    // No previous attempts or window has passed.
-    if (!entry || now > entry.resetTime) {
-      return false;
-    }
-
-    // Still within the window.
-    return entry.count >= 5;
-  }
-
-  /**
-   * Record a failed login attempt for an IP.
-   */
-  recordFailure(ip: string, now: number): void {
-    const entry = this.attempts.get(ip);
-
-    if (!entry || now > entry.resetTime) {
-      // Start a new 60-second window.
-      this.attempts.set(ip, { count: 1, resetTime: now + 60_000 });
-    } else {
-      // Increment within the existing window.
-      entry.count += 1;
-    }
-  }
-
-  /**
-   * Clear a successful login attempt for an IP.
-   */
-  clearEntry(ip: string): void {
-    this.attempts.delete(ip);
-  }
-
-  /**
-   * Clear all entries (for testing).
-   */
-  clearAll(): void {
-    this.attempts.clear();
-  }
-}
-
-export const rateLimiter = new RateLimiter();
 
 /**
  * Extract the client IP from the request.
@@ -143,7 +91,7 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
         const now = Date.now();
 
         // Check rate limit.
-        if (rateLimiter.isLimited(clientIp, now)) {
+        if (deps.limiter.isLimited(clientIp, now)) {
           return reply.status(429).send({
             ok: false,
             error: "too many attempts",
@@ -153,7 +101,7 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
         // Extract and validate the provided token.
         const providedToken = (req.body as { token?: unknown }).token;
         if (typeof providedToken !== "string") {
-          rateLimiter.recordFailure(clientIp, now);
+          deps.limiter.recordFailure(clientIp, now);
           return reply.status(401).send({
             ok: false,
             error: "unauthorized",
@@ -162,7 +110,7 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
 
         // Compare tokens (timing-safe).
         if (!tokensMatch(providedToken, deps.apiToken)) {
-          rateLimiter.recordFailure(clientIp, now);
+          deps.limiter.recordFailure(clientIp, now);
           return reply.status(401).send({
             ok: false,
             error: "unauthorized",
@@ -174,7 +122,7 @@ export function sessionRoutesWithDeps(deps: SessionRouteDeps): FastifyPluginAsyn
         setSessionCookie(reply, sessionValue, req);
 
         // Clear any rate limit entry on successful login.
-        rateLimiter.clearEntry(clientIp);
+        deps.limiter.clear(clientIp);
 
         return reply.status(204).send();
       },
