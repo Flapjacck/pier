@@ -14,7 +14,7 @@ const PATH_MAX = 255;
 const NAME = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 
 /** HTTPS or SSH git URLs only. */
-const HTTPS_REPO = /^https:\/\/[a-z0-9._~:/?#[\]@!$&\'()*+,;=%-]+$/i;
+const HTTPS_REPO = /^https:\/\/[a-z0-9._~:/?#[\]@!$&'()*+,;=%-]+$/i;
 const SSH_REPO = /^(?:git@[\w.-]+:[\w./-]+|ssh:\/\/git@[\w.@:/-]+)$/i;
 
 function bad(detail: string): never {
