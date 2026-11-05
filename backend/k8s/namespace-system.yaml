@@ -1,0 +1,13 @@
+# pier-system: Pier's own in-cluster services (build registry, Kaniko Jobs).
+# Apps stay in pier-apps. Baseline PSA so registry:2 can run as designed.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pier-system
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/warn-version: latest

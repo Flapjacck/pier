@@ -19,9 +19,9 @@
 # traefik-config (cluster-wide, kube-system) comes last and only on request.
 manifest_names() {
   local name
-  for name in namespace rbac rbac-apps storage quota networkpolicies policy-services tls service data-pvc; do
+  for name in namespace namespace-system rbac rbac-apps rbac-builds storage quota registry networkpolicies policy-services tls service data-pvc; do
     case "$name" in
-      storage | quota | networkpolicies | policy-services)
+      storage | quota | networkpolicies | policy-services | namespace-system | rbac-builds | registry)
         [[ -f "$K8S_DIR/$name.yaml" ]] || continue
         ;;
       tls)

@@ -180,9 +180,18 @@ fi
 # Apply every manifest in order (see k8s/README.md#apply-order), piping each
 # straight from the renderer so the Secret never touches disk.
 echo "==> Applying manifests in order"
+# Server dry-run does not persist a Namespace create, so namespaced objects in a
+# brand-new pier-system fail with NotFound. Fall back to client dry-run for those
+# until the namespace exists on the cluster (first real deploy creates it).
 while IFS= read -r name; do
   echo "--> $name"
-  render_manifest "$name" | kubectl apply "${APPLY_OPTS[@]}" -f -
+  opts=("${APPLY_OPTS[@]}")
+  if [[ "$MODE" == dry-run && ( "$name" == rbac-builds || "$name" == registry ) ]] &&
+    ! kubectl get namespace pier-system >/dev/null 2>&1; then
+    echo "    (pier-system not on cluster yet; client dry-run for this manifest)"
+    opts=(--dry-run=client)
+  fi
+  render_manifest "$name" | kubectl apply "${opts[@]}" -f -
 done < <(manifest_names)
 if [[ -z "$DASHBOARD_HOST" ]]; then
   echo "==> Skipped dashboard ingress (PIER_DASHBOARD_HOST and PIER_INGRESS_DOMAIN not set)"

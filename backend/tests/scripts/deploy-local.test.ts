@@ -84,9 +84,11 @@ test("deploy-local.sh --render: offline, no token, nothing left unrendered", { s
     const files = fs.readdirSync(out).sort();
     assert.deepStrictEqual(files.slice(0, 3), [
       "000-namespace.yaml",
-      "010-rbac.yaml",
-      "020-rbac-apps.yaml",
+      "010-namespace-system.yaml",
+      "020-rbac.yaml",
     ]);
+    assert.ok(files.some((n) => n.endsWith("-registry.yaml")), "missing registry");
+    assert.ok(files.some((n) => n.endsWith("-rbac-builds.yaml")), "missing rbac-builds");
     for (const f of ["secret", "deployment", "ingress"]) {
       assert.ok(files.some((n) => n.endsWith(`-${f}.yaml`)), `missing ${f}`);
     }
