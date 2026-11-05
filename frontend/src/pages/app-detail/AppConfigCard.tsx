@@ -1,4 +1,8 @@
 import { ResourcesFields } from "../../components/apps/ResourcesFields";
+import { Select } from "../../components/ui/Select";
+import { listRegistries } from "../../api/registries";
+import { useApi } from "../../hooks/useApi";
+import { useCallback } from "react";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/Dialog";
 import { Field } from "../../components/ui/Field";
@@ -17,6 +21,8 @@ export function AppConfigCard() {
   const { app, setApp } = useAppDetail();
   const { push: showToast } = useToast();
   const form = useAppConfigForm(app, setApp, showToast);
+  const registryFetcher = useCallback((signal: AbortSignal) => listRegistries({ signal }), []);
+  const { data: registries = [] } = useApi(registryFetcher, []);
   const { values, errors } = form;
 
   return (
@@ -52,6 +58,12 @@ export function AppConfigCard() {
             disabled={form.pending}
             className="max-w-xs"
           />
+        </Field>
+        <Field id="config-registry" label="Registry" hint="Select credentials for private image pulls.">
+          <Select id="config-registry" value={values.registry} onChange={(e) => form.setRegistry(e.target.value)} disabled={form.pending}>
+            <option value="">Public / anonymous</option>
+            {registries.map((registry) => <option key={registry.name} value={registry.name}>{registry.name} ({registry.server})</option>)}
+          </Select>
         </Field>
         <ResourcesFields
           idPrefix="config"

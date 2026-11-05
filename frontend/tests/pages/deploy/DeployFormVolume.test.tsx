@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DeployForm } from "../../../src/pages/deploy/DeployForm";
 
 const push = vi.fn();
-vi.mock("../../../src/api/client", () => ({ listVolumes: () => Promise.resolve([]), createApp: vi.fn() }));
+vi.mock("../../../src/api/client", () => ({ listVolumes: () => Promise.resolve([]), listRegistries: () => Promise.resolve([]), createApp: vi.fn(), inspectImage: vi.fn() }));
 vi.mock("../../../src/components/ui/Toast", () => ({ useToast: () => ({ push }) }));
 
 describe("DeployForm volume", () => {

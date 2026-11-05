@@ -5,6 +5,7 @@ import { PierIcon } from "../icons/PierIcon";
 const NAV_ITEMS = [
   { to: "/apps", label: "Apps", icon: "app" as const },
   { to: "/activity", label: "Activity", icon: "logs" as const },
+  { to: "/registries", label: "Registries", icon: "repo" as const },
 ] as const;
 
 // Cluster nav slot — enable when multi-cluster or nodes view lands.

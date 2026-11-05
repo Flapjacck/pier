@@ -74,6 +74,7 @@ export function useAppConfigForm(app: App, setApp: (app: App) => void, showToast
     setImage: (image: string) => update({ image }),
     setPort: (port: string) => update({ port }),
     setResources: (resources: AppResources) => update({ resources }),
+    setRegistry: (registry: string) => update({ registry }),
     env,
     errors,
     dirty,

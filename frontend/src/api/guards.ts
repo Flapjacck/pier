@@ -82,8 +82,10 @@ export function parseApp(json: unknown): App {
     app.volumes = volumes;
   }
   if (typeof json.deploymentId === "number") app.deploymentId = json.deploymentId;
+  if (typeof json.registry === "string") app.registry = json.registry;
   return app;
 }
+
 
 export function parseVolume(json: unknown): Volume {
   if (!isRecord(json) || typeof json.name !== "string" || typeof json.size !== "string" || !isVolumeStatus(json.status) || typeof json.createdAt !== "string") throw new SyntaxError("Invalid volume response");

@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import * as api from "../../api/client";
+import { createApp } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import { validateDeployForm, type DeployFormValues, type FieldErrors } from "../../lib/deployValidation";
 import { deployRedirectPath } from "../../lib/deploys";
@@ -9,6 +9,7 @@ import type { EnvRow } from "./EnvRows";
 import type { AppResources, CreateAppBody } from "../../api/types";
 import { DEFAULT_RESOURCES } from "../../lib/resources";
 import { useVolumeField } from "./useVolumeField";
+import { useImageInspection } from "./useImageInspection";
 
 export type SubmitState = "idle" | "pending" | "success" | "error_unreachable";
 
@@ -26,9 +27,9 @@ interface UseDeployFormOptions {
  */
 export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptions) {
   const navigate = useNavigate();
-  // Form field state
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
+  const [registry, setRegistry] = useState("");
   const [port, setPort] = useState("80");
   const [replicas, setReplicas] = useState("1");
   const [publicUrl, setPublicUrl] = useState(true);
@@ -37,7 +38,9 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   const [env, setEnv] = useState<EnvRow[]>([{ id: "1", key: "", value: "" }]);
   const [resources, setResources] = useState<AppResources>(DEFAULT_RESOURCES);
   const { volume, mode, setMode, available, loading, setVolume, setVolumeName } = useVolumeField(name);
-  // Validation/submission state
+  const imageInspection = useImageInspection(image, registry, name, (next) => {
+    setPort((current) => current === "" || current === "80" ? next : current);
+  }, (next) => { if (!volume) setVolume(next); }, setMode);
   const [touched, setTouched] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -45,7 +48,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   const nextEnvIdRef = useRef(2);
   const navigateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Drop one field's error once the user edits it. */
   const clearError = useCallback((field: keyof FieldErrors) => {
     setErrors((prev) => {
       if (!prev[field]) return prev;
@@ -87,7 +89,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
     const newId = String(nextEnvIdRef.current++);
     setEnv((prev) => [...prev, { id: newId, key: "", value: "" }]);
   }, []);
-  /** Validate the form; returns the request body, or undefined after setting field errors. */
   const validate = useCallback((): CreateAppBody | undefined => {
     const values: DeployFormValues = {
       name,
@@ -99,6 +100,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       publicUrl,
       resources,
       volume,
+      registry: registry || undefined,
     };
 
     const result = validateDeployForm(values, { ingressDomain });
@@ -109,7 +111,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
 
     setErrors({});
     return result.body;
-  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, ingressDomain]);
+  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, registry, ingressDomain]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -123,7 +125,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
 
       setSubmitState("pending");
       try {
-        const app = await api.createApp(body);
+        const app = await createApp(body);
 
         setDeployedApp(app.name);
         setSubmitState("success");
@@ -133,7 +135,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
           variant: "success",
         });
 
-        // Auto-navigate after 1.5s (or immediately under prefers-reduced-motion).
         const prefersReduced = window.matchMedia(
           "(prefers-reduced-motion: reduce)"
         ).matches;
@@ -165,7 +166,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
     [validate, navigate, onShowToast],
   );
 
-  // Focus first error field on validation failure
   useEffect(() => {
     if (touched && Object.keys(errors).length > 0) {
       const firstErrorKey = Object.keys(errors)[0];
@@ -186,7 +186,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   }, []);
 
   return {
-    // Form state
     name,
     setName: handleNameChange,
     image,
@@ -194,6 +193,11 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       setImage(img);
       clearError("image");
     },
+    registry,
+    setRegistry: (value: string) => setRegistry(value),
+    imageHint: imageInspection.hint,
+    checkingImage: imageInspection.checking,
+    checkImage: imageInspection.check,
     port,
     setPort: (p: string) => {
       setPort(p);
@@ -234,13 +238,11 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       }),
     clearHostError: () => clearError("host"),
 
-    // Submission state
     touched,
     errors,
     submitState,
     deployedApp,
 
-    // Handlers
     handleSubmit,
     clearNavigateTimeout,
   };

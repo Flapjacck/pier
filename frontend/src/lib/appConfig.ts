@@ -18,6 +18,7 @@ export type AppConfigValues = {
   port: string;
   env: EnvRowValue[];
   resources: AppResources;
+  registry: string;
 };
 
 export type AppConfigErrors = {
@@ -43,6 +44,7 @@ export function configValuesFromApp(app: App): AppConfigValues {
     port: app.port !== undefined ? String(app.port) : "",
     env: envToRows(app.env),
     resources: appResources(app),
+    registry: app.registry ?? "",
   };
 }
 
@@ -69,6 +71,7 @@ export function buildUpdateBody(app: App, values: AppConfigValues): AppConfigRes
   if (Number(port) !== app.port) body.port = Number(port);
   if (!sameEnv(env, app.env ?? {})) body.env = env;
   if (!sameResources(resources, appResources(app))) body.resources = resources;
+  if (values.registry !== (app.registry ?? "")) body.registry = values.registry || "";
   return { ok: true, body, changed: Object.keys(body).length > 0 };
 }
 
@@ -79,5 +82,6 @@ export function describeChanges(body: UpdateAppBody): string {
   if (body.port !== undefined) parts.push(`port → ${body.port}`);
   if (body.env !== undefined) parts.push(`${Object.keys(body.env).length} env var(s)`);
   if (body.resources !== undefined) parts.push("CPU & memory");
+  if (body.registry !== undefined) parts.push(body.registry ? `registry → ${body.registry}` : "anonymous registry");
   return parts.join(", ");
 }

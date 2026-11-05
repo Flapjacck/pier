@@ -34,7 +34,7 @@ export function VolumeFields({
   };
 
   return (
-    <details className="border border-pier-border rounded-pier-lg p-4">
+    <details id="deploy-volume-section" className="border border-pier-border rounded-pier-lg p-4">
       <summary className="cursor-pointer text-sm font-semibold">Persistent volume</summary>
       {!volume ? (
         <div className="mt-4">

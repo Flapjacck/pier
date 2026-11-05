@@ -32,6 +32,7 @@ export type App = {
   /** CPU/RAM requests and limits (always set by current backends). */
   resources?: AppResources;
   volumes?: { name: string; mountPath: string }[];
+  registry?: string;
   /** Deploy record started by a create/PATCH (#81); absent on reads. */
   deploymentId?: number;
 };
@@ -121,6 +122,7 @@ export type CreateAppBody = {
   env?: Record<string, string>;
   resources?: PartialAppResources;
   volumes?: VolumeMount[];
+  registry?: string;
 };
 
 /** PATCH /api/apps/:name body — at least one field; env replaces the whole set. */
@@ -131,6 +133,23 @@ export type UpdateAppBody = {
   env?: Record<string, string>;
   resources?: PartialAppResources;
   volumes?: VolumeMount[];
+  registry?: string;
+};
+
+export type Registry = {
+  name: string;
+  server: string;
+  username: string;
+  createdAt: string;
+};
+
+export type ImageInspection = {
+  image: string;
+  digest: string;
+  exposedPorts: number[];
+  volumes: string[];
+  workingDir?: string;
+  defaultUser?: string;
 };
 
 export type ScaleBody = {
