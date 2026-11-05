@@ -40,6 +40,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 - **Pod actions:** Restart one pod, inspect previous container logs, and read recent app events
 - **Networking:** Apps reach public internet; isolated from each other and from the host LAN by default (configurable)
 - **Cluster health:** Check API server status and node readiness
+- **Deploy steps and history:** Every deploy, settings change and restart shows live, Vercel-style steps (validate, apply, schedule, pull, start, health, ready) with a plain-language reason when one fails, plus a per-app Deployments history (`GET /api/apps/:name/deployments`, `/:id` and an SSE `/:id/stream`)
 - **Activity log:** Every deploy, change, scale, restart, delete and sign-in is recorded (without secrets) in a small SQLite database and shown on the Activity page
 
 ## Architecture
