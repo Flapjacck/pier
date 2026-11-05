@@ -9,10 +9,13 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 | `cluster.ts` | `GET /api/cluster/health`, `GET /api/cluster/pods` |
 | `audit.ts` | `GET /api/audit` |
 | `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps`, `PATCH /api/apps/:name` (`apps/patch.ts`), scale, restart, delete, pods, pod actions, logs, events |
+| `registries.ts` | `GET/POST/PATCH/DELETE /api/registries`, registry test endpoint; passwords are write-only |
+| `images.ts` | `POST /api/images/inspect` reads registry manifests and config metadata without pulling an image |
 
 ## Common behaviour
 
 - **API Prefix**: All cluster and app routes are served under `/api`. Health endpoints are available at both `/health` (root) and `/api/health` (for consistency).
+- App create and PATCH accept an optional `registry` name. App responses expose the name, and the deployment uses the corresponding Pier-managed image pull Secret.
 - **Auth** (`../plugins/auth.ts`): Routes under `/api` require authentication when `PIER_API_TOKEN` is configured. Public routes: `/health`, `/api/health` (path only; query strings are ignored), `POST /api/login`, `POST /api/logout`, and `GET /api/session` when no token is configured. Supported auth methods:
   - **Bearer token** (`Authorization: Bearer $PIER_API_TOKEN`): takes precedence, no Origin check. Scheme matching is case-insensitive with optional surrounding whitespace (e.g. `bearer <token>`).
   - **Session cookie** (`pier_session`): created by `POST /api/login`, requires Origin header check for mutating requests (CSRF protection).
