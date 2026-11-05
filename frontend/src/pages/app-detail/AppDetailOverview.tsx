@@ -19,33 +19,43 @@ export function AppDetailOverview() {
 
   return (
     <dl className="space-y-4">
-      {/* Image */}
-      <div className="flex gap-4">
-        <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">
-          Image
-        </dt>
-        <dd className="m-0">
-          <code
-            className="font-mono text-[12.5px] text-pier-fg break-all"
-            title={app.image}
-          >
-            {app.image}
-          </code>
-        </dd>
-      </div>
-
-      {app.source && (
+      {app.source ? (
+        <>
+          <div className="flex gap-4">
+            <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Source</dt>
+            <dd className="m-0 space-y-2">
+              <div className="text-[13px] text-pier-fg break-all">
+                {/^https?:\/\//i.test(app.source.repo) ? (
+                  <a href={app.source.repo} target="_blank" rel="noreferrer" className="text-pier-accent hover:underline font-mono text-[12.5px]">
+                    {app.source.repo}
+                  </a>
+                ) : (
+                  <code className="font-mono text-[12.5px]">{app.source.repo}</code>
+                )}
+                <span className="text-pier-muted"> @ {app.source.branch}</span>
+                {app.source.folder !== "." && (
+                  <span className="text-pier-muted"> / {app.source.folder}</span>
+                )}
+              </div>
+              <RedeployButton app={app.name} source={app.source} />
+            </dd>
+          </div>
+          <div className="flex gap-4">
+            <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Built image</dt>
+            <dd className="m-0">
+              <code className="font-mono text-[12.5px] text-pier-fg break-all" title={app.image}>
+                {app.image}
+              </code>
+            </dd>
+          </div>
+        </>
+      ) : (
         <div className="flex gap-4">
-          <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Source</dt>
-          <dd className="m-0 space-y-2">
-            <div className="text-[13px] text-pier-fg break-all">
-              <code className="font-mono text-[12.5px]">{app.source.repo}</code>
-              <span className="text-pier-muted"> @ {app.source.branch}</span>
-              {app.source.folder !== "." && (
-                <span className="text-pier-muted"> / {app.source.folder}</span>
-              )}
-            </div>
-            <RedeployButton app={app.name} source={app.source} />
+          <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Image</dt>
+          <dd className="m-0">
+            <code className="font-mono text-[12.5px] text-pier-fg break-all" title={app.image}>
+              {app.image}
+            </code>
           </dd>
         </div>
       )}

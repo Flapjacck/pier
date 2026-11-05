@@ -42,12 +42,12 @@ export function AppShell() {
         >
           Skip to content
         </a>
-        <div className="flex min-h-svh bg-pier-bg">
+        <div className="flex h-svh overflow-hidden bg-pier-bg">
           <Sidebar clusterState={clusterState} shellMainId={MAIN_ID} />
           <MobileDrawer clusterState={clusterState} />
-          <div className="flex flex-col flex-1 min-w-0 min-h-svh">
+          <div className="flex flex-col flex-1 min-w-0 min-h-0">
             <Header />
-            <main id={MAIN_ID} className="flex-1 overflow-auto p-6">
+            <main id={MAIN_ID} className="flex-1 min-h-0 overflow-auto p-6">
               <Outlet />
             </main>
           </div>

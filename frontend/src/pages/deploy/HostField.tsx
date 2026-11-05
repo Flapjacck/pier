@@ -53,7 +53,13 @@ export function HostField({
         <Input
           value={subdomain}
           onChange={(e) => {
-            onSubdomainChange(e.target.value);
+            let next = e.target.value.trim();
+            const suffix = `.${ingressDomain}`;
+            // Paste of full host → keep subdomain only so the fixed suffix isn't doubled.
+            if (next.toLowerCase().endsWith(suffix.toLowerCase()) && next.length > suffix.length) {
+              next = next.slice(0, -suffix.length);
+            }
+            onSubdomainChange(next);
             if (error) {
               onClearError();
             }

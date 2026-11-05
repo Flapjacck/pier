@@ -43,7 +43,7 @@ Pier is a lightweight control plane for k3s: a self-hosted dashboard to deploy, 
 - Cookie session login and auth guard (#42).
 - Apps list from the real API (#44); mock data removed there.
 - App detail with tabs: overview, pods, logs, settings (#45).
-- Deploy form at `/apps/new` (#46).
+- Multi-step deploy wizard at `/apps/new` (git Dockerfile or image; #83). HostField takes the subdomain only and appends `PIER_INGRESS_DOMAIN`. Create-from-source returns immediately with a synthetic building app so Deploy detail can stream Kaniko logs.
 - Live log viewer via EventSource (#47).
 - App shell: 240px collapsible sidebar, 56px header with breadcrumb switcher, mobile drawer (#43).
 

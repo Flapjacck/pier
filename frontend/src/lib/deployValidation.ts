@@ -135,31 +135,38 @@ export function validateDeployForm(
     }
   }
 
-  // Validate host (optional, but if provided must match ingress rules).
+  // HostField stores the subdomain; append .<ingressDomain> here. Also accept a pasted FQDN.
   let host: string | undefined;
   if (values.publicUrl) {
-    const hostInput = values.host.trim().toLowerCase();
-    if (!hostInput) {
+    const raw = values.host.trim().toLowerCase();
+    if (!raw) {
       errors.host = "Host is required when Public URL is enabled";
-    } else if (hostInput.length > 253) {
-      errors.host = "Host must be ≤253 characters";
-    } else if (hostInput.includes("*")) {
+    } else if (raw.includes("*")) {
       errors.host = "Host cannot contain wildcards";
-    } else if (opts.ingressDomain) {
-      // Host must end with .<ingressDomain> and not equal the domain itself.
-      if (!hostInput.endsWith(`.${opts.ingressDomain}`)) {
-        errors.host = `Host must end with .${opts.ingressDomain}`;
-      } else if (hostInput === opts.ingressDomain) {
-        errors.host = `Host cannot be the domain itself`;
-      } else {
-        host = hostInput;
-      }
-    } else {
+    } else if (!opts.ingressDomain) {
       errors.host = "Ingress isn't configured on this Pier";
+    } else {
+      const suffix = `.${opts.ingressDomain}`;
+      // Subdomain-only → append. Pasted FQDN under this ingress → keep. Other FQDN → reject.
+      let hostInput: string;
+      if (raw === opts.ingressDomain || raw.endsWith(suffix)) {
+        hostInput = raw;
+      } else if (raw.includes(".")) {
+        errors.host = `Host must end with .${opts.ingressDomain}`;
+        hostInput = raw;
+      } else {
+        hostInput = `${raw}${suffix}`;
+      }
+      if (!errors.host) {
+        if (hostInput.length > 253) {
+          errors.host = "Host must be ≤253 characters";
+        } else if (!hostInput.endsWith(suffix) || hostInput === opts.ingressDomain) {
+          errors.host = `Host must end with .${opts.ingressDomain}`;
+        } else {
+          host = hostInput;
+        }
+      }
     }
-  } else if (!opts.ingressDomain) {
-    // Public URL is off and ingress is not configured — that's OK, no host will be sent.
-    host = undefined;
   }
 
   const { env: envMap, errors: envErrors } = validateEnvRows(values.env);

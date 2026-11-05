@@ -88,6 +88,16 @@ describe("validateDeployForm", () => {
         { ingressDomain: "example.com" }
       );
       expect(result.ok).toBe(true);
+      if (result.ok) expect(result.body.host).toBe("myapp.example.com");
+    });
+
+    it("appends ingress domain when only the subdomain is typed", () => {
+      const result = validateDeployForm(
+        { ...validForm, publicUrl: true, host: "myapp" },
+        { ingressDomain: "example.com" }
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.body.host).toBe("myapp.example.com");
     });
 
     it("rejects host exceeding 253 chars", () => {
