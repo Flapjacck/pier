@@ -10,6 +10,7 @@ import type { AppResources, CreateAppBody } from "../../api/types";
 import { DEFAULT_RESOURCES } from "../../lib/resources";
 import { useVolumeField } from "./useVolumeField";
 import { useImageInspection } from "./useImageInspection";
+import { useSourceMode } from "./useSourceMode";
 
 export type SubmitState = "idle" | "pending" | "success" | "error_unreachable";
 
@@ -22,9 +23,7 @@ interface UseDeployFormOptions {
   }) => void;
 }
 
-/**
- * Hook encapsulating deploy form state and submission logic.
- */
+/** Deploy form state and submission (image or Dockerfile source). */
 export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptions) {
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -37,10 +36,6 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   const [nameFollowsSubdomain, setNameFollowsSubdomain] = useState(true);
   const [env, setEnv] = useState<EnvRow[]>([{ id: "1", key: "", value: "" }]);
   const [resources, setResources] = useState<AppResources>(DEFAULT_RESOURCES);
-  const { volume, mode, setMode, available, loading, setVolume, setVolumeName } = useVolumeField(name);
-  const imageInspection = useImageInspection(image, registry, name, (next) => {
-    setPort((current) => current === "" || current === "80" ? next : current);
-  }, (next) => { if (!volume) setVolume(next); }, setMode);
   const [touched, setTouched] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
@@ -56,16 +51,22 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       return next;
     });
   }, []);
-  const handleNameChange = useCallback(
-    (newName: string) => {
-      setName(newName);
-      if (nameFollowsSubdomain && publicUrl) {
-        setSubdomain(newName.toLowerCase());
-      }
-      clearError("name");
-    },
-    [nameFollowsSubdomain, publicUrl, clearError],
-  );
+
+  const {
+    deployMode, setDeployMode, repo, setRepo, branch, setBranch,
+    folder, setFolder, dockerfile, setDockerfile, gitCredential, setGitCredential,
+  } = useSourceMode(clearError);
+
+  const { volume, mode, setMode, available, loading, setVolume, setVolumeName } = useVolumeField(name);
+  const imageInspection = useImageInspection(image, registry, name, (next) => {
+    setPort((current) => (current === "" || current === "80" ? next : current));
+  }, (next) => { if (!volume) setVolume(next); }, setMode);
+
+  const handleNameChange = useCallback((newName: string) => {
+    setName(newName);
+    if (nameFollowsSubdomain && publicUrl) setSubdomain(newName.toLowerCase());
+    clearError("name");
+  }, [nameFollowsSubdomain, publicUrl, clearError]);
 
   const handleSubdomainChange = useCallback((newSubdomain: string) => {
     setSubdomain(newSubdomain);
@@ -79,6 +80,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
       setNameFollowsSubdomain(true);
     }
   }, [name]);
+
   const handleEnvRowChange = useCallback((row: EnvRow) => {
     setEnv((prev) => prev.map((r) => (r.id === row.id ? row : r)));
   }, []);
@@ -89,91 +91,54 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
     const newId = String(nextEnvIdRef.current++);
     setEnv((prev) => [...prev, { id: newId, key: "", value: "" }]);
   }, []);
+
   const validate = useCallback((): CreateAppBody | undefined => {
     const values: DeployFormValues = {
-      name,
-      image,
-      port,
-      replicas,
-      host: subdomain,
-      env,
-      publicUrl,
-      resources,
-      volume,
-      registry: registry || undefined,
+      name, image, port, replicas, host: subdomain, env, publicUrl, resources, volume,
+      registry: registry || undefined, mode: deployMode, repo, branch, folder, dockerfile,
+      gitCredential: gitCredential || undefined,
     };
-
     const result = validateDeployForm(values, { ingressDomain });
     if (!result.ok) {
       setErrors(result.errors);
       return undefined;
     }
-
     setErrors({});
     return result.body;
-  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, registry, ingressDomain]);
+  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, registry,
+    deployMode, repo, branch, folder, dockerfile, gitCredential, ingressDomain]);
 
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      setTouched(true);
-
-      const body = validate();
-      if (!body) {
-        return;
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTouched(true);
+    const body = validate();
+    if (!body) return;
+    setSubmitState("pending");
+    try {
+      const app = await createApp(body);
+      setDeployedApp(app.name);
+      setSubmitState("success");
+      onShowToast({ title: `${app.name} is deploying`, variant: "success" });
+      const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      navigateTimeoutRef.current = setTimeout(() => {
+        navigate(deployRedirectPath(app), { replace: true });
+      }, prefersReduced ? 0 : 1500) as ReturnType<typeof setTimeout>;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setErrors(mapApiErrorToFields(err));
+        setSubmitState(err.kind === "unavailable" || err.kind === "network" ? "error_unreachable" : "idle");
+      } else {
+        onShowToast({ title: "Error", description: "An unexpected error occurred", variant: "error" });
+        setSubmitState("idle");
       }
-
-      setSubmitState("pending");
-      try {
-        const app = await createApp(body);
-
-        setDeployedApp(app.name);
-        setSubmitState("success");
-
-        onShowToast({
-          title: `${app.name} is deploying`,
-          variant: "success",
-        });
-
-        const prefersReduced = window.matchMedia(
-          "(prefers-reduced-motion: reduce)"
-        ).matches;
-        const delay = prefersReduced ? 0 : 1500;
-
-        navigateTimeoutRef.current = setTimeout(() => {
-          navigate(deployRedirectPath(app), { replace: true });
-        }, delay) as ReturnType<typeof setTimeout>;
-      } catch (err) {
-        if (err instanceof ApiError) {
-          const newErrors = mapApiErrorToFields(err);
-          setErrors(newErrors);
-
-          if (err.kind === "unavailable" || err.kind === "network") {
-            setSubmitState("error_unreachable");
-          } else {
-            setSubmitState("idle");
-          }
-        } else {
-          onShowToast({
-            title: "Error",
-            description: "An unexpected error occurred",
-            variant: "error",
-          });
-          setSubmitState("idle");
-        }
-      }
-    },
-    [validate, navigate, onShowToast],
-  );
+    }
+  }, [validate, navigate, onShowToast]);
 
   useEffect(() => {
     if (touched && Object.keys(errors).length > 0) {
       const firstErrorKey = Object.keys(errors)[0];
       if (firstErrorKey && firstErrorKey !== "form" && firstErrorKey !== "env") {
-        setTimeout(() => {
-          const input = document.getElementById(`deploy-${firstErrorKey}`);
-          input?.focus();
-        }, 0);
+        setTimeout(() => document.getElementById(`deploy-${firstErrorKey}`)?.focus(), 0);
       }
     }
   }, [touched, errors]);
@@ -186,64 +151,27 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   }, []);
 
   return {
-    name,
-    setName: handleNameChange,
-    image,
-    setImage: (img: string) => {
-      setImage(img);
-      clearError("image");
-    },
-    registry,
-    setRegistry: (value: string) => setRegistry(value),
-    imageHint: imageInspection.hint,
-    checkingImage: imageInspection.checking,
-    checkImage: imageInspection.check,
-    port,
-    setPort: (p: string) => {
-      setPort(p);
-      clearError("port");
-    },
-    replicas,
-    setReplicas: (r: string) => {
-      setReplicas(r);
-      clearError("replicas");
-    },
-    resources,
-    setResources: (r: AppResources) => {
-      setResources(r);
-      clearError("resources");
-    },
-    volume,
-    setVolume,
-    setVolumeName,
-    volumeMode: mode,
-    setVolumeMode: setMode,
-    availableVolumes: available,
-    volumesLoading: loading,
-    publicUrl,
-    setPublicUrl: handlePublicUrlChange,
-    subdomain,
-    setSubdomain: handleSubdomainChange,
-    nameFollowsSubdomain,
-    env,
-    setEnv: handleEnvRowChange,
-    addEnvRow: handleEnvRowAdd,
+    name, setName: handleNameChange,
+    image, setImage: (img: string) => { setImage(img); clearError("image"); },
+    registry, setRegistry: (value: string) => setRegistry(value),
+    deployMode, setDeployMode, repo, setRepo, branch, setBranch,
+    folder, setFolder, dockerfile, setDockerfile, gitCredential, setGitCredential,
+    imageHint: imageInspection.hint, checkingImage: imageInspection.checking, checkImage: imageInspection.check,
+    port, setPort: (p: string) => { setPort(p); clearError("port"); },
+    replicas, setReplicas: (r: string) => { setReplicas(r); clearError("replicas"); },
+    resources, setResources: (r: AppResources) => { setResources(r); clearError("resources"); },
+    volume, setVolume, setVolumeName, volumeMode: mode, setVolumeMode: setMode,
+    availableVolumes: available, volumesLoading: loading,
+    publicUrl, setPublicUrl: handlePublicUrlChange, subdomain, setSubdomain: handleSubdomainChange,
+    nameFollowsSubdomain, env, setEnv: handleEnvRowChange, addEnvRow: handleEnvRowAdd,
     removeEnvRow: handleEnvRowRemove,
-    clearEnvRowError: (id: string) =>
-      setErrors((prev) => {
-        if (!prev.env) return prev;
-        const newEnv = { ...prev.env };
-        delete newEnv[id];
-        return { ...prev, env: Object.keys(newEnv).length > 0 ? newEnv : undefined };
-      }),
+    clearEnvRowError: (id: string) => setErrors((prev) => {
+      if (!prev.env) return prev;
+      const newEnv = { ...prev.env };
+      delete newEnv[id];
+      return { ...prev, env: Object.keys(newEnv).length > 0 ? newEnv : undefined };
+    }),
     clearHostError: () => clearError("host"),
-
-    touched,
-    errors,
-    submitState,
-    deployedApp,
-
-    handleSubmit,
-    clearNavigateTimeout,
+    touched, errors, submitState, deployedApp, handleSubmit, clearNavigateTimeout,
   };
 }

@@ -17,6 +17,16 @@ export type KubeConfigMode = "in-cluster" | "kubeconfig";
 
 export type AppStatus = "running" | "stopped" | "building" | "failed";
 
+export type AppSource = {
+  repo: string;
+  branch: string;
+  folder: string;
+  dockerfile: string;
+  gitCredential?: string;
+  lastCommit?: string | null;
+  lastImage?: string | null;
+};
+
 export type App = {
   name: string;
   image: string;
@@ -35,6 +45,8 @@ export type App = {
   registry?: string | null;
   /** Deploy record started by a create/PATCH (#81); absent on reads. */
   deploymentId?: number;
+  /** Present when the app was built from a git Dockerfile (#83). */
+  source?: AppSource;
 };
 export type Volume = { name: string; size: string; status: "pending" | "bound" | "lost"; app?: string; mountPath?: string; createdAt: string };
 export type VolumeMount = { name: string; mountPath: string; size?: string };
@@ -113,9 +125,18 @@ export type SessionInfo = {
 };
 
 /** POST /api/apps body — mirrors apps-schemas PostAppsBody */
+export type BuildSourceBody = {
+  repo: string;
+  branch?: string;
+  folder?: string;
+  dockerfile?: string;
+  gitCredential?: string;
+};
+
 export type CreateAppBody = {
   name: string;
-  image: string;
+  /** Required unless source is set. */
+  image?: string;
   port: number;
   replicas?: number;
   host?: string;
@@ -123,6 +144,7 @@ export type CreateAppBody = {
   resources?: PartialAppResources;
   volumes?: VolumeMount[];
   registry?: string;
+  source?: BuildSourceBody;
 };
 
 /** PATCH /api/apps/:name body — at least one field; env replaces the whole set. */
@@ -139,6 +161,12 @@ export type UpdateAppBody = {
 export type Registry = {
   name: string;
   server: string;
+  username: string;
+  createdAt: string;
+};
+
+export type GitCredential = {
+  name: string;
   username: string;
   createdAt: string;
 };

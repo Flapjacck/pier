@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listVolumes } from "../../api/client";
 import type { Volume } from "../../api/types";
 import { LastDeployRow } from "./LastDeployRow";
+import { RedeployButton } from "./RedeployButton";
 import { useAppDetail } from "./useAppDetail";
 import { formatRelativeTime, formatAbsoluteDate } from "../../lib/time";
 
@@ -32,6 +33,22 @@ export function AppDetailOverview() {
           </code>
         </dd>
       </div>
+
+      {app.source && (
+        <div className="flex gap-4">
+          <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Source</dt>
+          <dd className="m-0 space-y-2">
+            <div className="text-[13px] text-pier-fg break-all">
+              <code className="font-mono text-[12.5px]">{app.source.repo}</code>
+              <span className="text-pier-muted"> @ {app.source.branch}</span>
+              {app.source.folder !== "." && (
+                <span className="text-pier-muted"> / {app.source.folder}</span>
+              )}
+            </div>
+            <RedeployButton app={app.name} source={app.source} />
+          </dd>
+        </div>
+      )}
 
       {/* Port */}
       {app.port && (

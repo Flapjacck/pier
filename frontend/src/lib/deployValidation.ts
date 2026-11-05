@@ -3,6 +3,8 @@
  * Returns typed errors keyed by field (for display near form fields) or generic messages.
  */
 
+export type DeployMode = "image" | "dockerfile";
+
 export type DeployFormValues = {
   name: string;
   image: string;
@@ -15,6 +17,12 @@ export type DeployFormValues = {
   resources?: AppResources;
   volume?: { name: string; mountPath: string; size?: string };
   registry?: string;
+  mode?: DeployMode;
+  repo?: string;
+  branch?: string;
+  folder?: string;
+  dockerfile?: string;
+  gitCredential?: string;
 };
 
 export type FieldErrors = {
@@ -27,6 +35,10 @@ export type FieldErrors = {
   env?: Record<string, string>; // Keyed by env row id
   resources?: ResourceErrors;
   volume?: { name?: string; mountPath?: string; size?: string };
+  repo?: string;
+  branch?: string;
+  folder?: string;
+  dockerfile?: string;
 };
 
 import type { AppResources, CreateAppBody } from "../api/client";
@@ -83,10 +95,22 @@ export function validateDeployForm(
     errors.name = "Name must start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be ≤63 characters";
   }
 
-  // Validate image: 1–255 chars, no whitespace.
+  const mode = values.mode ?? "image";
   const image = values.image.trim();
-  const imageMsg = imageError(image);
-  if (imageMsg) errors.image = imageMsg;
+  if (mode === "image") {
+    const imageMsg = imageError(image);
+    if (imageMsg) errors.image = imageMsg;
+  } else {
+    const repo = (values.repo ?? "").trim();
+    if (!repo) errors.repo = "Repository URL is required";
+    else if (!/^https:\/\//i.test(repo) && !/^git@/.test(repo) && !/^ssh:\/\/git@/i.test(repo)) {
+      errors.repo = "Use an https:// or git@ URL";
+    }
+    const folder = (values.folder ?? ".").trim() || ".";
+    if (folder.includes("..") || folder.startsWith("/")) errors.folder = "Folder must be a relative path without ..";
+    const dockerfile = (values.dockerfile ?? "Dockerfile").trim() || "Dockerfile";
+    if (dockerfile.includes("..") || dockerfile.startsWith("/")) errors.dockerfile = "Dockerfile path must be relative";
+  }
 
   // Validate port: 1–65535, must be an integer.
   const port = values.port.trim();
@@ -159,10 +183,23 @@ export function validateDeployForm(
   // Build the body.
   const body: CreateAppBody = {
     name,
-    image,
     port: Number(port),
     replicas: Number(replicas),
   };
+  if (mode === "dockerfile") {
+    body.source = {
+      repo: (values.repo ?? "").trim(),
+      branch: (values.branch ?? "main").trim() || "main",
+      folder: (values.folder ?? ".").trim() || ".",
+      dockerfile: (values.dockerfile ?? "Dockerfile").trim() || "Dockerfile",
+      ...((values.gitCredential ?? "").trim()
+        ? { gitCredential: (values.gitCredential ?? "").trim() }
+        : {}),
+    };
+  } else {
+    body.image = image;
+    if (values.registry) body.registry = values.registry;
+  }
 
   if (host) {
     body.host = host;
@@ -186,7 +223,6 @@ export function validateDeployForm(
     }
     body.volumes = [values.volume];
   }
-  if (values.registry) body.registry = values.registry;
 
   return { ok: true, body };
 }

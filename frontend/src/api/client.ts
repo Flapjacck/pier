@@ -113,6 +113,15 @@ export function createApp(body: CreateAppBody, options?: RequestOptions): Promis
   });
 }
 
+/** POST /api/apps/:name/redeploy — rebuild from the saved Dockerfile source (#83). */
+export function redeployApp(name: string, options?: RequestOptions): Promise<App> {
+  return request(`/api/apps/${encodeURIComponent(name)}/redeploy`, {
+    ...options,
+    method: "POST",
+    parse: parseApp,
+  });
+}
+
 export function scaleApp(name: string, replicas: number, options?: RequestOptions): Promise<App> {
   const body: ScaleBody = { replicas };
   return request(`/api/apps/${encodeURIComponent(name)}/scale`, {

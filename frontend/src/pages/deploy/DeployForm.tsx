@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { Field } from "../../components/ui/Field";
 import { Input } from "../../components/ui/Input";
 import { Button } from "../../components/ui/Button";
@@ -10,9 +10,7 @@ import { DeploySuccess } from "./DeploySuccess";
 import { useDeployForm } from "./useDeployForm";
 import { ResourcesFields } from "../../components/apps/ResourcesFields";
 import { VolumeFields } from "./VolumeFields";
-import { listRegistries } from "../../api/registries";
-import { useApi } from "../../hooks/useApi";
-import { Select } from "../../components/ui/Select";
+import { SourceFields } from "./SourceFields";
 interface Props {
   ingressDomain: string | null;
   tls?: boolean;
@@ -60,6 +58,18 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
     volumesLoading,
     registry,
     setRegistry,
+    deployMode,
+    setDeployMode,
+    repo,
+    setRepo,
+    branch,
+    setBranch,
+    folder,
+    setFolder,
+    dockerfile,
+    setDockerfile,
+    gitCredential,
+    setGitCredential,
     imageHint,
     checkingImage,
     checkImage,
@@ -67,8 +77,6 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
     ingressDomain,
     onShowToast: showToast,
   });
-  const registryFetcher = useCallback((signal: AbortSignal) => listRegistries({ signal }), []);
-  const { data: registries = [] } = useApi(registryFetcher, []);
 
   useEffect(() => {
     return () => {
@@ -100,46 +108,29 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
         />
       </Field>
 
-      <Field
-        id="deploy-image"
-        label="Image"
-        hint="e.g. nginx:1.27"
-        error={touched ? errors.image : undefined}
-      >
-        <div>
-          <Input
-            id="deploy-image"
-            value={image}
-            onChange={(e) => setImage(e.target.value)}
-            onBlur={() => {}}
-            placeholder="nginx:1.27"
-            className="font-mono text-[12.5px]"
-            invalid={touched && Boolean(errors.image)}
-          />
-          <div className="flex items-center gap-2 mt-2">
-            <Button type="button" size="sm" variant="secondary" onClick={() => void checkImage()} disabled={checkingImage || !image.trim()}>
-              {checkingImage ? "Checking…" : "Check image"}
-            </Button>
-            {imageHint && <span className="text-xs text-pier-muted">{imageHint}</span>}
-            {imageHint?.startsWith("This image expects") && (
-              <button type="button" className="text-xs text-pier-accent underline" onClick={() => {
-                const section = document.getElementById("deploy-volume-section");
-                if (section instanceof HTMLDetailsElement) section.open = true;
-                section?.scrollIntoView({ behavior: "smooth", block: "center" });
-                window.setTimeout(() => document.getElementById("deploy-volume-path")?.focus(), 0);
-              }}>Attach a volume</button>
-            )}
-          </div>
-        </div>
-      </Field>
-      {registries.length > 0 && (
-        <Field id="deploy-registry" label="Registry" hint="Credentials are never shown again.">
-          <Select id="deploy-registry" value={registry} onChange={(e) => setRegistry(e.target.value)}>
-            <option value="">Public / anonymous</option>
-            {registries.map((item) => <option key={item.name} value={item.name}>{item.name} ({item.server})</option>)}
-          </Select>
-        </Field>
-      )}
+      <SourceFields
+        mode={deployMode}
+        onModeChange={setDeployMode}
+        image={image}
+        onImageChange={setImage}
+        registry={registry}
+        onRegistryChange={setRegistry}
+        imageHint={imageHint}
+        checkingImage={checkingImage}
+        onCheckImage={() => void checkImage()}
+        repo={repo}
+        onRepoChange={setRepo}
+        branch={branch}
+        onBranchChange={setBranch}
+        folder={folder}
+        onFolderChange={setFolder}
+        dockerfile={dockerfile}
+        onDockerfileChange={setDockerfile}
+        gitCredential={gitCredential}
+        onGitCredentialChange={setGitCredential}
+        touched={touched}
+        errors={errors}
+      />
 
       <Field
         id="deploy-port"
