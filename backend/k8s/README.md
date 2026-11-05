@@ -25,9 +25,11 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 `../scripts/deploy-local.sh` applies manifests and templates in this order (see [backend README deploy section](../README.md#deploy-to-k3s)):
 
 1. `namespace.yaml` — creates `pier-apps` namespace with Pod Security labels
-2. `rbac.yaml` — ServiceAccount and ClusterRole for cluster health check
-3. `rbac-apps.yaml` — Role for app management in `pier-apps`
-4. `storage.yaml` — `pier-local` StorageClass
+2. `namespace-system.yaml` — `pier-system` for the build registry and Kaniko Jobs (#83)
+3. `rbac.yaml` — ServiceAccount and ClusterRole for cluster health check
+4. `rbac-apps.yaml` — Role for app management in `pier-apps`
+5. `rbac-builds.yaml` — Jobs/pods/logs/Secrets in `pier-system`
+6. `storage.yaml` — `pier-local` StorageClass
 5. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
 6. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
 7. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
@@ -50,7 +52,19 @@ Namespace and RBAC must exist before namespaced objects.
 To check changes here without touching the cluster:
 
 - `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NNN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
-- `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed).
+- `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed). Namespaced objects in `pier-system` use client dry-run until that namespace exists on the cluster (server dry-run never persists the Namespace create).
+
+## Dockerfile builds (`pier-system`)
+
+Pier builds images with Kaniko Jobs and pushes to an in-cluster `registry:2` Service exposed as NodePort **30500**. Image refs look like `localhost:30500/<app>:d<deployId>`.
+
+One-time on the k3s node (after the registry is deployed):
+
+```bash
+./scripts/configure-k3s-registry.sh
+```
+
+That writes `/etc/rancher/k3s/registries.yaml` so containerd can pull `localhost:30500/...` over HTTP, then restarts k3s. Kaniko Jobs push to `registry.pier-system.svc.cluster.local:5000` (`PIER_BUILD_PUSH_REGISTRY`); Deployments pull the same repo/tag via `PIER_BUILD_REGISTRY` (default `localhost:30500`). See `.env.example`.
 
 ## Client IP
 

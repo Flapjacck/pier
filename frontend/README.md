@@ -158,7 +158,7 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/login` → public sign-in (no shell)
 - `/` → redirect to `/apps` (requires session)
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
-- `/apps/new` → Deploy form (create new app with validation and error mapping; optional persistent volume)
+- `/apps/new` → Deploy form (Image or Dockerfile source, validation and error mapping; optional persistent volume and git credential for private repos) (#83)
 - `/registries` → Saved registry credentials (host and username metadata only), with add, edit, test, and delete actions
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created, last deploy, attached volumes)
@@ -170,7 +170,8 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - After `/apps/new` succeeds, the form opens the new deploy (`/apps/:name/deployments/:id`) so you can watch it
 - `/activity` → Activity page: audit log from `GET /api/audit` (newest first, Load more, links to apps); `?app=<name>` shows one app
 
-The deploy form's **Check image** action reads registry metadata without pulling
+The deploy form's **Image / Dockerfile** switch chooses a pre-built image or a git
+source build (#83). **Check image** (image mode) reads registry metadata without pulling
 the image, prefills an untouched port, and links declared volume paths into the
 existing volume section.
 - `*` → `NotFoundPage` (still in shell)

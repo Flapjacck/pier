@@ -34,6 +34,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 - **Deploy apps:** Push a Docker image, get a URL instantly via ingress (optional HTTPS through cert-manager)
 - **Private registries:** Save Docker Hub, GHCR, or another registry credential and attach it to private image pulls without exposing the password
 - **Image inspection:** Check an image before deployment to prefill its exposed port and warn when it declares persistent storage
+- **Dockerfile builds:** Deploy from a git repo URL, branch, folder and Dockerfile; Pier builds with Kaniko, pushes to an in-cluster registry, and streams the Build step into deploy history
 - **Persistent volumes:** Attach retained local-path storage to apps; volume apps use one replica and Recreate updates.
 - **Logs & monitoring:** Stream live logs, check pod status, see resource usage
 - **Scaling:** Scale replicas up/down, pause with zero replicas
@@ -128,6 +129,8 @@ Before you start, ensure your k3s node has:
    - Open `http://myapp.192.0.2.10.nip.io` — Nginx is running
 
    For private images, open **Registries**, add the registry host and credentials, then select it in the deploy form. Use **Check image** to inspect a public image before deploying; declared volume paths link to the existing volume section.
+
+   Or switch the deploy form to **Dockerfile**, paste a public (or credentialed) git repo, branch, folder and Dockerfile path. Pier builds in-cluster and deploys the result. After the first registry deploy, run `./backend/scripts/configure-k3s-registry.sh` once on the node so pulls from `localhost:30500` work.
 
 6. **Optional: turn on HTTPS.** Run `./scripts/install-cert-manager.sh`, add `PIER_TLS_ISSUER=pier-ca` to `backend/.env`, redeploy, and trust Pier's root CA on your machines. New apps then get `https://` URLs and HTTP redirects to HTTPS. Full steps are in [backend/k8s/README.md#tls](backend/k8s/README.md#tls).
 
