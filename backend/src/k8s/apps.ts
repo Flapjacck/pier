@@ -20,6 +20,7 @@ export type App = {
   /** CPU/RAM requests and limits (defaults filled in for anything unset). */
   resources: AppResources;
   volumes?: { name: string; mountPath: string }[];
+  registry?: string;
 };
 
 function condition(
@@ -147,6 +148,8 @@ export function deploymentToApp(d: V1Deployment, host?: string, tls = false): Ap
   };
   const mounts = volumeMountsOf(d);
   if (mounts.length) app.volumes = mounts;
+  const registry = d.metadata?.labels?.["pier.registry"];
+  if (registry) app.registry = registry;
 
   const env = Object.fromEntries(
     (container?.env ?? []).flatMap((e) =>

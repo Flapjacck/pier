@@ -13,6 +13,7 @@ import { DEFAULT_RESOURCES, mergeResources, resourcesProblem } from "../../k8s/r
 import { InvalidResourcesError } from "../../k8s/update-app.js";
 import type { DeployTracker } from "../../deploys/tracker.js";
 import { recordDeployError, specFromApp, specFromCreateBody, withDeploymentId } from "./deploy-hooks.js";
+import { getRegistry } from "../../k8s/registries.js";
 
 type PostAppsRouteDeps = {
   k8s: K8sClientsResult;
@@ -36,6 +37,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           response: {
             201: appSchema,
             400: errorSchema,
+            404: errorSchema,
             401: errorSchema,
             403: errorSchema,
             409: errorSchema,
@@ -52,7 +54,10 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           });
         }
 
-        const { name, image, port, replicas, host, env, resources, volumes } = req.body;
+        const { name, image, port, replicas, host, env, resources, volumes, registry } = req.body;
+        if (registry && !(await getRegistry(deps.k8s.clients.core, deps.namespace, registry))) {
+          return reply.status(404).send({ ok: false, error: "registry not found" });
+        }
 
         // Normalize host to lowercase (case-insensitive matching in Ingress rules).
         const hostNorm = host?.toLowerCase();
@@ -133,6 +138,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               resources,
               tlsIssuer: deps.tlsIssuer,
               volumes,
+              registry,
             },
             req.log,
           );

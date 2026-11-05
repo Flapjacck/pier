@@ -13,6 +13,7 @@ export type PostAppsBody = {
   env?: Record<string, string>;
   resources?: PartialAppResources;
   volumes?: { name: string; mountPath: string; size?: string }[];
+  registry?: string;
 };
 
 /** PATCH /apps/:name body: at least one field; env replaces the whole set. */
@@ -23,6 +24,7 @@ export type PatchAppBody = {
   env?: Record<string, string>;
   resources?: PartialAppResources;
   volumes?: { name: string; mountPath: string; size?: string }[];
+  registry?: string | null;
 };
 
 /** Millicores ("250m", 1m–9999m) or cores ("1", "0.5", up to 3 decimals). */
@@ -80,6 +82,7 @@ export const patchAppBodySchema = {
     env: envSchema,
     resources: resourcesBodySchema,
     volumes: volumesSchema,
+    registry: { type: ["string", "null"], minLength: 1, maxLength: 63, pattern: APP_NAME_SCHEMA_PATTERN },
   },
 } as const;
 
@@ -107,6 +110,7 @@ export const postAppsBodySchema = {
     env: envSchema,
     resources: resourcesBodySchema,
     volumes: volumesSchema,
+    registry: { type: ["string", "null"], minLength: 1, maxLength: 63, pattern: APP_NAME_SCHEMA_PATTERN },
   },
   required: ["name", "image", "port"],
 } as const;
@@ -147,6 +151,7 @@ export const appSchema = {
         required: ["name", "mountPath"],
       },
     },
+    registry: { type: "string" },
     deploymentId: { type: "integer", description: "Deploy record started by this request (#81)" },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],

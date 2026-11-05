@@ -16,6 +16,8 @@ export type CreateAppInput = {
   /** CPU/RAM requests and limits; missing fields default to DEFAULT_RESOURCES. */
   resources?: PartialAppResources;
   volumes?: VolumeMount[];
+  /** Name of a Pier-managed registry Secret to use for image pulls. */
+  registry?: string;
   /** cert-manager ClusterIssuer (PIER_TLS_ISSUER). Set: the Ingress gets TLS. */
   tlsIssuer?: string;
 };
@@ -81,10 +83,11 @@ export function buildDeployment(input: CreateAppInput): V1Deployment {
     securityContext: podSecurityContext,
     containers: [container],
   }, container, input.volumes ?? []);
+  if (input.registry) podSpec.imagePullSecrets = [{ name: `pier-registry-${input.registry}` }];
 
   const templateSpec: V1PodTemplateSpec = {
     metadata: {
-      labels,
+      labels: { ...labels, ...(input.registry ? { "pier.registry": input.registry } : {}) },
     },
     spec: podSpec,
   };
@@ -103,7 +106,7 @@ export function buildDeployment(input: CreateAppInput): V1Deployment {
 
   const metadata: V1ObjectMeta = {
     name: input.name,
-    labels,
+    labels: { ...labels, ...(input.registry ? { "pier.registry": input.registry } : {}) },
   };
 
   return {
