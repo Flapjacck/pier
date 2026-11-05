@@ -821,7 +821,7 @@ wait
 ```
 ## Deploy history (#81)
 
-Every `POST /api/apps`, `PATCH /api/apps/:name` and `POST /api/apps/:name/restart` records a deploy and returns its id as `deploymentId` (the restart body is `{ ok, restartedAt, deploymentId }`). Scaling isn't recorded as a deploy. A request rejected before it touched the cluster with a 409 (name or host taken) or 404 leaves no record. A validation error is recorded as a failed **Validate** step, and any other cluster error as a failed **Apply resources** step with the API message. `DELETE /api/apps/:name` cancels the app's running deploys.
+Every `POST /api/apps`, `PATCH /api/apps/:name` and `POST /api/apps/:name/restart` records a deploy and returns its id as `deploymentId` (the restart body is `{ ok, restartedAt, deploymentId }`). Scaling isn't recorded as a deploy. A request that was about a different app (409 `app already exists`, or 404) leaves no record. A validation error (resources, quota pre-check, volumes, `host already in use`) is recorded as a failed **Validate** step, and any other cluster error as a failed **Apply resources** step with the API message. `DELETE /api/apps/:name` cancels the app's running deploys.
 
 Steps, in order: `validate` (Validate), `apply` (Apply resources), `schedule` (Schedule pod), `pull` (Pull image), `start` (Start container), `health` (Health check), `ready` (Ready). A `build` step is reserved for #83. The backend polls the Deployment, its ReplicaSets, pods and namespace events every 2 s with get/list only, so no RBAC beyond `rbac-apps.yaml` is needed. It turns them into step changes and short plain-language lines. A deploy fails on the step where something went wrong, with a readable `reason`:
 
