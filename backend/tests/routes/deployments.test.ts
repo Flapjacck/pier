@@ -9,8 +9,7 @@ import { authHeader, testConfig } from "../helpers/test-config.js";
 // Recent times: buildApp prunes old finished deploys at startup.
 const BASE = Date.now() - 60_000;
 
-function seeded() {
-  const db = openDatabase(":memory:");
+function seed(db: ReturnType<typeof openDatabase>) {
   const ids: number[] = [];
   for (let i = 0; i < 3; i++) {
     const id = insertDeployment(db, { app: "web", trigger: i === 0 ? "create" : "patch", spec: { image: `nginx:1.${i}`, envKeys: ["A"] }, now: BASE + i * 1000 });
@@ -24,16 +23,22 @@ function seeded() {
 }
 
 async function appWith(db: ReturnType<typeof openDatabase>) {
-  // Cluster unreachable: history comes from the database only (and nothing is resumed).
+  // Cluster unreachable: history comes from the database only.
   return await buildApp(testConfig(), { logger: false, k8s: createFailedClientsResult(), db, deployPollMs: 60_000 });
+}
+
+/** Seed after startup so resume() (which fails unapplied running deploys) leaves the rows alone. */
+async function seeded() {
+  const db = openDatabase(":memory:");
+  const app = await appWith(db);
+  return { app, ...seed(db) };
 }
 
 const get = (url: string, headers: Record<string, string> = authHeader) => ({ method: "GET" as const, url, headers });
 
 describe("GET /api/apps/:name/deployments", () => {
   it("lists newest first with summaries and pages with before", async () => {
-    const { db, ids } = seeded();
-    const app = await appWith(db);
+    const { app, ids } = await seeded();
     const first = await app.inject(get("/api/apps/web/deployments?limit=2"));
     assert.equal(first.statusCode, 200);
     const page = first.json();
@@ -55,8 +60,7 @@ describe("GET /api/apps/:name/deployments", () => {
   });
 
   it("returns an empty list for an unknown app and 400 for bad parameters", async () => {
-    const { db } = seeded();
-    const app = await appWith(db);
+    const { app } = await seeded();
     const none = (await app.inject(get("/api/apps/nope/deployments"))).json();
     assert.deepEqual(none, { ok: true, deployments: [], nextBefore: null });
     for (const url of ["/api/apps/web/deployments?limit=0", "/api/apps/web/deployments?limit=51", "/api/apps/web/deployments?before=0", "/api/apps/web/deployments?x=1", "/api/apps/Bad_Name/deployments"]) {
@@ -66,8 +70,7 @@ describe("GET /api/apps/:name/deployments", () => {
   });
 
   it("requires auth", async () => {
-    const { db } = seeded();
-    const app = await appWith(db);
+    const { app } = await seeded();
     assert.equal((await app.inject(get("/api/apps/web/deployments", {}))).statusCode, 401);
     assert.equal((await app.inject(get("/api/apps/web/deployments/1", {}))).statusCode, 401);
     await app.close();
@@ -76,8 +79,7 @@ describe("GET /api/apps/:name/deployments", () => {
 
 describe("GET /api/apps/:name/deployments/:id", () => {
   it("returns the detail with labelled steps and lines", async () => {
-    const { db, ids } = seeded();
-    const app = await appWith(db);
+    const { app, ids } = await seeded();
     const res = await app.inject(get(`/api/apps/web/deployments/${ids[2]}`));
     assert.equal(res.statusCode, 200);
     const { deployment } = res.json();
@@ -93,8 +95,7 @@ describe("GET /api/apps/:name/deployments/:id", () => {
   });
 
   it("returns 404 for a missing id or another app's deploy, 400 for a bad id", async () => {
-    const { db, other } = seeded();
-    const app = await appWith(db);
+    const { app, other } = await seeded();
     for (const url of ["/api/apps/web/deployments/9999", `/api/apps/web/deployments/${other}`, `/api/apps/web/deployments/9999/stream`]) {
       const res = await app.inject(get(url));
       assert.equal(res.statusCode, 404, url);

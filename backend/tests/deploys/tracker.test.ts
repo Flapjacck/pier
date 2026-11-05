@@ -133,6 +133,22 @@ describe("deploy tracker", () => {
     tracker.stop();
   });
 
+  it("resumes with an unreachable cluster and times the deploy out", async () => {
+    const db = openDatabase(":memory:");
+    const clock = { t: START };
+    const logs = logger();
+    const id = insertDeployment(db, { app: "web", trigger: "patch", spec: {}, now: START });
+    for (const step of ["validate", "apply"] as const) setStepStatus(db, id, step, "succeeded", START);
+    const tracker = createDeployTracker({ db, k8s: createFailedClientsResult(), namespace: "pier-apps", log: logs.log, timeoutMs: 60_000, pollMs: 5, now: () => clock.t });
+    tracker.resume();
+    await waitFor(() => logs.warns.length === 1, 2000, "poll warning");
+    assert.equal(status(db, id), "running");
+    clock.t += 61_000;
+    await waitFor(() => status(db, id) === "failed", 2000, "timed out");
+    assert.match(getDeployment(db, id)?.reason ?? "", /^Timed out after 1m/);
+    tracker.stop();
+  });
+
   it("resumes after a restart with a file database", async () => {
     const dir = mkdtempSync(join(tmpdir(), "pier-deploys-"));
     dirs.push(dir);
