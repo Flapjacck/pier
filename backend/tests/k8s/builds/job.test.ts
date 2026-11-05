@@ -49,6 +49,13 @@ describe("buildJobSpec", () => {
     assert.ok(container.args?.includes("--insecure"));
     assert.equal(container.securityContext?.allowPrivilegeEscalation, false);
     assert.deepEqual(container.securityContext?.capabilities?.drop, ["ALL"]);
+    assert.deepEqual(container.securityContext?.capabilities?.add, [
+      "CHOWN",
+      "DAC_OVERRIDE",
+      "FOWNER",
+      "SETGID",
+      "SETUID",
+    ]);
     assert.ok(!(container as { securityContext?: { privileged?: boolean } }).securityContext?.privileged);
     assert.ok(container.volumeMounts?.some((m) => m.name === "workspace"));
     assert.equal(container.env, undefined);

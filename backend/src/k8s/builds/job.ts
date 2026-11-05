@@ -146,8 +146,12 @@ export function buildJobSpec(input: BuildJobInput): V1Job {
               },
               securityContext: {
                 allowPrivilegeEscalation: false,
-                capabilities: { drop: ["ALL"] },
-                // Kaniko needs root inside the container to execute builds; no privileged / hostPath.
+                // Kaniko unpacks base images and must chown; drop ALL breaks that.
+                // Keep privileged off — pier-system is Pod Security baseline.
+                capabilities: {
+                  drop: ["ALL"],
+                  add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"],
+                },
                 runAsNonRoot: false,
               },
             },
