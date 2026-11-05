@@ -135,7 +135,15 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        // Only the review step may create the app (avoids Enter on earlier fields).
+        if (stepId !== "review" || submitState === "pending") return;
+        void handleSubmit(e);
+      }}
+      className="space-y-4 max-w-2xl"
+    >
       <StepIndicator steps={[...steps]} current={step} />
       <DeployAlerts submitState={submitState} errors={errors} ingressDomain={ingressDomain} />
 
@@ -274,12 +282,20 @@ export function DeployForm({ ingressDomain, tls = false, onCancel }: Props) {
           </Button>
         )}
         {step < steps.length - 1 ? (
-          <Button type="button" disabled={!canNext()} onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))}>
+          <Button
+            type="button"
+            disabled={!canNext()}
+            onClick={() => setStep((s) => Math.min(steps.length - 1, s + 1))}
+          >
             Next
           </Button>
         ) : (
-          <Button type="submit" disabled={submitState === "pending" || (touched && Object.keys(errors).length > 0)}>
-            {submitState === "pending" ? "Deploying..." : "Deploy"}
+          <Button
+            type="button"
+            disabled={submitState === "pending" || (touched && Object.keys(errors).length > 0)}
+            onClick={() => { void handleSubmit(); }}
+          >
+            {submitState === "pending" ? "Deploying…" : "Deploy"}
           </Button>
         )}
         <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>

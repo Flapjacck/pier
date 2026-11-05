@@ -108,8 +108,8 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
   }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, registry,
     deployMode, repo, branch, folder, dockerfile, gitCredential, ingressDomain]);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = useCallback(async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
     setTouched(true);
     const body = validate();
     if (!body) return;
