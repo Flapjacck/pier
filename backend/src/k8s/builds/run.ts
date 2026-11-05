@@ -48,9 +48,23 @@ async function findBuildPod(core: CoreV1Api, namespace: string, jobName: string)
   return pod?.metadata?.name;
 }
 
+async function containerLog(
+  core: CoreV1Api,
+  namespace: string,
+  pod: string,
+  container: string,
+): Promise<string> {
+  try {
+    const raw = await core.readNamespacedPodLog({ namespace, name: pod, container });
+    return typeof raw === "string" ? raw : String(raw);
+  } catch {
+    return "";
+  }
+}
+
 /**
- * Read new log bytes from the Kaniko pod. `sinceLogLen` is the number of
- * characters already returned; only the suffix is yielded.
+ * Read new log bytes from the build pod (clone init + Kaniko). `sinceLogLen`
+ * is characters already returned; only the suffix is yielded.
  */
 export async function readBuildLogs(
   core: CoreV1Api,
@@ -60,14 +74,14 @@ export async function readBuildLogs(
 ): Promise<{ text: string; length: number }> {
   const pod = await findBuildPod(core, namespace, jobName);
   if (!pod) return { text: "", length: sinceLogLen };
-  try {
-    const raw = await core.readNamespacedPodLog({ namespace, name: pod, container: "kaniko" });
-    const text = typeof raw === "string" ? raw : String(raw);
-    if (text.length <= sinceLogLen) return { text: "", length: sinceLogLen };
-    return { text: text.slice(sinceLogLen), length: text.length };
-  } catch {
-    return { text: "", length: sinceLogLen };
-  }
+  const clone = await containerLog(core, namespace, pod, "clone");
+  const kaniko = await containerLog(core, namespace, pod, "kaniko");
+  const parts: string[] = [];
+  if (clone) parts.push(clone.endsWith("\n") ? clone : clone + "\n");
+  if (kaniko) parts.push(kaniko);
+  const text = parts.join("");
+  if (text.length <= sinceLogLen) return { text: "", length: sinceLogLen };
+  return { text: text.slice(sinceLogLen), length: text.length };
 }
 
 export async function getBuildJobStatus(batch: BatchV1Api, namespace: string, jobName: string): Promise<BuildStatus> {

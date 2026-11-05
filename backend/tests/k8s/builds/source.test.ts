@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   builtImageRef,
+  cloneRepoUrl,
   InvalidBuildSourceError,
-  kanikoGitContext,
+  kanikoBuildContext,
   normalizeBuildSource,
 } from "../../../src/k8s/builds/source.js";
 
@@ -38,17 +39,24 @@ describe("normalizeBuildSource", () => {
   });
 });
 
-describe("kanikoGitContext", () => {
-  it("builds context for repo root and subfolder", () => {
+describe("kanikoBuildContext", () => {
+  it("points at /workspace/src for root and subfolder", () => {
     const root = normalizeBuildSource({ repo: "https://github.com/org/app.git", branch: "main" });
-    assert.equal(kanikoGitContext(root), "https://github.com/org/app.git#refs/heads/main");
+    assert.equal(kanikoBuildContext(root), "dir:///workspace/src");
     const sub = normalizeBuildSource({ repo: "https://github.com/org/app.git", folder: "apps/web" });
-    assert.equal(kanikoGitContext(sub), "https://github.com/org/app.git#refs/heads/main#apps/web");
+    assert.equal(kanikoBuildContext(sub), "dir:///workspace/src/apps/web");
+  });
+});
+
+describe("cloneRepoUrl", () => {
+  it("appends .git to HTTPS URLs when missing", () => {
+    const source = normalizeBuildSource({ repo: "https://github.com/org/app" });
+    assert.equal(cloneRepoUrl(source), "https://github.com/org/app.git");
   });
 
   it("keeps scp-style SSH URLs", () => {
     const source = normalizeBuildSource({ repo: "git@github.com:org/app.git" });
-    assert.equal(kanikoGitContext(source), "git@github.com:org/app.git#refs/heads/main");
+    assert.equal(cloneRepoUrl(source), "git@github.com:org/app.git");
   });
 });
 

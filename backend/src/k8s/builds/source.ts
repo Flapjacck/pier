@@ -14,7 +14,7 @@ const PATH_MAX = 255;
 const NAME = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 
 /** HTTPS or SSH git URLs only. */
-const HTTPS_REPO = /^https:\/\/[a-z0-9._~:/?#[\]@!$&'()*+,;=%-]+$/i;
+const HTTPS_REPO = /^https:\/\/[a-z0-9._~:/?#[\]@!$&\'()*+,;=%-]+$/i;
 const SSH_REPO = /^(?:git@[\w.-]+:[\w./-]+|ssh:\/\/git@[\w.@:/-]+)$/i;
 
 function bad(detail: string): never {
@@ -74,26 +74,27 @@ export function normalizeBuildSource(input: {
 }
 
 /**
- * Kaniko git context. Subfolder uses the third URL fragment:
- * https://host/path.git#refs/heads/<branch>#<folder>
- * Keep https:// (GitHub rejects the old git:// protocol). SSH repos become
- * git@host:path.git — Kaniko uses GIT_USERNAME / GIT_PASSWORD when set.
+ * Absolute dir:// context for Kaniko after the clone initContainer writes
+ * the repo under /workspace/src. Folder "." is the repo root.
  */
-export function kanikoGitContext(source: BuildSource): string {
+export function kanikoBuildContext(source: BuildSource): string {
+  const root = "/workspace/src";
+  if (source.folder === ".") return `dir://${root}`;
+  return `dir://${root}/${source.folder}`;
+}
+
+/** Ensure HTTPS clone URLs end in .git; leave SSH scp-style as-is. */
+export function cloneRepoUrl(source: BuildSource): string {
   let path = source.repo.trim();
-  if (path.startsWith("git@")) {
-    // leave scp-style SSH as-is for Kaniko
-  } else if (path.startsWith("ssh://git@")) {
-    // ssh://git@host/owner/repo.git → git@host:owner/repo.git
+  if (path.startsWith("git@")) return path.endsWith(".git") ? path : `${path}.git`;
+  if (path.startsWith("ssh://git@")) {
     const m = /^ssh:\/\/git@([^/]+)\/(.+)$/i.exec(path);
     if (!m) bad("repo SSH URL is malformed");
     path = `git@${m[1]}:${m[2]}`;
-  } else if (!path.startsWith("https://")) {
-    bad("repo must be an https:// or git@ SSH URL");
+    return path.endsWith(".git") ? path : `${path}.git`;
   }
-  if (!path.endsWith(".git")) path = `${path}.git`;
-  const folder = source.folder === "." ? "" : `#${source.folder}`;
-  return `${path}#refs/heads/${source.branch}${folder}`;
+  if (!path.startsWith("https://")) bad("repo must be an https:// or git@ SSH URL");
+  return path.endsWith(".git") ? path : `${path}.git`;
 }
 
 export function builtImageRef(registry: string, app: string, tag: string): string {
