@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildJobName, buildJobSpec, GIT_CLONE_IMAGE } from "../../../src/k8s/builds/job.js";
+import { buildJobName, buildJobSpec } from "../../../src/k8s/builds/job.js";
 import { normalizeBuildSource } from "../../../src/k8s/builds/source.js";
 
 describe("buildJobSpec", () => {
@@ -14,7 +14,7 @@ describe("buildJobSpec", () => {
     assert.equal(buildJobName("hello", 7), "pier-build-hello-7");
   });
 
-  it("clones via initContainer then builds from dir://", () => {
+  it("uses documented git:// context and context-sub-path", () => {
     const job = buildJobSpec({
       app: "hello",
       deployId: 7,
@@ -29,23 +29,15 @@ describe("buildJobSpec", () => {
     assert.equal(job.spec?.backoffLimit, 0);
     assert.equal(job.spec?.activeDeadlineSeconds, 900);
     assert.equal(job.spec?.ttlSecondsAfterFinished, 3600);
-
-    const init = job.spec?.template?.spec?.initContainers?.[0];
-    assert.ok(init);
-    assert.equal(init.name, "clone");
-    assert.equal(init.image, GIT_CLONE_IMAGE);
-    assert.ok(init.env?.some((e) => e.name === "REPO" && e.value === "https://github.com/org/app.git"));
-    assert.ok(init.env?.some((e) => e.name === "BRANCH" && e.value === "main"));
-    assert.ok(init.env?.some((e) => e.name === "GIT_USERNAME"));
-    assert.ok(init.env?.some((e) => e.name === "GIT_PASSWORD"));
-    assert.ok(init.volumeMounts?.some((m) => m.name === "workspace" && m.mountPath === "/workspace"));
-
+    assert.equal(job.spec?.template?.spec?.initContainers, undefined);
     const container = job.spec?.template?.spec?.containers?.[0];
     assert.ok(container);
     assert.equal(container.image, "gcr.io/kaniko-project/executor:v1.23.2");
-    assert.ok(container.args?.includes("--context=dir:///workspace/src/services/api"));
+    assert.ok(container.args?.includes("--context=git://github.com/org/app.git#refs/heads/main"));
+    assert.ok(container.args?.includes("--context-sub-path=services/api"));
     assert.ok(container.args?.includes("--dockerfile=Dockerfile"));
     assert.ok(container.args?.includes("--destination=localhost:30500/hello:d7"));
+    assert.ok(container.args?.includes("--git=single-branch=true"));
     assert.ok(container.args?.includes("--insecure"));
     assert.equal(container.securityContext?.allowPrivilegeEscalation, false);
     assert.deepEqual(container.securityContext?.capabilities?.drop, ["ALL"]);
@@ -57,12 +49,12 @@ describe("buildJobSpec", () => {
       "SETUID",
     ]);
     assert.ok(!(container as { securityContext?: { privileged?: boolean } }).securityContext?.privileged);
-    assert.ok(container.volumeMounts?.some((m) => m.name === "workspace"));
-    assert.equal(container.env, undefined);
-    assert.ok(job.spec?.template?.spec?.volumes?.some((v) => v.name === "workspace" && v.emptyDir));
+    const env = container.env ?? [];
+    assert.ok(env.some((e) => e.name === "GIT_USERNAME"));
+    assert.ok(env.some((e) => e.name === "GIT_PASSWORD"));
   });
 
-  it("omits git credential env without a credential", () => {
+  it("omits context-sub-path and git env for a root public repo", () => {
     const bare = normalizeBuildSource({ repo: "https://github.com/org/app.git" });
     const job = buildJobSpec({
       app: "hello",
@@ -73,11 +65,9 @@ describe("buildJobSpec", () => {
       kanikoImage: "gcr.io/kaniko-project/executor:v1.23.2",
       timeoutSeconds: 100,
     });
-    const init = job.spec?.template?.spec?.initContainers?.[0];
-    const env = init?.env ?? [];
-    assert.ok(env.some((e) => e.name === "REPO"));
-    assert.ok(env.some((e) => e.name === "BRANCH"));
-    assert.ok(!env.some((e) => e.name === "GIT_USERNAME"));
-    assert.equal(job.spec?.template?.spec?.containers?.[0]?.args?.[0], "--context=dir:///workspace/src");
+    const args = job.spec?.template?.spec?.containers?.[0]?.args ?? [];
+    assert.ok(args.includes("--context=git://github.com/org/app.git#refs/heads/main"));
+    assert.ok(!args.some((a) => a.startsWith("--context-sub-path=")));
+    assert.equal(job.spec?.template?.spec?.containers?.[0]?.env, undefined);
   });
 });

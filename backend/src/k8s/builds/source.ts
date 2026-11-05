@@ -74,27 +74,38 @@ export function normalizeBuildSource(input: {
 }
 
 /**
- * Absolute dir:// context for Kaniko after the clone initContainer writes
- * the repo under /workspace/src. Folder "." is the repo root.
+ * Host/path for Kaniko's git context (no scheme). Kaniko prefixes
+ * GIT_PULL_METHOD (default https) itself — see pkg/buildcontext/git.go.
  */
-export function kanikoBuildContext(source: BuildSource): string {
-  const root = "/workspace/src";
-  if (source.folder === ".") return `dir://${root}`;
-  return `dir://${root}/${source.folder}`;
-}
-
-/** Ensure HTTPS clone URLs end in .git; leave SSH scp-style as-is. */
-export function cloneRepoUrl(source: BuildSource): string {
+export function kanikoGitHostPath(source: BuildSource): string {
   let path = source.repo.trim();
-  if (path.startsWith("git@")) return path.endsWith(".git") ? path : `${path}.git`;
-  if (path.startsWith("ssh://git@")) {
+  if (path.startsWith("https://")) {
+    path = path.slice("https://".length);
+  } else if (path.startsWith("git@")) {
+    // git@host:owner/repo.git → host/owner/repo.git
+    const m = /^git@([^:]+):(.+)$/i.exec(path);
+    if (!m) bad("repo SSH URL is malformed");
+    path = `${m[1]}/${m[2]}`;
+  } else if (path.startsWith("ssh://git@")) {
     const m = /^ssh:\/\/git@([^/]+)\/(.+)$/i.exec(path);
     if (!m) bad("repo SSH URL is malformed");
-    path = `git@${m[1]}:${m[2]}`;
-    return path.endsWith(".git") ? path : `${path}.git`;
+    path = `${m[1]}/${m[2]}`;
+  } else {
+    bad("repo must be an https:// or git@ SSH URL");
   }
-  if (!path.startsWith("https://")) bad("repo must be an https:// or git@ SSH URL");
-  return path.endsWith(".git") ? path : `${path}.git`;
+  if (!path.endsWith(".git")) path = `${path}.git`;
+  return path;
+}
+
+/**
+ * Documented Kaniko git context:
+ *   git://<host>/<path>.git#refs/heads/<branch>
+ * The git:// prefix is Kaniko's scheme marker only; clone uses HTTPS by default.
+ * Do NOT put the folder in a third #fragment — that is a commit checkout.
+ * Use --context-sub-path for subfolders instead.
+ */
+export function kanikoGitContext(source: BuildSource): string {
+  return `git://${kanikoGitHostPath(source)}#refs/heads/${source.branch}`;
 }
 
 export function builtImageRef(registry: string, app: string, tag: string): string {
