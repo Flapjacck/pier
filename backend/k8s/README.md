@@ -132,6 +132,7 @@ curl -sI --cacert pier-root-ca.crt https://<app>.<domain>   # 200
 | `pods/log` | `get` | logs and live logs (`follow` is still a `get`) |
 | `ingresses` | `get`, `list`, `create`, `delete` | lookup, host conflict check, create, delete |
 | `persistentvolumeclaims` | `get`, `list`, `create`, `patch`, `delete` | volume CRUD and app attachment labels |
+| `secrets` | `get`, `list`, `create`, `patch`, `delete` | Pier-managed registry dockerconfigjson Secrets only; code enforces the `pier-registry-` prefix and Pier labels because Kubernetes RBAC cannot scope by label |
 
 The volume ClusterRole grants `get` on `storageclasses` and `get`/`patch` on
 `persistentvolumes`. These are the only cluster-scoped permissions used by the
@@ -158,6 +159,9 @@ kubectl auth can-i list events -n pier-apps --as=$SA               # yes
 kubectl auth can-i list replicasets -n pier-apps --as=$SA          # yes
 kubectl auth can-i get pods/log -n pier-apps --as=$SA              # yes
 kubectl auth can-i create ingresses -n pier-apps --as=$SA          # yes
+kubectl auth can-i create secrets -n pier-apps --as=$SA            # yes (Pier-managed registry Secrets only)
+kubectl auth can-i patch secrets -n pier-apps --as=$SA             # yes (Pier-managed registry Secrets only)
+kubectl auth can-i delete secrets -n pier-apps --as=$SA            # yes (Pier-managed registry Secrets only)
 kubectl auth can-i watch deployments -n pier-apps --as=$SA         # no
 kubectl auth can-i list resourcequotas -n pier-apps --as=$SA       # yes
 kubectl auth can-i update services -n pier-apps --as=$SA           # no
@@ -165,6 +169,7 @@ kubectl auth can-i get pods -n pier-apps --as=$SA                  # no
 kubectl auth can-i watch events -n pier-apps --as=$SA               # no
 kubectl auth can-i create deployments -n default --as=$SA         # no
 kubectl auth can-i delete nodes --as=$SA                          # no
+# Re-check these commands after changing the Role; the comments above document the intended answers.
 ```
 
 ## Volumes and storage
