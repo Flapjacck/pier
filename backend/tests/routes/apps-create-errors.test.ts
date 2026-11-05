@@ -416,12 +416,13 @@ describe("POST /api/apps source create (#83)", () => {
         },
       },
     });
-    const body = res.json() as { error?: string; details?: string };
+    const body = res.json() as { error?: string; details?: string; deploymentId?: number; status?: string };
     assert.notEqual(body.error, "cluster unreachable");
     assert.notEqual(res.statusCode, 503);
-    // Build Job create fails → build failed 422
-    assert.equal(res.statusCode, 422);
-    assert.equal(body.error, "build failed");
+    // Async create accepts immediately; Kaniko Job failure lands on the deploy, not the POST.
+    assert.equal(res.statusCode, 201);
+    assert.equal(body.status, "building");
+    assert.ok(typeof body.deploymentId === "number");
     await app.close();
   });
 

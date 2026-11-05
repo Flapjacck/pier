@@ -5,15 +5,9 @@ import type { DeployTracker } from "../../deploys/tracker.js";
 import { getAppSource } from "../../db/app-sources.js";
 import { appSchema, errorSchema } from "../apps-schemas.js";
 import { getApp } from "../../k8s/app-lookup.js";
-import { updateApp } from "../../k8s/update-app.js";
-import { recordDeployError, specFromApp, withDeploymentId } from "./deploy-hooks.js";
-import {
-  buildImageForDeploy,
-  specWithSource,
-  type BuildConfig,
-} from "./build-deploy.js";
-import { BuildFailedError } from "../../k8s/builds/run.js";
-import { mapPostAppsError } from "./post-errors.js";
+import { specFromApp, withDeploymentId } from "./deploy-hooks.js";
+import { type BuildConfig } from "./build-deploy.js";
+import { scheduleRedeployFromSource } from "./build-pipeline.js";
 
 type Deps = {
   k8s: K8sClientsResult;
@@ -76,50 +70,35 @@ export function redeployAppRoutesWithDeps(deps: Deps): FastifyPluginAsync {
 
         if (!deploy) return reply.status(503).send({ ok: false, error: "could not record deploy" });
 
-        try {
-          const built = await buildImageForDeploy({
-            clients: deps.k8s.clients,
-            db: deps.db,
-            deploy,
-            app: req.params.name,
-            source,
-            build: deps.build,
-            log: req.log,
-          });
-          const appResult = await updateApp(
-            deps.k8s.clients,
-            deps.namespace,
-            req.params.name,
-            { image: built.image },
-            req.log,
-          );
-          deploy.applied(specWithSource(specFromApp(appResult), source, built.image));
-          return reply.send(
-            withDeploymentId(
-              {
-                ...appResult,
-                source: {
-                  repo: source.repo,
-                  branch: source.branch,
-                  folder: source.folder,
-                  dockerfile: source.dockerfile,
-                  ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
-                  lastCommit: null,
-                  lastImage: built.image,
-                },
+        scheduleRedeployFromSource({
+          clients: deps.k8s.clients,
+          namespace: deps.namespace,
+          db: deps.db,
+          build: deps.build,
+          deploy,
+          name: req.params.name,
+          source,
+          log: req.log,
+        });
+
+        return reply.send(
+          withDeploymentId(
+            {
+              ...current,
+              status: "building" as const,
+              source: {
+                repo: source.repo,
+                branch: source.branch,
+                folder: source.folder,
+                dockerfile: source.dockerfile,
+                ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
+                lastCommit: sourceRow.lastCommit,
+                lastImage: sourceRow.lastImage,
               },
-              deploy,
-            ),
-          );
-        } catch (err) {
-          req.log.error({ err }, "redeploy failed");
-          if (!(err instanceof BuildFailedError)) recordDeployError(deploy, err);
-          if (err instanceof BuildFailedError) {
-            return reply.status(422).send({ ok: false, error: "build failed", details: err.message });
-          }
-          mapPostAppsError(err, reply);
-          return;
-        }
+            },
+            deploy,
+          ),
+        );
       },
     );
   };

@@ -4,6 +4,7 @@ import { appendLog, deleteDeployment, finishDeployment, insertDeployment, setDep
 import { getDeployment, listRunning, runningIdsForApp } from "../db/deployments-read.js";
 import type { K8sClientsResult } from "../k8s/clients.js";
 import { reasons } from "./reasons.js";
+import { auditDeployFinished } from "./audit-finish.js";
 import { failDeploy, tick, timeoutIfDue, type TickContext, type TrackerLog } from "./tracker-loop.js";
 import type { DeploySpec, DeployTrigger, StepName } from "./types.js";
 
@@ -114,7 +115,7 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
     for (const old of runningIdsForApp(db, app)) {
       if (old === newId) continue;
       stopLoop(old);
-      if (finishDeployment(db, old, { status: "cancelled", reason: reasons.superseded(newId), now: now() })) emit(old);
+      if (finishDeployment(db, old, { status: "cancelled", reason: reasons.superseded(newId), now: now() })) { auditDeployFinished(db, old, now()); emit(old); }
     }
   }
 
@@ -154,7 +155,7 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
     try {
       for (const id of runningIdsForApp(db, app)) {
         stopLoop(id);
-        if (finishDeployment(db, id, { status: "cancelled", reason, now: now() })) emit(id);
+        if (finishDeployment(db, id, { status: "cancelled", reason, now: now() })) { auditDeployFinished(db, id, now()); emit(id); }
       }
     } catch (err) {
       log.error({ err, app }, "could not cancel deploys");

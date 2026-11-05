@@ -117,8 +117,13 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
     try {
       const app = await createApp(body);
       setDeployedApp(app.name);
-      setSubmitState("success");
       onShowToast({ title: `${app.name} is deploying`, variant: "success" });
+      // Source builds return before Kaniko finishes — go straight to live deploy logs.
+      if (body.source && app.deploymentId !== undefined) {
+        navigate(deployRedirectPath(app), { replace: true });
+        return;
+      }
+      setSubmitState("success");
       const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       navigateTimeoutRef.current = setTimeout(() => {
         navigate(deployRedirectPath(app), { replace: true });

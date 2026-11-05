@@ -4,6 +4,7 @@ import { getApp } from "../../k8s/app-lookup.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import type { DatabaseSync } from "node:sqlite";
 import { getAppSource } from "../../db/app-sources.js";
+import { getPendingCreateApp } from "./pending-app.js";
 import { appSchema, errorSchema } from "../apps-schemas.js";
 
 type GetAppRouteDeps = {
@@ -58,6 +59,8 @@ export function getAppRoutesWithDeps(deps: GetAppRouteDeps): FastifyPluginAsync 
           );
 
           if (!appData) {
+            const pending = deps.db ? getPendingCreateApp(deps.db, name) : undefined;
+            if (pending) return pending;
             return reply.status(404).send({
               ok: false,
               error: "app not found",

@@ -30,7 +30,15 @@ function EntryRow({ entry }: { entry: AuditEntry }) {
           <span className="text-pier-subtle">—</span>
         )}
       </TableCell>
-      <TableCell className="font-mono text-xs">{entry.target ?? <span className="text-pier-subtle">—</span>}</TableCell>
+      <TableCell className="font-mono text-xs">
+        {entry.app && entry.target && entry.action.startsWith("deploy.") ? (
+          <Link to={`/apps/${encodeURIComponent(entry.app)}/deployments/${encodeURIComponent(entry.target)}`} className={LINK}>
+            #{entry.target}
+          </Link>
+        ) : (
+          entry.target ?? <span className="text-pier-subtle">—</span>
+        )}
+      </TableCell>
       <TableCell className="text-xs text-pier-muted">{formatDetails(entry.details)}</TableCell>
       <TableCell className="whitespace-nowrap text-xs text-pier-muted">
         {entry.actor} · <span className="font-mono">{entry.ip}</span>

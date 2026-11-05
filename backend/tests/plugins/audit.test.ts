@@ -53,7 +53,9 @@ describe("audit log hook", () => {
       assert.equal(res.statusCode, call.status, `${call.method} ${call.url}: ${res.body}`);
     }
     const rows = actionsOf(db);
-    assert.deepEqual(rows.map((r) => [r.action, r.app, r.target, r.actor]), [
+    // Route audits plus deploy.cancelled when a later mutation supersedes a still-running deploy.
+    const routeRows = rows.filter((r) => !r.action.startsWith("deploy."));
+    assert.deepEqual(routeRows.map((r) => [r.action, r.app, r.target, r.actor]), [
       ["session.login", null, null, "session"],
       ["app.create", "web", null, "token"],
       ["app.update", "web", null, "token"],
@@ -64,12 +66,13 @@ describe("audit log hook", () => {
       ["volume.delete", null, "spare", "token"],
       ["app.delete", "web", null, "token"],
     ]);
-    assert.deepEqual(rows[1]?.details, { image: "nginx:1.27", port: 80, replicas: 1, envKeys: ["SECRET"], volumes: ["web-data"] });
-    assert.deepEqual(rows[2]?.details, { fields: ["env", "image"], envKeys: ["OTHER", "SECRET"] });
-    assert.deepEqual(rows[3]?.details, { replicas: 1 });
-    assert.deepEqual(rows[6]?.details, { size: "2Gi" });
-    assert.deepEqual(rows[8]?.details, { deleteVolumes: true });
-    assert.ok(rows.every((r) => r.ip === "127.0.0.1" && r.ts > 0));
+    assert.ok(rows.some((r) => r.action === "deploy.cancelled" && r.app === "web"));
+    assert.deepEqual(routeRows[1]?.details, { image: "nginx:1.27", port: 80, replicas: 1, envKeys: ["SECRET"], volumes: ["web-data"] });
+    assert.deepEqual(routeRows[2]?.details, { fields: ["env", "image"], envKeys: ["OTHER", "SECRET"] });
+    assert.deepEqual(routeRows[3]?.details, { replicas: 1 });
+    assert.deepEqual(routeRows[6]?.details, { size: "2Gi" });
+    assert.deepEqual(routeRows[8]?.details, { deleteVolumes: true });
+    assert.ok(rows.every((r) => (r.action.startsWith("deploy.") ? r.ip === "pier" : r.ip === "127.0.0.1") && r.ts > 0));
     const stored = JSON.stringify(db.prepare("SELECT * FROM audit_log").all());
     for (const secret of ["hunter2", "s3cr3t", TEST_TOKEN]) assert.ok(!stored.includes(secret), `stored ${secret}`);
     await app.close();

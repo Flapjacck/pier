@@ -2,6 +2,7 @@ import type { AuditDetailValue, AuditEntry } from "../api/types";
 
 const ACTION_LABELS: Record<string, string> = {
   "app.create": "Deployed app",
+  "app.redeploy": "Redeployed app",
   "app.update": "Changed settings",
   "app.scale": "Scaled",
   "app.restart": "Restarted",
@@ -10,6 +11,9 @@ const ACTION_LABELS: Record<string, string> = {
   "volume.create": "Created volume",
   "volume.delete": "Deleted volume",
   "session.login": "Signed in",
+  "deploy.succeeded": "Deploy succeeded",
+  "deploy.failed": "Deploy failed",
+  "deploy.cancelled": "Deploy cancelled",
 };
 
 /** Human label for an audit action; unknown actions show as-is. */

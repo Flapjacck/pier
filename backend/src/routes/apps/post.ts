@@ -16,13 +16,12 @@ import type { DeployTracker } from "../../deploys/tracker.js";
 import { recordDeployError, specFromApp, specFromCreateBody, withDeploymentId } from "./deploy-hooks.js";
 import { getRegistry } from "../../k8s/registries.js";
 import { InvalidBuildSourceError } from "../../k8s/builds/source.js";
-import { BuildFailedError } from "../../k8s/builds/run.js";
 import {
-  buildImageForDeploy,
   sourceFromBody,
-  specWithSource,
   type BuildConfig,
 } from "./build-deploy.js";
+import { scheduleCreateFromSource } from "./build-pipeline.js";
+import { hasRunningCreateBuild, pendingAppFromSpec } from "./pending-app.js";
 
 type PostAppsRouteDeps = {
   k8s: K8sClientsResult;
@@ -131,6 +130,10 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
         const hostErr = validateHost(hostNorm, deps);
         if (hostErr) return reply.status(hostErr.status).send(hostErr.body);
 
+        if (source && deps.db && hasRunningCreateBuild(deps.db, name)) {
+          return reply.status(409).send({ ok: false, error: "app already exists" });
+        }
+
         const buildOpts = source ? { build: true as const } : undefined;
         const initialSpec = specFromCreateBody({
           ...req.body,
@@ -168,24 +171,45 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
             );
           }
 
-          let image = hasImage ? req.body.image!.trim() : "pending";
+          // Dockerfile create: return immediately and build in the background so the
+          // client can open the deploy page and stream Build image logs (#83).
           if (source) {
             if (!deps.db || !deps.build || !deploy) {
               deploy?.discard();
               return reply.status(503).send({ ok: false, error: "builds unavailable" });
             }
-            const built = await buildImageForDeploy({
-              clients: deps.k8s.clients,
-              db: deps.db,
-              deploy,
-              app: name,
+            const pending = pendingAppFromSpec(name, {
+              ...initialSpec,
+              source: {
+                repo: source.repo,
+                branch: source.branch,
+                folder: source.folder,
+                dockerfile: source.dockerfile,
+                ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
+              },
+            }, {
+              deploymentId: deploy.id,
+              createdAtMs: Date.now(),
               source,
+              env,
+            });
+            scheduleCreateFromSource({
+              clients: deps.k8s.clients,
+              namespace: deps.namespace,
+              db: deps.db,
               build: deps.build,
+              deploy,
+              name,
+              source,
+              body: req.body,
+              hostNorm,
+              tlsIssuer: deps.tlsIssuer,
               log: req.log,
             });
-            image = built.image;
+            return reply.status(201).send(pending);
           }
 
+          const image = req.body.image!.trim();
           const appResult = await createAppSerialized(
             deps.k8s.clients,
             deps.namespace,
@@ -199,36 +223,15 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               resources,
               tlsIssuer: deps.tlsIssuer,
               volumes,
-              registry: source ? undefined : registry,
+              registry,
             },
             req.log,
           );
-          const appliedSpec = source
-            ? specWithSource(specFromApp(appResult), source, image)
-            : specFromApp(appResult);
-          deploy?.applied(appliedSpec);
-          const payload = withDeploymentId(appResult, deploy);
-          if (source) {
-            return reply.status(201).send({
-              ...payload,
-              source: {
-                repo: source.repo,
-                branch: source.branch,
-                folder: source.folder,
-                dockerfile: source.dockerfile,
-                ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
-                lastCommit: null,
-                lastImage: image,
-              },
-            });
-          }
-          return reply.status(201).send(payload);
+          deploy?.applied(specFromApp(appResult));
+          return reply.status(201).send(withDeploymentId(appResult, deploy));
         } catch (err) {
           req.log.error({ err }, "create app failed");
-          if (!(err instanceof BuildFailedError)) recordDeployError(deploy, err);
-          if (err instanceof BuildFailedError) {
-            return reply.status(422).send({ ok: false, error: "build failed", details: err.message });
-          }
+          recordDeployError(deploy, err);
           if (err instanceof InvalidBuildSourceError) {
             return reply.status(400).send({ ok: false, error: "invalid request", details: err.details });
           }

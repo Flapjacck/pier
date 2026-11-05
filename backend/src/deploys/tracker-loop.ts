@@ -6,6 +6,7 @@ import { evaluateDeploy } from "./evaluate.js";
 import { observeApp } from "./observe.js";
 import { reasons } from "./reasons.js";
 import { STEP_NAMES, type StepName } from "./types.js";
+import { auditDeployFinished } from "./audit-finish.js";
 
 export type TrackerLog = {
   info: (obj: object, msg: string) => void;
@@ -29,6 +30,7 @@ export function failDeploy(db: DatabaseSync, id: number, step: StepName, reason:
   if (done) {
     const failed = getDeployment(db, id)?.steps.find((s) => s.status === "failed")?.name ?? step;
     appendLog(db, { deploymentId: id, step: failed, level: "error", text: reason, ts: now });
+    auditDeployFinished(db, id, now);
   }
   return done;
 }
@@ -66,9 +68,12 @@ export async function tick(ctx: TickContext, id: number, isActive: () => boolean
   }
   const outcome = ev.outcome;
   if (!outcome) return { changed, finished: false };
-  const done =
-    outcome.status === "failed"
-      ? failDeploy(ctx.db, id, outcome.step, outcome.reason ?? "The deploy failed.", now)
-      : finishDeployment(ctx.db, id, { status: outcome.status, reason: outcome.reason, now });
+  let done: boolean;
+  if (outcome.status === "failed") {
+    done = failDeploy(ctx.db, id, outcome.step, outcome.reason ?? "The deploy failed.", now);
+  } else {
+    done = finishDeployment(ctx.db, id, { status: outcome.status, reason: outcome.reason, now });
+    if (done) auditDeployFinished(ctx.db, id, now);
+  }
   return { changed: changed || done, finished: true };
 }
