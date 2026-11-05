@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { listVolumes } from "../../api/client";
 import type { Volume } from "../../api/types";
+import { LastDeployRow } from "./LastDeployRow";
 import { useAppDetail } from "./useAppDetail";
 import { formatRelativeTime, formatAbsoluteDate } from "../../lib/time";
 
 /**
  * Overview tab: app metadata as a definition list.
- * Columns: Image, Port, Replicas, Host, URL, Created.
+ * Columns: Image, Port, Replicas, Host, URL, Created, Last deploy (#81), Volumes.
  */
 export function AppDetailOverview() {
   const { app } = useAppDetail();
@@ -97,6 +98,7 @@ export function AppDetailOverview() {
           </time>
         </dd>
       </div>
+      <LastDeployRow app={app.name} />
       {(app.volumes ?? []).length > 0 && (
         <div className="flex gap-4">
           <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">Volumes</dt>

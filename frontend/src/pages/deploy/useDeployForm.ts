@@ -2,11 +2,8 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../api/client";
 import { ApiError } from "../../api/errors";
-import {
-  validateDeployForm,
-  type DeployFormValues,
-  type FieldErrors,
-} from "../../lib/deployValidation";
+import { validateDeployForm, type DeployFormValues, type FieldErrors } from "../../lib/deployValidation";
+import { deployRedirectPath } from "../../lib/deploys";
 import { mapApiErrorToFields } from "./errorMapping";
 import type { EnvRow } from "./EnvRows";
 import type { AppResources, CreateAppBody } from "../../api/types";
@@ -143,7 +140,7 @@ export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptio
         const delay = prefersReduced ? 0 : 1500;
 
         navigateTimeoutRef.current = setTimeout(() => {
-          navigate(`/apps/${app.name}`, { replace: true });
+          navigate(deployRedirectPath(app), { replace: true });
         }, delay) as ReturnType<typeof setTimeout>;
       } catch (err) {
         if (err instanceof ApiError) {

@@ -16,7 +16,7 @@ import { AppDetailContext } from "./useAppDetail";
 /**
  * App detail layout: fetches app once and shares it with all tabs via Outlet context.
  * Header: app name, status, URL, refresh button, last updated.
- * Tabs: link-based navigation between overview, pods, logs, settings.
+ * Tabs: link-based navigation between overview, deployments, pods, logs, settings.
  * Loading/error states apply to all tabs (layout gates rendering).
  */
 export function AppDetailLayout() {
@@ -56,6 +56,7 @@ export function AppDetailLayout() {
   const tabItems: TabItem[] = useMemo(
     () => [
       { to: `/apps/${encodeURIComponent(name || "")}`, label: "Overview", end: true },
+      { to: `/apps/${encodeURIComponent(name || "")}/deployments`, label: "Deployments" },
       { to: `/apps/${encodeURIComponent(name || "")}/pods`, label: "Pods" },
       { to: `/apps/${encodeURIComponent(name || "")}/logs`, label: "Logs" },
       { to: `/apps/${encodeURIComponent(name || "")}/settings`, label: "Settings" },
@@ -79,7 +80,7 @@ export function AppDetailLayout() {
 
           {/* Skeleton tabs */}
           <div className="flex gap-4 border-b border-pier-border mb-6">
-            {Array.from({ length: 4 }).map((_, i) => (
+            {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-8 w-20" />
             ))}
           </div>

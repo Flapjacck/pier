@@ -6,11 +6,11 @@ import {
   parseClusterHealth,
   parseClusterPodsResult,
   parseDeleteAppResult,
-  parseRestartResult,
   parseSessionInfo,
   parseVolume, parseVolumeList,
 } from "./guards";
 import { parseAuditPage } from "./auditGuards";
+import { parseRestartResult } from "./deployGuards";
 import { request, requestVoid, type RequestOptions } from "./request";
 import type {
   App,
@@ -28,6 +28,7 @@ import type {
 } from "./types";
 
 export { ApiError, type ApiErrorKind } from "./errors";
+export { deploymentStreamUrl, getDeployment, listDeployments, type DeploymentsQuery } from "./deploys";
 export type {
   App,
   AppEvent,
@@ -41,6 +42,14 @@ export type {
   ClusterHealth,
   ClusterPodsResult,
   CreateAppBody,
+  DeployDetail,
+  DeployLine,
+  DeployPage,
+  DeployStatus,
+  DeployStep,
+  DeployStepName,
+  DeploySummary,
+  DeployTrigger,
   PartialAppResources,
   PodSummary,
   ResourcePair,

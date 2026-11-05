@@ -5,6 +5,7 @@ import { ApiError } from "../../api/errors";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/Dialog";
 import { useToast } from "../../components/ui/Toast";
+import { deployStartedText } from "../../lib/deploys";
 import { formatAbsoluteDate } from "../../lib/time";
 import { useAppDetail } from "./useAppDetail";
 import { useNavigate } from "react-router-dom";
@@ -41,8 +42,8 @@ export function AppDetailSettings() {
       const result = await restartApp(app.name);
       showToast({
         variant: "success",
-        title: `Restarted ${app.name}`,
-        description: `at ${formatAbsoluteDate(result.restartedAt)}`,
+        title: deployStartedText(result.deploymentId, `Restarted ${app.name}`),
+        description: `${app.name} restarted at ${formatAbsoluteDate(result.restartedAt)}`,
       });
       setRestartConfirm(false);
       refetch();
