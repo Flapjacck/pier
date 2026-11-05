@@ -30,6 +30,9 @@ To change the schema, add `migrations/00N_<name>.ts` with the next version and a
 | Table | Columns |
 |-------|---------|
 | `audit_log` | `id` (autoincrement), `ts` (epoch ms), `actor` (`token` or `session`), `ip`, `action` (e.g. `app.scale`), `app`, `target`, `status`, `details` (JSON object) |
+| `deployments` | `id` (autoincrement), `app`, `trigger` (`create`, `patch`, `restart`; `rollback`/`build` reserved), `status` (`running`, `succeeded`, `failed`, `cancelled`), `spec` (JSON: image, port, replicas, host, resources, volumes, env **key names**), `reason`, `generation` (the Deployment generation the change produced), `source_deployment_id` (for #87 rollbacks), `started_at`, `finished_at` (epoch ms) |
+| `deployment_steps` | `deployment_id` + `position` (primary key, cascade delete), `name`, `status` (`pending`, `running`, `succeeded`, `failed`, `skipped`), `started_at`, `finished_at` |
+| `deployment_logs` | `id`, `deployment_id` (cascade delete), `step`, `ts`, `level` (`info`, `warning`, `error`), `text`, `event_key` (unique per deploy, so a Kubernetes event is written once) |
 | `login_attempts` | `ip` (primary key), `count`, `reset_at` (epoch ms) |
 | `schema_migrations` | `version`, `name`, `applied_at` |
 
@@ -40,3 +43,9 @@ To change the schema, add `migrations/00N_<name>.ts` with the next version and a
 Details never hold env values, tokens or cookies. For env changes only the key names are kept (`envKeys`), and a PATCH records the field names it changed. A failed DB write is logged as `audit write failed` and never changes the response.
 
 Rows older than `PIER_AUDIT_RETENTION_DAYS` (default 90, 1–3650) are deleted at startup and hourly, together with expired login windows. Read the log with [`GET /api/audit`](../routes/README.md#get-apiaudit).
+
+## Deploy history
+
+Migration `002_deployments` (#81) adds the three `deployment*` tables. The deploy tracker in [`../deploys/`](../deploys/) writes them: [`deployments.ts`](deployments.ts) for writes, [`deployments-read.ts`](deployments-read.ts) for paged reads and [`deployments-prune.ts`](deployments-prune.ts) for retention. Kubernetes stays the source of truth for live app state. These tables only hold what each deploy asked for, its steps and the plain-language lines shown in the dashboard. Env values are never stored, only key names.
+
+Finished deploys are pruned in the same startup and hourly pass as the audit log. Rows older than `PIER_AUDIT_RETENTION_DAYS` are removed, and only the newest 50 finished deploys per app are kept. Running deploys are never pruned. Steps and lines go with their deploy (`ON DELETE CASCADE`). A failed write is logged with the deploy id and never fails the request that started the deploy. Read them with [`GET /api/apps/:name/deployments`](../routes/README.md#deploy-history-81).

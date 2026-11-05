@@ -96,6 +96,8 @@ With fake timers, don't use Testing Library's `waitFor` (it polls with the faked
 | `src/components/logs/LogsHeader.tsx` | Log viewer header bar with status, search, pod/tail selectors, and menu trigger (#65) |
 | `src/components/logs/LogsActionsMenu.tsx` | Copy/Download menu using shared Menu component (#65) |
 | `src/components/logs/LogsPanel.tsx` | Scrollable logs display with line numbers and "new lines" pill (#65) |
+| `src/hooks/useDeployments.ts`, `src/hooks/useDeployment.ts` | Deploy history paging and one deploy's live detail (SSE with a polling fallback) (#81) |
+| `src/components/deploys/` | `DeployList`, `DeploySteps`, `DeployStatusBadge` (#81) |
 | `src/hooks/useApps.ts` | Apps list fetcher with 10s auto-refresh (visible-tab only, no overlapping requests) |
 | `src/styles/tokens.css` | Pier semantic CSS variables (light/dark via `data-theme`) |
 | `src/styles/tailwind.theme.css` | Tailwind v4 `@theme` aliases → utilities |
@@ -157,10 +159,13 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
 - `/apps/new` → Deploy form (create new app with validation and error mapping; optional persistent volume)
 - `/apps/:name` → nested routes with `AppDetailLayout`:
-  - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created, attached volumes)
+  - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created, last deploy, attached volumes)
   - `/:name/pods` → Pods tab (pod status, image, restart/previous logs actions, and recent Kubernetes events; refreshes every 5s while visible)
-  - `/:name/logs` → Logs tab (live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
-  - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete
+  - `/:name/deployments` → Deployments tab: deploy history from `GET /api/apps/:name/deployments` (newest first, Load more, refreshes every 5s while a deploy is running) (#81)
+  - `/:name/deployments/:id` → one deploy: numbered, collapsible steps with durations and output; live over SSE while running, polling every 3s if the stream drops (e.g. while Pier itself restarts); failed step in red with the reason (#81)
+  - `/:name/logs` → Logs tab (latest deploy card with live steps, then live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
+  - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete. Saves and restarts toast `Deploy #N started`
+- After `/apps/new` succeeds, the form opens the new deploy (`/apps/:name/deployments/:id`) so you can watch it
 - `/activity` → Activity page: audit log from `GET /api/audit` (newest first, Load more, links to apps); `?app=<name>` shows one app
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)

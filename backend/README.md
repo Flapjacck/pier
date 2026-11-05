@@ -30,7 +30,8 @@ pnpm dev               # http://127.0.0.1:3000
 | `PIER_TLS_ISSUER` | unset (HTTP only) | server, `deploy-local.sh` | Name of a cert-manager ClusterIssuer (e.g. `pier-ca`). When set, app and dashboard Ingresses get TLS plus an HTTP to HTTPS redirect, app URLs are `https://`, and `GET /api/session` reports `tls: true`. Must be a lowercase DNS name. Needs cert-manager; see [k8s/README.md#tls](k8s/README.md#tls). |
 | `PIER_TRAEFIK_CONFIG` | `true` | `deploy-local.sh` | `false` skips applying `k8s/traefik-config.yaml` (Traefik `externalTrafficPolicy: Local`, needed for the real client IP on k3s). See [k8s/README.md#client-ip](k8s/README.md#client-ip). |
 | `PIER_DB_PATH` | `./data/pier.db` | server | SQLite file for the audit log and login limiter. The directory is created if missing. The Deployment sets `/data/pier.db` on the `pier-backend-data` PVC. See [Database](#database). |
-| `PIER_AUDIT_RETENTION_DAYS` | `90` | server | Days to keep audit rows (integer 1–3650, otherwise startup fails). Older rows are pruned at startup and hourly. |
+| `PIER_AUDIT_RETENTION_DAYS` | `90` | server | Days to keep audit rows and finished deploys (integer 1–3650, otherwise startup fails). Older rows are pruned at startup and hourly. |
+| `PIER_DEPLOY_TIMEOUT_SECONDS` | `300` | server | How long a deploy may run before it is marked failed with a timeout reason (integer 30–3600, otherwise startup fails). See [Deploy history](src/routes/README.md#deploy-history-81). |
 | `KUBECONFIG` | `~/.kube/config` | server (outside a pod, at startup) | Read once at startup via `loadKubeConfig()`. Use an absolute path; `~` is not expanded in `.env`. Ignored in-cluster. Changes require a server restart. |
 | `K3S_HOST` | none | `deploy-local.sh` | k3s node address for the SSH image import. |
 | `K3S_SSH_USER` | none | `deploy-local.sh` | SSH user on the k3s node (needs passwordless `sudo k3s ctr`). |
@@ -61,15 +62,18 @@ All cluster and app routes are served under the `/api` prefix. The health endpoi
 | GET | `/api/cluster/health` | auth | API server version and Ready/total node counts. |
 | GET | `/api/cluster/pods` | auth | Every pod in every namespace. |
 | GET | `/api/apps` | auth | Deployments in `PIER_NAMESPACE` labelled `pier.app`. |
-| POST | `/api/apps` | auth | Create Deployment, Service, and optional Ingress. Accepts JSON: `{ name, image, port, replicas?, host?, env? }`. Returns `201` with App; `400` for validation; `409` if name or host exists; `503` if cluster unreachable. |
+| POST | `/api/apps` | auth | Create Deployment, Service, and optional Ingress. Accepts JSON: `{ name, image, port, replicas?, host?, env? }`. Returns `201` with App (plus `deploymentId`); `400` for validation; `409` if name or host exists; `503` if cluster unreachable. |
 | GET | `/api/apps/:name` | auth | Retrieve a single app. Returns `200` with App; `400` if name is invalid; `404` if not found; `503` if cluster unreachable. |
 | GET | `/api/apps/:name/pods` | auth | List pods for an app, including image and last exit code. |
 | DELETE | `/api/apps/:name/pods/:pod` | auth | Delete one app pod so its Deployment replaces it; returns `202`. |
 | GET | `/api/apps/:name/events` | auth | List recent app workload events, newest first. |
 | GET | `/api/apps/:name/logs` | auth | Stream logs from an app pod (plain text or SSE). Query params: `pod`, `tail` (1–5000, default 200), `follow` (true/false), `previous` (true/false). |
 | PATCH | `/api/apps/:name/scale` | auth | Scale an app to 0–10 replicas. Accepts JSON: `{ replicas }`. Returns `200` with App; `404` if app unknown or terminating; `400`/`503` on error. |
-| POST | `/api/apps/:name/restart` | auth | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt }`; `404` if app unknown; `400`/`503` on error. |
+| POST | `/api/apps/:name/restart` | auth | Restart an app by triggering a pod rollout. No body. Returns `202` with `{ ok, restartedAt, deploymentId }`; `404` if app unknown; `400`/`503` on error. |
 | DELETE | `/api/apps/:name` | auth | Delete an app (Deployment, Service, Ingress). No body. Returns `204` empty (idempotent); `404` if app unknown or already gone; `400`/`503` on error. |
+| GET | `/api/apps/:name/deployments` | auth | Deploy history, newest first. Query: `limit` (1–50, default 20), `before`. Returns `{ ok, deployments, nextBefore }`. See [src/routes/README.md](src/routes/README.md#deploy-history-81). |
+| GET | `/api/apps/:name/deployments/:id` | auth | One deploy with its steps and lines. `404` if unknown or another app's. |
+| GET | `/api/apps/:name/deployments/:id/stream` | auth | SSE: `deployment` events with the full detail on each change, then `end`. |
 | GET | `/api/audit` | auth | Audit log, newest first. Query: `limit` (1–200, default 50), `before` (entry id cursor), `app`. Returns `{ ok, entries, nextBefore }`; `500` if the database can't be read. See [src/routes/README.md](src/routes/README.md#get-apiaudit). |
 
 \* Public endpoints; `POST /api/login` returns `400` if auth is disabled.  
@@ -292,7 +296,7 @@ kubectl -n default rollout undo deploy/pier-backend
 
 ### Database
 
-Pier's SQLite database (audit log and login limiter) lives at `PIER_DB_PATH`, which is `/data/pier.db` on the `pier-backend-data` PVC in the cluster. Migrations run on every startup and are idempotent. Details are in [src/db/README.md](src/db/README.md).
+Pier's SQLite database (audit log, login limiter and deploy history) lives at `PIER_DB_PATH`, which is `/data/pier.db` on the `pier-backend-data` PVC in the cluster. Migrations run on every startup and are idempotent. Details are in [src/db/README.md](src/db/README.md).
 
 Because the PVC is `ReadWriteOnce`, the Deployment uses `strategy: Recreate`: the old pod stops before the new one starts, so each deploy or restart has a short downtime (a few seconds until the readiness probe passes).
 

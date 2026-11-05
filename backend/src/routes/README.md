@@ -371,7 +371,7 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 { "name": "hello", "image": "nginx:1.27", "replicas": 2, "ready": 0, "status": "building", "createdAt": "2026-10-31T16:00:00.000Z", "port": 8080, "host": "hello.192.0.2.10.nip.io", "url": "http://hello.192.0.2.10.nip.io" }
 ```
 
-When `host` is not provided in the request, `host` and `url` are omitted from the 201 response (only `port` is included).
+When `host` is not provided in the request, `host` and `url` are omitted from the 201 response (only `port` is included). The 201 also carries `deploymentId`, the deploy whose steps you can follow at `GET /api/apps/:name/deployments/:id` ([Deploy history](#deploy-history-81)).
 
 | Status | Error | Details? | Reason |
 |--------|-------|----------|--------|
@@ -626,7 +626,7 @@ Unknown fields and `{}` return 400.
 
 ### Response
 
-**200**: the updated App (same shape as `GET /api/apps/:name`, without `host`/`url`).
+**200**: the updated App (same shape as `GET /api/apps/:name`, without `host`/`url`), plus `deploymentId` for the recorded deploy ([Deploy history](#deploy-history-81)).
 
 | Status | Error | Reason |
 |--------|-------|--------|
@@ -712,10 +712,10 @@ No body required. Method is POST for visibility (it's a side effect operation).
 **202 (accepted)**: Pod rollout triggered.
 
 ```json
-{ "ok": true, "restartedAt": "2026-10-31T16:05:30.000Z" }
+{ "ok": true, "restartedAt": "2026-10-31T16:05:30.000Z", "deploymentId": 13 }
 ```
 
-`restartedAt` is the UTC timestamp of the restart operation.
+`restartedAt` is the UTC timestamp of the restart operation. `deploymentId` is the recorded deploy (see [Deploy history](#deploy-history-81)); it is omitted if the database write failed.
 
 **400 (validation error)**: bad app name (see PATCH /apps/:name/scale for details).
 
@@ -819,6 +819,63 @@ curl -X POST "${AUTH[@]}" -H "Content-Type: application/json" \
 wait
 # Result: exactly one 201 with an app created, one 409 with "host already in use"
 ```
+## Deploy history (#81)
+
+Every `POST /api/apps`, `PATCH /api/apps/:name` and `POST /api/apps/:name/restart` records a deploy and returns its id as `deploymentId` (the restart body is `{ ok, restartedAt, deploymentId }`). Scaling isn't recorded as a deploy. A request rejected before it touched the cluster with a 409 (name or host taken) or 404 leaves no record. A validation error is recorded as a failed **Validate** step, and any other cluster error as a failed **Apply resources** step with the API message. `DELETE /api/apps/:name` cancels the app's running deploys.
+
+Steps, in order: `validate` (Validate), `apply` (Apply resources), `schedule` (Schedule pod), `pull` (Pull image), `start` (Start container), `health` (Health check), `ready` (Ready). A `build` step is reserved for #83. The backend polls the Deployment, its ReplicaSets, pods and namespace events every 2 s with get/list only, so no RBAC beyond `rbac-apps.yaml` is needed. It turns them into step changes and short plain-language lines. A deploy fails on the step where something went wrong, with a readable `reason`:
+
+| Cause | Step | Reason example |
+|-------|------|----------------|
+| `ImagePullBackOff` / `ErrImagePull` / `InvalidImageName` | Pull image | `The image nginx:nope could not be pulled: … Check the name and tag (and registry access).` |
+| `CreateContainerConfigError`, `CrashLoopBackOff`, `OOMKilled` | Start container | `The container keeps crashing (exit code 1). Check the Logs tab.`, `OOMKilled: the app ran out of memory (limit 256Mi). Raise the RAM limit in Settings.` |
+| `Unschedulable` for 60 s, ResourceQuota `ReplicaFailure` | Schedule pod | `No node can run the pod: …`, `The namespace quota is full: … Lower CPU/RAM in Settings or remove another app.` |
+| `ProgressDeadlineExceeded` or `PIER_DEPLOY_TIMEOUT_SECONDS` (default 300) | the current step | `Timed out after 5m waiting for Health check…` plus the last warning |
+
+A newer deploy of the same app cancels the older running one (`Superseded by deploy #N.`). Deleting the Deployment out of band cancels it (`The app was deleted.`). When Pier restarts, running deploys that had already been applied resume tracking (with a `Pier restarted; resumed tracking.` line), and ones that hadn't been applied are failed with `Pier restarted before the change was applied…`. History is read from the database only, so it stays readable after the app is deleted. Deploy records keep the requested image, port, replicas, host, resources, volumes and **env key names only**, never env values.
+
+All three routes need auth and validate their params (400 on a bad name, id, `limit` or an unknown query param). Response schemas strip any unknown fields.
+
+### `GET /api/apps/:name/deployments`
+
+Query: `limit` (1–50, default 20), `before` (deploy id cursor, ≥ 1). The response is newest first, and `nextBefore` is `null` on the last page.
+
+```json
+{
+  "ok": true,
+  "deployments": [
+    {
+      "id": 12, "app": "web", "trigger": "patch", "status": "failed",
+      "reason": "The image nginx:nope could not be pulled: Back-off pulling image \"nginx:nope\". Check the name and tag (and registry access).",
+      "startedAt": "2026-11-05T16:00:00.000Z", "finishedAt": "2026-11-05T16:00:41.000Z", "durationMs": 41000,
+      "spec": { "image": "nginx:nope", "port": 8080, "replicas": 1, "envKeys": ["API_KEY"] },
+      "currentStep": "pull"
+    }
+  ],
+  "nextBefore": null
+}
+```
+
+`trigger` is one of `create`, `patch`, `restart`, `rollback` or `build` (the last two are reserved for #87 and #83). `status` is `running`, `succeeded`, `failed` or `cancelled`.
+
+### `GET /api/apps/:name/deployments/:id`
+
+Returns `{ ok, deployment }`: a summary plus `steps`, each `{ name, label, status (pending|running|succeeded|failed|skipped), startedAt, finishedAt, durationMs, lines: [{ ts, level (info|warning|error), text }] }`. Returns 404 `deployment not found` when the id doesn't exist or belongs to another app.
+
+### `GET /api/apps/:name/deployments/:id/stream`
+
+Server-Sent Events (`text/event-stream`). Every message is `event: deployment` with the full detail JSON (the same shape as above). It sends one on connect and one per change, and it re-reads the database every 5 s in case an in-process event was missed. When the deploy finishes it sends `event: end` and closes. There's a `: ping` comment every 15 s. A finished deploy sends one `deployment` and `end` straight away. Returns 404 as above.
+
+```bash
+API=http://pier.192.0.2.10.nip.io/api
+AUTH=(-H "Authorization: Bearer $PIER_API_TOKEN")
+curl -s "${AUTH[@]}" "$API/apps/web/deployments?limit=5"
+curl -s "${AUTH[@]}" "$API/apps/web/deployments/12"
+curl -sN "${AUTH[@]}" "$API/apps/web/deployments/12/stream"
+```
+
+The dashboard follows the stream and falls back to polling the detail every 3 s if it drops. That happens for a few seconds whenever Pier itself is redeployed, because `pier-backend` uses `strategy: Recreate`.
+
 ## `GET /api/audit`
 
 Audit log of successful mutating requests, newest first. Requires auth. One row is written per 2xx response of an audited route (see [`../db/README.md`](../db/README.md#audit-log)); failed requests, GETs and logout are not recorded.
