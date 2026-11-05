@@ -8,6 +8,7 @@ export type RegistryCredential = {
   registry?: string;
   username: string;
   password: string;
+  createdAt?: string;
 };
 
 export type RegistrySummary = Omit<RegistryCredential, "password"> & { createdAt: string };
@@ -116,7 +117,14 @@ function decodeRegistry(secret: V1Secret): RegistryCredential | undefined {
     };
     const entry = Object.entries(auths.auths ?? {})[0];
     if (!entry?.[1]?.username || entry[1].password === undefined) return undefined;
-    return { name, host: normalizeRegistryHost(entry[0]), username: entry[1].username, password: entry[1].password };
+    const createdAt = secret.metadata?.creationTimestamp;
+    return {
+      name,
+      host: normalizeRegistryHost(entry[0]),
+      username: entry[1].username,
+      password: entry[1].password,
+      ...(createdAt ? { createdAt: createdAt instanceof Date ? createdAt.toISOString() : String(createdAt) } : {}),
+    };
   } catch {
     return undefined;
   }

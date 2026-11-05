@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { inspectImage } from "../../src/images/inspect.js";
+import { inspectImage, probeRegistry } from "../../src/images/inspect.js";
 
 type ResponseInit = { status?: number; headers?: HeadersInit };
 
@@ -9,6 +9,31 @@ function response(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe("inspectImage", () => {
+  it("probes Docker Hub at registry-1.docker.io and follows bearer auth", async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === "https://registry-1.docker.io/v2/") {
+        return response({}, calls.length === 1 ? { status: 401, headers: { "www-authenticate": 'Bearer realm="https://auth.example/token",service="registry"' } } : {});
+      }
+      return response({ token: "token" });
+    };
+    await probeRegistry({ name: "docker", host: "docker.io", username: "u", password: "p" }, fetcher);
+    assert.deepEqual(calls, ["https://registry-1.docker.io/v2/", "https://auth.example/token?service=registry", "https://registry-1.docker.io/v2/"]);
+  });
+
+  it("maps unauthorized and network probe failures without leaking credentials", async () => {
+    await assert.rejects(
+      probeRegistry({ name: "x", host: "example.test", username: "u", password: "secret" }, async () => response({}, { status: 403 })),
+      /invalid credentials/,
+    );
+    await assert.rejects(
+      probeRegistry({ name: "x", host: "example.test", username: "u", password: "secret" }, async () => { throw new Error("secret"); }),
+      /registry unreachable/,
+    );
+  });
+
   it("reads ports, volumes, and command without a Docker daemon", async () => {
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);

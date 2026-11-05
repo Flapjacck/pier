@@ -43,6 +43,12 @@ describe("buildUpdateBody", () => {
     expect(result).toMatchObject({ ok: true, body: { resources } });
   });
 
+  it("clears a registry with null", () => {
+    const withRegistry: App = { ...app, registry: "ghcr" };
+    expect(buildUpdateBody(withRegistry, { ...configValuesFromApp(withRegistry), registry: "" }))
+      .toMatchObject({ ok: true, body: { registry: null } });
+  });
+
   it("treats a backend without resources as the defaults", () => {
     const legacy: App = { ...app, resources: undefined };
     expect(buildUpdateBody(legacy, configValuesFromApp(legacy))).toMatchObject({ changed: false });

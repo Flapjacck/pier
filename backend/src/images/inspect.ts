@@ -74,8 +74,51 @@ export async function inspectImage(image: string, credential?: RegistryCredentia
   };
 }
 
+export async function probeRegistry(credential: RegistryCredential, fetcher: typeof fetch = fetch): Promise<void> {
+  try {
+    const host = normalizeHost(credential.host ?? credential.registry ?? "");
+    const base = `https://${host === "docker.io" ? "registry-1.docker.io" : host}`;
+    const auth = `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}`;
+    const response = await fetcher(`${base}/v2/`, {
+      headers: { authorization: auth },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (response.status === 403) throw new Error("invalid credentials");
+    if (response.ok) return;
+    if (response.status !== 401) throw new Error("registry unreachable");
+    const token = await tokenFromChallenge(response.headers.get("www-authenticate"), credential, fetcher);
+    const authorized = await fetcher(`${base}/v2/`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (authorized.status === 401 || authorized.status === 403) throw new Error("invalid credentials");
+    if (!authorized.ok) throw new Error("registry unreachable");
+  } catch (error) {
+    if (error instanceof Error && (error.message === "invalid credentials" || error.message === "registry unreachable")) throw error;
+    throw new Error("registry unreachable");
+  }
+}
+
 function normalizeHost(host: string): string {
   return host.replace(/^https?:\/\//, "").replace(/\/+$/, "").replace(/^registry-1\./, "").toLowerCase();
+}
+
+async function tokenFromChallenge(challenge: string | null, credential: RegistryCredential, fetcher: typeof fetch): Promise<string> {
+  const match = challenge ? /^Bearer\s+(.+)$/i.exec(challenge) : undefined;
+  const params = match ? Object.fromEntries([...match[1].matchAll(/([a-z]+)="([^"]*)"/g)].map((item) => [item[1], item[2]])) : {};
+  if (!params.realm) throw new Error("invalid credentials");
+  const url = new URL(params.realm);
+  if (params.service) url.searchParams.set("service", params.service);
+  const response = await fetcher(url, {
+    headers: { authorization: `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 401 || response.status === 403) throw new Error("invalid credentials");
+  if (!response.ok) throw new Error("registry unreachable");
+  const body = await readJson<{ token?: string; access_token?: string }>(response);
+  const token = body.token ?? body.access_token;
+  if (!token) throw new Error("invalid credentials");
+  return token;
 }
 
 class RegistryHttpError extends Error {

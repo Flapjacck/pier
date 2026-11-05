@@ -32,7 +32,7 @@ export type App = {
   /** CPU/RAM requests and limits (always set by current backends). */
   resources?: AppResources;
   volumes?: { name: string; mountPath: string }[];
-  registry?: string;
+  registry?: string | null;
   /** Deploy record started by a create/PATCH (#81); absent on reads. */
   deploymentId?: number;
 };
@@ -133,7 +133,7 @@ export type UpdateAppBody = {
   env?: Record<string, string>;
   resources?: PartialAppResources;
   volumes?: VolumeMount[];
-  registry?: string;
+  registry?: string | null;
 };
 
 export type Registry = {

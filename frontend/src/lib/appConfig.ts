@@ -71,7 +71,7 @@ export function buildUpdateBody(app: App, values: AppConfigValues): AppConfigRes
   if (Number(port) !== app.port) body.port = Number(port);
   if (!sameEnv(env, app.env ?? {})) body.env = env;
   if (!sameResources(resources, appResources(app))) body.resources = resources;
-  if (values.registry !== (app.registry ?? "")) body.registry = values.registry || "";
+  if (values.registry !== (app.registry ?? "")) body.registry = values.registry || null;
   return { ok: true, body, changed: Object.keys(body).length > 0 };
 }
 
