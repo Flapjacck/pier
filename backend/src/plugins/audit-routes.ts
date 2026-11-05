@@ -112,4 +112,4 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
 };
 
 /** Mutating routes that are intentionally not audited. */
-export const UNAUDITED_ROUTES = new Set(["POST /api/logout", "POST /api/images/inspect"]);
+export const UNAUDITED_ROUTES = new Set(["POST /api/logout", "POST /api/images/inspect", "POST /api/git/probe"]);

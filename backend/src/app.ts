@@ -22,6 +22,7 @@ import { deploymentsRoutesWithDeps } from "./routes/deployments";
 import { registriesRoutesWithDeps } from "./routes/registries";
 import { imageRoutesWithDeps } from "./routes/images";
 import { gitCredentialsRoutesWithDeps } from "./routes/git-credentials";
+import { gitProbeRoutesWithDeps } from "./routes/git-probe";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -143,6 +144,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(registriesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(gitCredentialsRoutesWithDeps({ k8s: k8sResult, namespace: config.buildNamespace, db }));
+    await api.register(gitProbeRoutesWithDeps({ k8s: k8sResult, namespace: config.buildNamespace }));
     await api.register(imageRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(auditRoutesWithDeps({ db }));
   }, { prefix: "/api" });
