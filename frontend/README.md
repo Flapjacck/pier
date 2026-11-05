@@ -118,6 +118,7 @@ With fake timers, don't use Testing Library's `waitFor` (it polls with the faked
 - **Session:** `POST /api/login` with `{ token }` sets the HttpOnly `pier_session` cookie (path `/api`). The token is sent once in the POST body and is **not** stored in JavaScript (`localStorage`, `sessionStorage`, or JS-readable cookies). `GET /api/session` returns `{ ok, authDisabled, ingressDomain }` so the frontend knows the cluster's domain suffix for host prefill on deploy forms.
 - **Guard:** `AuthProvider` probes `GET /api/session` on load. `RequireAuth` sends anonymous users to `/login?next=…` (same-origin paths only). When `authDisabled` is true (backend has no `PIER_API_TOKEN`), `TokenRequiredPage` is shown instead of login. Any other `401` triggers redirect to login unless auth is disabled.
 - **Data hook:** `useApi` is an in-house hook (no TanStack Query) to keep dependencies minimal and match Pier’s small surface area; it aborts on unmount and dependency changes.
+- **Registries:** `/registries` manages write-only registry credentials; saved names can be selected during deploys and in app settings. `Check image` calls the manifest inspection endpoint and pre-fills exposed ports and declared volume paths without pulling the image.
 
 ## Stack versions
 
@@ -158,6 +159,7 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/` → redirect to `/apps` (requires session)
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
 - `/apps/new` → Deploy form (create new app with validation and error mapping; optional persistent volume)
+- `/registries` → Saved registry credentials (host and username metadata only), with add, edit, test, and delete actions
 - `/apps/:name` → nested routes with `AppDetailLayout`:
   - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created, last deploy, attached volumes)
   - `/:name/pods` → Pods tab (pod status, image, restart/previous logs actions, and recent Kubernetes events; refreshes every 5s while visible)
@@ -167,6 +169,10 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
   - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete. Saves and restarts toast `Deploy #N started`
 - After `/apps/new` succeeds, the form opens the new deploy (`/apps/:name/deployments/:id`) so you can watch it
 - `/activity` → Activity page: audit log from `GET /api/audit` (newest first, Load more, links to apps); `?app=<name>` shows one app
+
+The deploy form's **Check image** action reads registry metadata without pulling
+the image, prefills an untouched port, and links declared volume paths into the
+existing volume section.
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
 - Dev only: `/__boom` throws to test the error boundary

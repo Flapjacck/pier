@@ -14,6 +14,7 @@ export type DeployFormValues = {
   /** Omitted or equal to DEFAULT_RESOURCES: nothing is sent and the backend defaults apply. */
   resources?: AppResources;
   volume?: { name: string; mountPath: string; size?: string };
+  registry?: string;
 };
 
 export type FieldErrors = {
@@ -185,6 +186,7 @@ export function validateDeployForm(
     }
     body.volumes = [values.volume];
   }
+  if (values.registry) body.registry = values.registry;
 
   return { ok: true, body };
 }

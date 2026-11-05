@@ -59,6 +59,7 @@ export type {
   UpdateAppBody,
   Volume, VolumeMount,
 } from "./types";
+export type { Registry, ImageInspection } from "./types";
 
 function withSignal(options: RequestOptions | undefined, signal?: AbortSignal): RequestOptions {
   return { ...options, signal: options?.signal ?? signal };

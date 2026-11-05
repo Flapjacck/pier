@@ -16,6 +16,7 @@ import { DeployPage } from "./pages/DeployPage";
 import { BoomPage } from "./pages/BoomPage";
 import { ErrorPage } from "./pages/ErrorPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { RegistriesPage } from "./pages/RegistriesPage";
 
 const devRoutes = import.meta.env.DEV
   ? [{ path: "__boom", element: <BoomPage /> }]
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
               { path: "apps", element: <AppsPage /> },
               { path: "apps/new", element: <DeployPage /> },
               { path: "activity", element: <ActivityPage /> },
+              { path: "registries", element: <RegistriesPage /> },
               {
                 path: "apps/:name",
                 element: <AppDetailLayout />,
