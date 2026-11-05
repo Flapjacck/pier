@@ -94,8 +94,9 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     timeoutMs: config.deployTimeoutSeconds * 1000,
     pollMs: opts.deployPollMs,
   });
-  // Pick up deploys that were running when Pier last stopped.
-  if (k8sResult.ok) tracker.resume();
+  // Pick up deploys that were running when Pier last stopped. Also when the cluster is
+  // unreachable: unapplied ones fail now and the rest time out instead of staying running.
+  tracker.resume();
   app.addHook("onClose", async () => {
     tracker.stop();
     stopPruning();
