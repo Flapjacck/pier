@@ -168,7 +168,7 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
             );
           }
 
-          let image = req.body.image!.trim();
+          let image = hasImage ? req.body.image!.trim() : "pending";
           if (source) {
             if (!deps.db || !deps.build || !deploy) {
               deploy?.discard();

@@ -380,3 +380,66 @@ describe("POST /api/apps error handling", () => {
     await app.close();
   });
 });
+
+describe("POST /api/apps source create (#83)", () => {
+  it("does not treat a source-only body as cluster unreachable", async () => {
+    const app = await buildApp(testConfig(), {
+      logger: false,
+      k8s: createFakeClientsResult({
+        apps: {
+          readNamespacedDeployment: async () => {
+            throw new FakeApiError(404);
+          },
+        } as never,
+        batch: {
+          createNamespacedJob: async () => {
+            throw new Error("batch create failed on purpose");
+          },
+        } as never,
+        core: {
+          listNamespacedPod: async () => ({ items: [] }),
+        } as never,
+      }),
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/apps",
+      headers: authHeader,
+      payload: {
+        name: "hello",
+        port: 80,
+        source: {
+          repo: "https://github.com/example/app",
+          branch: "main",
+          folder: ".",
+          dockerfile: "Dockerfile",
+        },
+      },
+    });
+    const body = res.json() as { error?: string; details?: string };
+    assert.notEqual(body.error, "cluster unreachable");
+    assert.notEqual(res.statusCode, 503);
+    // Build Job create fails → build failed 422
+    assert.equal(res.statusCode, 422);
+    assert.equal(body.error, "build failed");
+    await app.close();
+  });
+
+  it("rejects both image and source", async () => {
+    const app = await buildApp(testConfig(), { logger: false });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/apps",
+      headers: authHeader,
+      payload: {
+        name: "hello",
+        image: "nginx:1.27",
+        port: 80,
+        source: { repo: "https://github.com/example/app" },
+      },
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match((res.json() as { details?: string }).details ?? "", /exactly one/);
+    await app.close();
+  });
+});
