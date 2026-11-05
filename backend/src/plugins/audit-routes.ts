@@ -82,7 +82,11 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
   },
   "DELETE /api/volumes/:name": { action: "volume.delete", app: () => null, target: paramName },
   "POST /api/login": { action: "session.login", app: () => null },
+  "POST /api/registries": { action: "registry.create", app: () => null, details: (req) => pick(record(req.body), ["name", "host"]) },
+  "DELETE /api/registries/:name": { action: "registry.delete", app: () => null, target: paramName, details: (req) => ({ name: paramName(req) ?? "" }) },
+  "PATCH /api/registries/:name": { action: "registry.update", app: () => null, target: paramName, details: (req) => ({ name: paramName(req) ?? "", ...pick(record(req.body), ["host"]) }) },
+  "POST /api/registries/:name/test": { action: "registry.test", app: () => null, target: paramName },
 };
 
 /** Mutating routes that are intentionally not audited. */
-export const UNAUDITED_ROUTES = new Set(["POST /api/logout"]);
+export const UNAUDITED_ROUTES = new Set(["POST /api/logout", "POST /api/images/inspect"]);
