@@ -65,7 +65,18 @@ async function lsRemoteHeads(remote: string): Promise<string[]> {
     return branches.sort((a, b) => a.localeCompare(b));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/not found|Repository not found|fatal: /i.test(msg)) {
+    const stderr =
+      err && typeof err === "object" && "stderr" in err && typeof (err as { stderr: unknown }).stderr === "string"
+        ? (err as { stderr: string }).stderr
+        : "";
+    const combined = `${msg}\n${stderr}`;
+    if (/ENOENT|spawn git|not found.*git|git: not found/i.test(combined)) {
+      throw new GitProbeError("git is not installed on the Pier backend", 502);
+    }
+    if (/Authentication failed|could not read Username|Invalid username/i.test(combined)) {
+      throw new GitProbeError("Authentication failed — pick a git credential or use a public repo", 404);
+    }
+    if (/not found|Repository not found|fatal: repository/i.test(combined)) {
       throw new GitProbeError("Repository not found or not accessible", 404);
     }
     throw new GitProbeError(`Could not list branches (${redact(remote)})`, 502);
