@@ -41,5 +41,6 @@ export type DeploySpec = {
   host?: string;
   resources?: { requests?: Record<string, string>; limits?: Record<string, string> };
   volumes?: { name: string; mountPath: string }[];
+  registry?: string | null;
   envKeys?: string[];
 };

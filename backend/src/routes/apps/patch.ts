@@ -7,6 +7,7 @@ import { AppNotFoundError, updateApp } from "../../k8s/update-app.js";
 import { appSchema, errorSchema, patchAppBodySchema, type PatchAppBody } from "../apps-schemas.js";
 import { mapClusterWriteError } from "./cluster-errors.js";
 import { mapVolumeError } from "../volume-errors.js";
+import { getRegistry } from "../../k8s/registries.js";
 
 type PatchAppRouteDeps = {
   k8s: K8sClientsResult;
@@ -55,7 +56,13 @@ export function patchAppRoutesWithDeps(deps: PatchAppRouteDeps): FastifyPluginAs
 
         const deploy = deps.tracker?.begin(name, "patch", specFromPatch(req.body)) ?? null;
         try {
-          const updated = await updateApp(deps.k8s.clients, deps.namespace, name, req.body, req.log);
+          const input = req.body.registry && !(await getRegistry(deps.k8s.clients.core, deps.namespace, req.body.registry))
+            ? undefined
+            : req.body.registry === undefined
+              ? req.body
+              : req.body;
+          if (!input) return reply.status(404).send({ ok: false, error: "registry not found" });
+          const updated = await updateApp(deps.k8s.clients, deps.namespace, name, input, req.log);
           deploy?.applied(specFromApp(updated));
           return reply.status(200).send(withDeploymentId(updated, deploy));
         } catch (err) {

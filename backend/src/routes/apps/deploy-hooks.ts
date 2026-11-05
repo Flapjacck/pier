@@ -52,6 +52,7 @@ export function specFromCreateBody(body: PostAppsBody): DeploySpec {
     resources: resources(body.resources),
     volumes: volumes(body.volumes),
     envKeys: envKeys(body.env),
+    registry: body.registry,
   });
 }
 
@@ -63,6 +64,7 @@ export function specFromPatch(body: PatchAppBody): DeploySpec {
     resources: resources(body.resources),
     volumes: volumes(body.volumes),
     envKeys: envKeys(body.env),
+    registry: body.registry,
   });
 }
 
@@ -75,6 +77,7 @@ export function specFromApp(app: App): DeploySpec {
     resources: resources(app.resources),
     volumes: volumes(app.volumes),
     envKeys: envKeys(app.env) ?? [],
+    registry: app.registry,
   });
 }
 

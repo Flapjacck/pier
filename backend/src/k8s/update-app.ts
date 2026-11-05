@@ -31,6 +31,7 @@ export type UpdateAppInput = {
   /** Merged onto the app's current requests/limits. */
   resources?: PartialAppResources;
   volumes?: VolumeMount[];
+  registry?: string | null;
 };
 
 /** The app doesn't exist (or is being deleted). */
@@ -48,7 +49,7 @@ export class InvalidResourcesError extends Error {
     this.name = "InvalidResourcesError";
   }
 }
-export type JsonPatchOp = { op: "add" | "replace"; path: string; value: unknown };
+export type JsonPatchOp = { op: "add" | "replace" | "remove"; path: string; value?: unknown };
 
 const CONTAINER = "/spec/template/spec/containers/0";
 
@@ -96,6 +97,18 @@ export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources, 
       ops.push({ op: "add", path: "/spec/replicas", value: 1 });
     }
   }
+  if (input.registry !== undefined) {
+    ops.push({
+      op: "add",
+      path: "/spec/template/spec/imagePullSecrets",
+      value: input.registry ? [{ name: `pier-registry-${input.registry}` }] : [],
+    });
+    if (input.registry) {
+      ops.push({ op: "add", path: "/metadata/labels/pier.registry", value: input.registry });
+    } else {
+      ops.push({ op: "remove", path: "/metadata/labels/pier.registry" });
+    }
+  }
   return ops;
 }
 
@@ -130,7 +143,8 @@ export async function updateApp(
     (input.image !== undefined && input.image !== container?.image) ||
     portChanged ||
     input.env !== undefined ||
-    nextResources !== undefined;
+    nextResources !== undefined ||
+    input.registry !== undefined;
   const currentReplicas = deployment.spec?.replicas ?? 1;
   const currentMounts = volumeMountsOf(deployment);
   const nextMounts = input.volumes;
