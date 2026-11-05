@@ -10,7 +10,6 @@ import type {
   KubeConfigMode,
   PodSummary,
   ResourcePair,
-  RestartResult,
   DeleteAppResult,
   SessionInfo,
   Volume,
@@ -82,6 +81,7 @@ export function parseApp(json: unknown): App {
     if (volumes.length !== json.volumes.length) throw new SyntaxError("Invalid app volumes");
     app.volumes = volumes;
   }
+  if (typeof json.deploymentId === "number") app.deploymentId = json.deploymentId;
   return app;
 }
 
@@ -232,13 +232,6 @@ export function parseClusterHealth(json: unknown): ClusterHealth {
   }
   if (typeof json.error === "string") health.error = json.error;
   return health;
-}
-
-export function parseRestartResult(json: unknown): RestartResult {
-  if (!isRecord(json) || json.ok !== true || typeof json.restartedAt !== "string") {
-    throw new SyntaxError("Invalid restart response");
-  }
-  return { ok: true, restartedAt: json.restartedAt };
 }
 
 export function parseDeleteAppResult(json: unknown): DeleteAppResult {

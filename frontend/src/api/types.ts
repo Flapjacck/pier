@@ -10,6 +10,7 @@
  * - backend/src/routes/apps-schemas.ts (PostAppsBody, PatchAppBody, error bodies)
  * - backend/src/routes/apps/restart.ts (RestartResult)
  * - backend/src/routes/session.ts (SessionInfo) — includes ingressDomain and tls
+ * - backend/src/deploys/serialize.ts and types.ts (DeploySummary, DeployDetail)
  */
 
 export type KubeConfigMode = "in-cluster" | "kubeconfig";
@@ -31,6 +32,8 @@ export type App = {
   /** CPU/RAM requests and limits (always set by current backends). */
   resources?: AppResources;
   volumes?: { name: string; mountPath: string }[];
+  /** Deploy record started by a create/PATCH (#81); absent on reads. */
+  deploymentId?: number;
 };
 export type Volume = { name: string; size: string; status: "pending" | "bound" | "lost"; app?: string; mountPath?: string; createdAt: string };
 export type VolumeMount = { name: string; mountPath: string; size?: string };
@@ -137,6 +140,7 @@ export type ScaleBody = {
 export type RestartResult = {
   ok: true;
   restartedAt: string;
+  deploymentId?: number;
 };
 
 export type DeleteAppResult = {
@@ -175,3 +179,46 @@ export type AuditPage = {
   /** Pass as `before` for the next (older) page; null when there are no more. */
   nextBefore: number | null;
 };
+
+/** What started a deploy. rollback (#87) and build (#83) are reserved. */
+export type DeployTrigger = "create" | "patch" | "restart" | "rollback" | "build";
+export type DeployStatus = "running" | "succeeded" | "failed" | "cancelled";
+export type DeployStepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped";
+export type DeployStepName = "validate" | "build" | "apply" | "schedule" | "pull" | "start" | "health" | "ready";
+export type DeployLine = { ts: string; level: "info" | "warning" | "error"; text: string };
+
+/** What a deploy asked for. Env key names only, never values. */
+export type DeploySpec = {
+  image?: string;
+  port?: number;
+  replicas?: number;
+  host?: string;
+  envKeys?: string[];
+};
+
+export type DeploySummary = {
+  id: number;
+  app: string;
+  trigger: DeployTrigger;
+  status: DeployStatus;
+  reason: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  spec: DeploySpec;
+  currentStep: DeployStepName | null;
+};
+
+export type DeployStep = {
+  name: DeployStepName;
+  label: string;
+  status: DeployStepStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  lines: DeployLine[];
+};
+
+export type DeployDetail = DeploySummary & { steps: DeployStep[] };
+
+export type DeployPage = { deployments: DeploySummary[]; nextBefore: number | null };

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { updateApp } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import type { App, AppResources, UpdateAppBody } from "../../api/types";
+import { deployStartedText } from "../../lib/deploys";
 import { buildUpdateBody, configValuesFromApp, type AppConfigValues } from "../../lib/appConfig";
 import type { EnvRowValue } from "../../lib/envValidation";
 
@@ -54,7 +55,7 @@ export function useAppConfigForm(app: App, setApp: (app: App) => void, showToast
       const updated = await updateApp(app.name, confirmBody);
       setApp(updated);
       reset(updated);
-      showToast({ variant: "success", title: `Updated ${app.name}`, description: "Pods are rolling out" });
+      showToast({ variant: "success", title: deployStartedText(updated.deploymentId, `Updated ${app.name}`), description: "Pods are rolling out" });
     } catch (err) {
       const error = err instanceof ApiError ? err : ApiError.network(err);
       showToast({

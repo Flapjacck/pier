@@ -5,6 +5,8 @@ import { AppShell } from "./components/layout/AppShell";
 import { AuthProvider } from "./context/AuthContext";
 import { AppDetailLayout } from "./pages/app-detail/AppDetailLayout";
 import { AppDetailOverview } from "./pages/app-detail/AppDetailOverview";
+import { AppDetailDeployment } from "./pages/app-detail/AppDetailDeployment";
+import { AppDetailDeployments } from "./pages/app-detail/AppDetailDeployments";
 import { AppDetailPods } from "./pages/app-detail/AppDetailPods";
 import { AppDetailLogs } from "./pages/app-detail/AppDetailLogs";
 import { AppDetailSettings } from "./pages/app-detail/AppDetailSettings";
@@ -47,6 +49,8 @@ export const router = createBrowserRouter([
                 errorElement: <ErrorPage />,
                 children: [
                   { index: true, element: <AppDetailOverview /> },
+                  { path: "deployments", element: <AppDetailDeployments /> },
+                  { path: "deployments/:id", element: <AppDetailDeployment /> },
                   { path: "pods", element: <AppDetailPods /> },
                   { path: "logs", element: <AppDetailLogs /> },
                   { path: "settings", element: <AppDetailSettings /> },

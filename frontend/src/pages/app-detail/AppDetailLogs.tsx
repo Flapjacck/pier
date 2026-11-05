@@ -3,13 +3,24 @@ import { listAppPods } from "../../api/client";
 import { LogsCard } from "../../components/ui/LogsCard";
 import { useApi } from "../../hooks/useApi";
 import { useLogStream } from "../../hooks/useLogStream";
+import { LatestDeployCard } from "./LatestDeployCard";
 import { useAppDetail } from "./useAppDetail";
 
 /**
- * Logs tab: live log streaming with pod selection and follow toggle.
- * All UI logic is in LogsCard for reusability.
+ * Logs tab: the latest deploy's steps, then live container logs with pod selection and
+ * follow toggle. All log UI logic is in LogsCard for reusability.
  */
 export function AppDetailLogs() {
+  const { app } = useAppDetail();
+  return (
+    <>
+      <LatestDeployCard app={app.name} />
+      <ContainerLogs />
+    </>
+  );
+}
+
+function ContainerLogs() {
   const { app } = useAppDetail();
   const [selectedPod, setSelectedPod] = useState<string | undefined>(undefined);
   const [selectedTail, setSelectedTail] = useState(200);
