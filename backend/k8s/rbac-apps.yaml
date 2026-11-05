@@ -30,6 +30,11 @@ rules:
     # list: app-events UID matching
     verbs: ["list"]
   - apiGroups: [""]
+    resources: ["secrets"]
+    # Pier-managed registry Secrets only; code enforces the name prefix and labels
+    # because Kubernetes RBAC cannot scope permissions by label.
+    verbs: ["get", "list", "create", "patch", "delete"]
+  - apiGroups: [""]
     resources: ["services"]
     # get: app-actions delete (exists check) | create: create-app
     # patch: update-app (targetPort on a port change) | delete: app-actions, create-app rollback
