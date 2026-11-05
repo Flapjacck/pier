@@ -1,0 +1,101 @@
+/** Validate and normalize Dockerfile build source fields (#83). */
+
+export type BuildSource = {
+  repo: string;
+  branch: string;
+  folder: string;
+  dockerfile: string;
+  gitCredential?: string;
+};
+
+const REPO_MAX = 512;
+const BRANCH_MAX = 255;
+const PATH_MAX = 255;
+const NAME = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
+
+/** HTTPS or SSH git URLs only. */
+const HTTPS_REPO = /^https:\/\/[a-z0-9._~:/?#[\]@!$&'()*+,;=%-]+$/i;
+const SSH_REPO = /^(?:git@[\w.-]+:[\w./-]+|ssh:\/\/git@[\w.@:/-]+)$/i;
+
+function bad(detail: string): never {
+  throw new InvalidBuildSourceError(detail);
+}
+
+export class InvalidBuildSourceError extends Error {
+  readonly code = "invalid_build_source" as const;
+  constructor(readonly details: string) {
+    super(details);
+    this.name = "InvalidBuildSourceError";
+  }
+}
+
+function noDotDot(path: string, field: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) bad(`${field} is required`);
+  if (trimmed.length > PATH_MAX) bad(`${field} must be ≤${PATH_MAX} characters`);
+  if (trimmed.startsWith("/") || trimmed.includes("\\")) bad(`${field} must be a relative path`);
+  const parts = trimmed.split("/");
+  if (parts.some((p) => p === "" || p === "." || p === "..")) {
+    // Allow a lone "." for folder (repo root).
+    if (!(field === "folder" && trimmed === ".")) bad(`${field} must not contain '.' or '..' segments`);
+  }
+  return trimmed;
+}
+
+export function normalizeBuildSource(input: {
+  repo: string;
+  branch?: string;
+  folder?: string;
+  dockerfile?: string;
+  gitCredential?: string;
+}): BuildSource {
+  const repo = input.repo.trim();
+  if (!repo) bad("repo is required");
+  if (repo.length > REPO_MAX) bad(`repo must be ≤${REPO_MAX} characters`);
+  if (!HTTPS_REPO.test(repo) && !SSH_REPO.test(repo)) {
+    bad("repo must be an https:// or git@ SSH URL");
+  }
+
+  const branch = (input.branch?.trim() || "main");
+  if (branch.length > BRANCH_MAX) bad(`branch must be ≤${BRANCH_MAX} characters`);
+  if (/[\s\\]/.test(branch) || branch.includes("..")) bad("branch contains invalid characters");
+
+  const folder = noDotDot(input.folder?.trim() || ".", "folder");
+  const dockerfile = noDotDot(input.dockerfile?.trim() || "Dockerfile", "dockerfile");
+
+  let gitCredential: string | undefined;
+  if (input.gitCredential !== undefined && input.gitCredential.trim() !== "") {
+    const name = input.gitCredential.trim();
+    if (!NAME.test(name)) bad("gitCredential must be a DNS-1123 label");
+    gitCredential = name;
+  }
+
+  return { repo, branch, folder, dockerfile, ...(gitCredential ? { gitCredential } : {}) };
+}
+
+/**
+ * Kaniko git context. Subfolder uses the third URL fragment:
+ * git://host/path.git#refs/heads/<branch>#<folder>
+ * HTTPS repos are rewritten to the git:// form Kaniko accepts for public clones;
+ * credentials are passed via GIT_USERNAME / GIT_PASSWORD when present.
+ */
+export function kanikoGitContext(source: BuildSource): string {
+  let path = source.repo;
+  if (path.startsWith("https://")) {
+    path = path.replace(/^https:\/\//i, "git://");
+  } else if (path.startsWith("git@")) {
+    // git@host:owner/repo.git → git://host/owner/repo.git
+    const m = /^git@([^:]+):(.+)$/.exec(path);
+    if (!m) bad("repo SSH URL is malformed");
+    path = `git://${m[1]}/${m[2]}`;
+  } else if (path.startsWith("ssh://git@")) {
+    path = path.replace(/^ssh:\/\/git@/i, "git://");
+  }
+  if (!path.endsWith(".git")) path = `${path}.git`;
+  const folder = source.folder === "." ? "" : `#${source.folder}`;
+  return `${path}#refs/heads/${source.branch}${folder}`;
+}
+
+export function builtImageRef(registry: string, app: string, tag: string): string {
+  return `${registry}/${app}:${tag}`;
+}

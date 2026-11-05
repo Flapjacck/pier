@@ -19,6 +19,20 @@ export type Config = {
   auditRetentionDays: number;
   /** A deploy still rolling out after this many seconds fails (PIER_DEPLOY_TIMEOUT_SECONDS). */
   deployTimeoutSeconds: number;
+  /** Host:port written into Deployment image refs (PIER_BUILD_REGISTRY). Default localhost:30500. */
+  buildRegistry: string;
+  /**
+   * Host:port Kaniko pushes to (PIER_BUILD_PUSH_REGISTRY).
+   * Defaults to registry.<buildNamespace>.svc.cluster.local:5000 so Jobs can
+   * reach the in-cluster registry; pull refs stay on buildRegistry (NodePort).
+   */
+  buildPushRegistry: string;
+  /** Namespace for the registry and Kaniko Jobs (PIER_BUILD_NAMESPACE). */
+  buildNamespace: string;
+  /** Max seconds a Dockerfile build may run (PIER_BUILD_TIMEOUT_SECONDS). */
+  buildTimeoutSeconds: number;
+  /** Kaniko executor image (PIER_KANIKO_IMAGE). */
+  kanikoImage: string;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -124,6 +138,55 @@ function isLoopback(host: string): boolean {
   return false;
 }
 
+
+function parseBuildTimeout(raw: string | undefined): number {
+  const value = raw?.trim() ?? "";
+  if (value === "") return 900;
+  const seconds = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isInteger(seconds) || seconds < 60 || seconds > 3600) {
+    throw new Error(`Invalid PIER_BUILD_TIMEOUT_SECONDS "${raw}": must be an integer between 60 and 3600`);
+  }
+  return seconds;
+}
+
+function parseBuildRegistry(raw: string | undefined): string {
+  const value = (raw?.trim() || "localhost:30500").toLowerCase();
+  // host:port only — no scheme, path, or spaces.
+  if (!/^[a-z0-9._-]+:[1-9][0-9]{0,4}$/.test(value)) {
+    throw new Error(
+      `Invalid PIER_BUILD_REGISTRY "${raw}": must be host:port (e.g. localhost:30500)`,
+    );
+  }
+  const port = Number(value.split(":").pop());
+  if (port < 1 || port > 65535) {
+    throw new Error(`Invalid PIER_BUILD_REGISTRY "${raw}": port must be 1-65535`);
+  }
+  return value;
+}
+
+function parseBuildPushRegistry(raw: string | undefined, buildNamespace: string): string {
+  const fallback = `registry.${buildNamespace}.svc.cluster.local:5000`;
+  const value = (raw?.trim() || fallback).toLowerCase();
+  if (!/^[a-z0-9._-]+:[1-9][0-9]{0,4}$/.test(value)) {
+    throw new Error(
+      `Invalid PIER_BUILD_PUSH_REGISTRY "${raw}": must be host:port (e.g. ${fallback})`,
+    );
+  }
+  const port = Number(value.split(":").pop());
+  if (port < 1 || port > 65535) {
+    throw new Error(`Invalid PIER_BUILD_PUSH_REGISTRY "${raw}": port must be 1-65535`);
+  }
+  return value;
+}
+
+function parseBuildNamespace(raw: string | undefined): string {
+  const value = raw?.trim() || "pier-system";
+  if (!/^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/.test(value)) {
+    throw new Error(`Invalid PIER_BUILD_NAMESPACE "${raw}": must be a DNS-1123 label`);
+  }
+  return value;
+}
+
 /** Pure env parsing so tests can pass a fixture object without touching process.env. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const host = env.HOST?.trim() || "127.0.0.1";
@@ -168,6 +231,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     }
   }
 
+  const buildNamespace = parseBuildNamespace(env.PIER_BUILD_NAMESPACE);
   return {
     port: parsePort(env.PORT),
     host,
@@ -182,5 +246,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dbPath: optionalNonEmpty(env.PIER_DB_PATH) ?? "./data/pier.db",
     auditRetentionDays: parseRetentionDays(env.PIER_AUDIT_RETENTION_DAYS),
     deployTimeoutSeconds: parseDeployTimeout(env.PIER_DEPLOY_TIMEOUT_SECONDS),
+    buildRegistry: parseBuildRegistry(env.PIER_BUILD_REGISTRY),
+    buildPushRegistry: parseBuildPushRegistry(env.PIER_BUILD_PUSH_REGISTRY, buildNamespace),
+    buildNamespace,
+    buildTimeoutSeconds: parseBuildTimeout(env.PIER_BUILD_TIMEOUT_SECONDS),
+    kanikoImage: optionalNonEmpty(env.PIER_KANIKO_IMAGE) ?? "gcr.io/kaniko-project/executor:v1.23.2",
   };
 }

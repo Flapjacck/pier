@@ -36,6 +36,7 @@ describe("static configuration", () => {
       core: { listNode: async () => ({ items: [] }) } as never,
       version: { getCode: async () => ({ gitVersion: "v1.36.5+k3s1" }) } as never,
       apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
+      batch: {} as never,
       networking: { listNamespacedIngress: async () => ({ items: [] }) } as never,
       log: {} as never,
     };
@@ -64,6 +65,7 @@ describe("static configuration", () => {
       core: { listNode: async () => ({ items: [] }) } as never,
       version: { getCode: async () => ({ gitVersion: "v1.36.5+k3s1" }) } as never,
       apps: { listNamespacedDeployment: async () => ({ items: [] }) } as never,
+      batch: {} as never,
       networking: { listNamespacedIngress: async () => ({ items: [] }) } as never,
       log: {} as never,
     };
@@ -109,6 +111,7 @@ describe("static configuration", () => {
         createNamespacedService: async () => ({}),
         patchNamespacedDeployment: async () => ({}),
       } as never,
+      batch: {} as never,
       networking: {
         listNamespacedIngress: async () => ({ items: [] }),
         createNamespacedIngress: async () => ({}),

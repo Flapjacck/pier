@@ -200,4 +200,33 @@ describe("loadConfig", () => {
       assert.throws(() => loadConfig({ PIER_DEPLOY_TIMEOUT_SECONDS: bad }), /Invalid PIER_DEPLOY_TIMEOUT_SECONDS/);
     });
   }
+
+  it("defaults build settings", () => {
+    const config = loadConfig({});
+    assert.equal(config.buildRegistry, "localhost:30500");
+    assert.equal(config.buildPushRegistry, "registry.pier-system.svc.cluster.local:5000");
+    assert.equal(config.buildNamespace, "pier-system");
+    assert.equal(config.buildTimeoutSeconds, 900);
+    assert.equal(config.kanikoImage, "gcr.io/kaniko-project/executor:v1.23.2");
+  });
+
+  it("parses build env overrides", () => {
+    const config = loadConfig({
+      PIER_BUILD_REGISTRY: " localhost:30500 ",
+      PIER_BUILD_PUSH_REGISTRY: "registry.builds.svc.cluster.local:5000",
+      PIER_BUILD_TIMEOUT_SECONDS: "600",
+      PIER_BUILD_NAMESPACE: "builds",
+      PIER_KANIKO_IMAGE: "gcr.io/kaniko-project/executor:v1.23.2",
+    });
+    assert.equal(config.buildRegistry, "localhost:30500");
+    assert.equal(config.buildPushRegistry, "registry.builds.svc.cluster.local:5000");
+    assert.equal(config.buildTimeoutSeconds, 600);
+    assert.equal(config.buildNamespace, "builds");
+  });
+
+  for (const bad of ["http://localhost:30500", "localhost", "localhost:0"]) {
+    it(`rejects invalid PIER_BUILD_REGISTRY ${bad}`, () => {
+      assert.throws(() => loadConfig({ PIER_BUILD_REGISTRY: bad }), /Invalid PIER_BUILD_REGISTRY/);
+    });
+  }
 });

@@ -18,6 +18,11 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     dbPath: ":memory:",
     auditRetentionDays: 90,
     deployTimeoutSeconds: 300,
+    buildRegistry: "localhost:30500",
+    buildPushRegistry: "registry.pier-system.svc.cluster.local:5000",
+    buildNamespace: "pier-system",
+    buildTimeoutSeconds: 900,
+    kanikoImage: "gcr.io/kaniko-project/executor:v1.23.2",
     ...overrides,
   };
 }

@@ -26,6 +26,7 @@ export function countingLoader(apis: FakeApis = {}): {
       [k8s.CoreV1Api, apis.core ?? {}],
       [k8s.VersionApi, apis.version ?? {}],
       [k8s.AppsV1Api, apis.apps ?? {}],
+      [k8s.BatchV1Api, apis.batch ?? {}],
       [k8s.NetworkingV1Api, apis.networking ?? {}],
     ]);
     kc.makeApiClient = ((apiClass: unknown) =>

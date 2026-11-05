@@ -51,7 +51,13 @@ const paramName = (req: AuditRequest) => str(record(req.params).name);
 
 function createDetails(req: AuditRequest): AuditDetails {
   const body = record(req.body);
-  return withLists(pick(body, ["image", "port", "replicas", "host"]), { envKeys: envKeys(body), volumes: volumeNames(body) });
+  const details = withLists(pick(body, ["image", "port", "replicas", "host"]), { envKeys: envKeys(body), volumes: volumeNames(body) });
+  const source = record(body.source);
+  const repo = str(source.repo);
+  if (repo) details.repo = repo;
+  const branch = str(source.branch);
+  if (branch) details.branch = branch;
+  return details;
 }
 
 function patchDetails(req: AuditRequest): AuditDetails {
@@ -68,6 +74,7 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
   "PATCH /api/apps/:name": { action: "app.update", app: paramName, details: patchDetails },
   "PATCH /api/apps/:name/scale": { action: "app.scale", app: paramName, details: (req) => pick(record(req.body), ["replicas"]) },
   "POST /api/apps/:name/restart": { action: "app.restart", app: paramName },
+  "POST /api/apps/:name/redeploy": { action: "app.redeploy", app: paramName },
   "DELETE /api/apps/:name": {
     action: "app.delete",
     app: paramName,
@@ -86,6 +93,22 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
   "DELETE /api/registries/:name": { action: "registry.delete", app: () => null, target: paramName, details: (req) => ({ name: paramName(req) ?? "" }) },
   "PATCH /api/registries/:name": { action: "registry.update", app: () => null, target: paramName, details: (req) => ({ name: paramName(req) ?? "", ...pick(record(req.body), ["host"]) }) },
   "POST /api/registries/:name/test": { action: "registry.test", app: () => null, target: paramName },
+  "POST /api/git-credentials": {
+    action: "git_credential.create",
+    app: () => null,
+    details: (req) => pick(record(req.body), ["name", "username"]),
+  },
+  "PATCH /api/git-credentials/:name": {
+    action: "git_credential.update",
+    app: () => null,
+    target: paramName,
+    details: (req) => ({ name: paramName(req) ?? "", ...pick(record(req.body), ["username"]) }),
+  },
+  "DELETE /api/git-credentials/:name": {
+    action: "git_credential.delete",
+    app: () => null,
+    target: paramName,
+  },
 };
 
 /** Mutating routes that are intentionally not audited. */

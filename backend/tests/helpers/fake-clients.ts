@@ -13,6 +13,7 @@ export function createFakeClients(
     core: {} as k8s.CoreV1Api,
     version: {} as k8s.VersionApi,
     apps: {} as k8s.AppsV1Api,
+    batch: {} as k8s.BatchV1Api,
     storage: {} as k8s.StorageV1Api,
     networking: {} as k8s.NetworkingV1Api,
     log: {} as k8s.Log,
