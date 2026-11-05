@@ -65,7 +65,12 @@ export function toEnvVars(env: Record<string, string>): V1EnvVar[] {
  * port named "http" and a tcpSocket readiness probe on it, so those are replaced wholesale.
  * `add` is used where the field might be missing (it replaces when present).
  */
-export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources, currentReplicas = 1): JsonPatchOp[] {
+export function buildUpdateOps(
+  input: UpdateAppInput,
+  resources?: AppResources,
+  currentReplicas = 1,
+  currentLabels: { deployment?: Record<string, string>; template?: Record<string, string> } = {},
+): JsonPatchOp[] {
   const ops: JsonPatchOp[] = [];
   if (input.image !== undefined) {
     ops.push({ op: "replace", path: `${CONTAINER}/image`, value: input.image });
@@ -105,8 +110,10 @@ export function buildUpdateOps(input: UpdateAppInput, resources?: AppResources, 
     });
     if (input.registry) {
       ops.push({ op: "add", path: "/metadata/labels/pier.registry", value: input.registry });
+      ops.push({ op: "add", path: "/spec/template/metadata/labels/pier.registry", value: input.registry });
     } else {
-      ops.push({ op: "remove", path: "/metadata/labels/pier.registry" });
+      if (currentLabels.deployment?.["pier.registry"] !== undefined) ops.push({ op: "remove", path: "/metadata/labels/pier.registry" });
+      if (currentLabels.template?.["pier.registry"] !== undefined) ops.push({ op: "remove", path: "/spec/template/metadata/labels/pier.registry" });
     }
   }
   return ops;
@@ -173,7 +180,14 @@ export async function updateApp(
       log,
     );
     await clients.apps.patchNamespacedDeployment(
-      { namespace, name, body: buildUpdateOps(input, nextResources, currentReplicas) },
+      {
+        namespace,
+        name,
+        body: buildUpdateOps(input, nextResources, currentReplicas, {
+          deployment: deployment.metadata?.labels,
+          template: deployment.spec?.template?.metadata?.labels,
+        }),
+      },
       setHeaderOptions("Content-Type", PatchStrategy.JsonPatch),
     );
   } catch (err) {

@@ -1,8 +1,20 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { registrySecret } from "../../src/k8s/registries.js";
+import { buildDockerConfig, registrySecret } from "../../src/k8s/registries.js";
 
 describe("registrySecret", () => {
+  it("writes Docker Hub's compatibility auth key", () => {
+    const config = JSON.parse(buildDockerConfig({ name: "docker", host: "docker.io", username: "u", password: "p" })) as { auths: Record<string, unknown> };
+    assert.ok(config.auths["https://index.docker.io/v1/"]);
+    assert.ok(config.auths["docker.io"]);
+  });
+
+  it("writes GHCR credentials without putting the password in metadata", () => {
+    const secret = registrySecret({ name: "ghcr", host: "ghcr.io", username: "octo", password: "token" });
+    assert.equal(secret.metadata?.annotations?.["pier.registry/username"], "octo");
+    assert.equal(JSON.stringify(secret.metadata).includes("token"), false);
+  });
+
   it("creates a dockerconfigjson secret without exposing credentials in metadata", () => {
     const secret = registrySecret({ name: "ghcr", registry: "ghcr.io", username: "octo", password: "token" });
     assert.equal(secret.type, "kubernetes.io/dockerconfigjson");

@@ -91,6 +91,22 @@ describe("buildUpdateOps", () => {
   it("clears env with an empty map", () => {
     assert.deepEqual(buildUpdateOps({ env: {} }), [{ op: "add", path: `${C}/env`, value: [] }]);
   });
+
+  it("keeps registry labels in sync and safely clears present labels", () => {
+    assert.deepEqual(buildUpdateOps({ registry: "ghcr" }).map((op) => [op.op, op.path]), [
+      ["add", "/spec/template/spec/imagePullSecrets"],
+      ["add", "/metadata/labels/pier.registry"],
+      ["add", "/spec/template/metadata/labels/pier.registry"],
+    ]);
+    assert.deepEqual(buildUpdateOps({ registry: null }, undefined, 1, {
+      deployment: { "pier.registry": "ghcr" },
+      template: { "pier.registry": "ghcr" },
+    }).map((op) => [op.op, op.path]), [
+      ["add", "/spec/template/spec/imagePullSecrets"],
+      ["remove", "/metadata/labels/pier.registry"],
+      ["remove", "/spec/template/metadata/labels/pier.registry"],
+    ]);
+  });
 });
 
 describe("updateApp", () => {

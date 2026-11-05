@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { K8sClientsResult } from "../k8s/clients.js";
+import { probeRegistry } from "../images/inspect.js";
 import {
   deleteRegistry,
   getRegistry,
@@ -29,22 +30,17 @@ const body = {
   properties: { name, host: { type: "string", minLength: 1, maxLength: 255 }, username: { type: "string", minLength: 1, maxLength: 255 }, password: { type: "string", minLength: 1, maxLength: 4096 } },
 } as const;
 
-function summaryOf(value: RegistryCredential, createdAt = new Date().toISOString()): RegistrySummary {
+function summaryOf(value: RegistryCredential, createdAt = value.createdAt ?? new Date().toISOString()): RegistrySummary {
   return { name: value.name, host: normalizeRegistryHost(value.host ?? value.registry ?? ""), username: value.username, createdAt };
 }
 
 async function testConnection(value: RegistryCredential): Promise<void> {
-  let response: Response;
   try {
-    response = await fetch(`https://${normalizeRegistryHost(value.host ?? value.registry ?? "")}/v2/`, {
-      headers: { authorization: `Basic ${Buffer.from(`${value.username}:${value.password}`).toString("base64")}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
+    await probeRegistry(value);
+  } catch (error) {
+    if (error instanceof Error && (error.message === "invalid credentials" || error.message === "registry unreachable")) throw error;
     throw new Error("registry unreachable");
   }
-  if (response.status === 401 || response.status === 403) throw new Error("invalid credentials");
-  if (!response.ok) throw new Error("registry unreachable");
 }
 
 export function registriesRoutesWithDeps(deps: RegistryDeps): FastifyPluginAsync {
