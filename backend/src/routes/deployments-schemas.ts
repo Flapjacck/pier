@@ -1,5 +1,7 @@
 import { DEPLOY_STATUSES, DEPLOY_TRIGGERS, STEP_NAMES, STEP_STATUSES } from "../deploys/types.js";
 
+const ALL_STEPS = ["build", ...STEP_NAMES] as const;
+
 /** Response schemas for /apps/:name/deployments (#81). Fastify drops fields not listed here. */
 
 const time = { type: "string", description: "ISO 8601" } as const;
@@ -15,7 +17,7 @@ const summaryProperties = {
   finishedAt: nullableTime,
   durationMs: { type: ["integer", "null"] },
   spec: { type: "object", additionalProperties: true, description: "What the deploy asked for (env key names only)" },
-  currentStep: { type: ["string", "null"], enum: [...STEP_NAMES, null] },
+  currentStep: { type: ["string", "null"], enum: [...ALL_STEPS, null] },
 } as const;
 
 const summaryRequired = [

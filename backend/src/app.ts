@@ -21,6 +21,7 @@ import { createDeployTracker } from "./deploys/tracker";
 import { deploymentsRoutesWithDeps } from "./routes/deployments";
 import { registriesRoutesWithDeps } from "./routes/registries";
 import { imageRoutesWithDeps } from "./routes/images";
+import { gitCredentialsRoutesWithDeps } from "./routes/git-credentials";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -122,10 +123,26 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(healthRoutes);
     await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined, limiter }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
-    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer, tracker }));
+    await api.register(appsRoutesWithDeps({
+      k8s: k8sResult,
+      namespace: config.namespace,
+      ingressDomain: config.ingressDomain,
+      dashboardHost: config.dashboardHost,
+      tlsIssuer: config.tlsIssuer,
+      tracker,
+      db,
+      build: {
+        buildRegistry: config.buildRegistry,
+        buildPushRegistry: config.buildPushRegistry,
+        buildNamespace: config.buildNamespace,
+        buildTimeoutSeconds: config.buildTimeoutSeconds,
+        kanikoImage: config.kanikoImage,
+      },
+    }));
     await api.register(deploymentsRoutesWithDeps({ db, tracker }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(registriesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
+    await api.register(gitCredentialsRoutesWithDeps({ k8s: k8sResult, namespace: config.buildNamespace, db }));
     await api.register(imageRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(auditRoutesWithDeps({ db }));
   }, { prefix: "/api" });

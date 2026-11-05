@@ -23,7 +23,7 @@ export type DeployHandle = {
 
 export type DeployTracker = {
   /** Record a deploy (Validate running). Returns null when the database fails. */
-  begin: (app: string, trigger: DeployTrigger, spec: DeploySpec) => DeployHandle | null;
+  begin: (app: string, trigger: DeployTrigger, spec: DeploySpec, opts?: { build?: boolean }) => DeployHandle | null;
   subscribe: (id: number, listener: () => void) => () => void;
   cancelApp: (app: string, reason: string) => void;
   resume: () => void;
@@ -118,10 +118,10 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
     }
   }
 
-  function begin(app: string, trigger: DeployTrigger, spec: DeploySpec): DeployHandle | null {
+  function begin(app: string, trigger: DeployTrigger, spec: DeploySpec, opts?: { build?: boolean }): DeployHandle | null {
     let id: number;
     try {
-      id = insertDeployment(db, { app, trigger, spec, now: now() });
+      id = insertDeployment(db, { app, trigger, spec, now: now(), build: opts?.build });
     } catch (err) {
       log.error({ err, app }, "could not record the deploy");
       return null;

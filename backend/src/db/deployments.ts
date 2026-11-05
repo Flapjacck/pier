@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { STEP_NAMES, type DeploySpec, type DeployTrigger, type LineLevel, type StepName, type StepStatus } from "../deploys/types.js";
+import { stepsForDeploy, type DeploySpec, type DeployTrigger, type LineLevel, type StepName, type StepStatus } from "../deploys/types.js";
 
 /** Most output lines kept per deploy; one "more lines dropped" line follows the cap. */
 export const DEPLOY_LOG_LINE_CAP = 300;
@@ -7,7 +7,7 @@ export const DEPLOY_LOG_LINE_CAP = 300;
 export const DEPLOY_LOG_LINE_MAX = 1000;
 const DROPPED_LINE = "… more lines dropped";
 
-export type NewDeployment = { app: string; trigger: DeployTrigger; spec: DeploySpec; now: number };
+export type NewDeployment = { app: string; trigger: DeployTrigger; spec: DeploySpec; now: number; build?: boolean };
 
 /** Insert a running deploy with every step pending, then start Validate. Returns its id. */
 export function insertDeployment(db: DatabaseSync, input: NewDeployment): number {
@@ -18,7 +18,7 @@ export function insertDeployment(db: DatabaseSync, input: NewDeployment): number
       .run(input.app, input.trigger, JSON.stringify(input.spec), input.now);
     const id = Number(result.lastInsertRowid);
     const step = db.prepare("INSERT INTO deployment_steps (deployment_id, position, name, status) VALUES (?, ?, ?, 'pending')");
-    STEP_NAMES.forEach((name, position) => step.run(id, position, name));
+    stepsForDeploy({ build: input.build }).forEach((name, position) => step.run(id, position, name));
     setStepStatus(db, id, "validate", "running", input.now);
     db.exec("COMMIT");
     return id;

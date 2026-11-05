@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { DatabaseSync } from "node:sqlite";
 import { createAppSerialized } from "../../k8s/create-app.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import {
@@ -14,19 +15,62 @@ import { InvalidResourcesError } from "../../k8s/update-app.js";
 import type { DeployTracker } from "../../deploys/tracker.js";
 import { recordDeployError, specFromApp, specFromCreateBody, withDeploymentId } from "./deploy-hooks.js";
 import { getRegistry } from "../../k8s/registries.js";
+import { InvalidBuildSourceError } from "../../k8s/builds/source.js";
+import { BuildFailedError } from "../../k8s/builds/run.js";
+import {
+  buildImageForDeploy,
+  sourceFromBody,
+  specWithSource,
+  type BuildConfig,
+} from "./build-deploy.js";
 
 type PostAppsRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
   ingressDomain: string | undefined;
   dashboardHost: string | undefined;
-  /** cert-manager ClusterIssuer for app Ingresses (PIER_TLS_ISSUER); unset = HTTP only. */
   tlsIssuer?: string;
-  /** Records the create as a deploy (#81); unset in tests that do not need it. */
   tracker?: DeployTracker;
+  db?: DatabaseSync;
+  build?: BuildConfig;
 };
 
-/** POST /apps — create a new Deployment, Service, and optionally Ingress. */
+function validateHost(
+  hostNorm: string | undefined,
+  deps: PostAppsRouteDeps,
+): { status: number; body: Record<string, unknown> } | null {
+  if (!hostNorm) return null;
+  if (deps.dashboardHost && hostNorm === deps.dashboardHost) {
+    return { status: 409, body: { ok: false, error: "host already in use" } };
+  }
+  if (hostNorm.includes("*")) {
+    return { status: 400, body: { ok: false, error: "invalid request", details: "host cannot contain wildcards" } };
+  }
+  const dnsPattern = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+  if (!dnsPattern.test(hostNorm)) {
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        error: "invalid request",
+        details: "host must be a valid DNS-1123 hostname (e.g., hello.192.0.2.10.nip.io)",
+      },
+    };
+  }
+  if (!deps.ingressDomain) {
+    return { status: 400, body: { ok: false, error: "invalid request", details: "ingress not configured" } };
+  }
+  const suffix = `.${deps.ingressDomain}`;
+  if (!hostNorm.endsWith(suffix) || hostNorm === deps.ingressDomain) {
+    return {
+      status: 400,
+      body: { ok: false, error: "invalid request", details: `host must end with ${suffix}` },
+    };
+  }
+  return null;
+}
+
+/** POST /apps — create from a pre-built image or a Dockerfile in a git repo (#83). */
 export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAsync {
   return async (app) => {
     app.post<{ Body: PostAppsBody }>(
@@ -48,72 +92,70 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
       },
       async (req, reply) => {
         if (!deps.k8s.ok) {
-          return reply.status(503).send({
+          return reply.status(503).send({ ok: false, error: "cluster unreachable" });
+        }
+
+        const hasImage = typeof req.body.image === "string" && req.body.image.trim() !== "";
+        const hasSource = req.body.source !== undefined;
+        if (hasImage === hasSource) {
+          return reply.status(400).send({
             ok: false,
-            error: "cluster unreachable",
+            error: "invalid request",
+            details: "provide exactly one of image or source",
+          });
+        }
+        if (hasSource && req.body.registry) {
+          return reply.status(400).send({
+            ok: false,
+            error: "invalid request",
+            details: "registry applies to pulled images only; omit it for Dockerfile builds",
           });
         }
 
-        const { name, image, port, replicas, host, env, resources, volumes, registry } = req.body;
+        const { name, port, replicas, host, env, resources, volumes, registry } = req.body;
         if (registry && !(await getRegistry(deps.k8s.clients.core, deps.namespace, registry))) {
           return reply.status(404).send({ ok: false, error: "registry not found" });
         }
 
-        // Normalize host to lowercase (case-insensitive matching in Ingress rules).
-        const hostNorm = host?.toLowerCase();
-
-        // Check if host conflicts with dashboard host (reserved).
-        if (hostNorm && deps.dashboardHost && hostNorm === deps.dashboardHost) {
-          return reply.status(409).send({
-            ok: false,
-            error: "host already in use",
-          });
-        }
-
-        // Validate host if provided (DNS-1123, wildcard, ingress config, suffix).
-        if (hostNorm) {
-          // Reject wildcards.
-          if (hostNorm.includes("*")) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: "host cannot contain wildcards",
-            });
-          }
-
-          // Validate DNS-1123 format.
-          const dnsPattern = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-          if (!dnsPattern.test(hostNorm)) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: "host must be a valid DNS-1123 hostname (e.g., hello.192.0.2.10.nip.io)",
-            });
-          }
-
-          if (!deps.ingressDomain) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: "ingress not configured",
-            });
-          }
-
-          // Host must end with .<domain>, not equal to it.
-          const suffix = `.${deps.ingressDomain}`;
-          if (!hostNorm.endsWith(suffix) || hostNorm === deps.ingressDomain) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: `host must end with ${suffix}`,
-            });
-          }
-        }
-
-        // Record the deploy once the request is well-formed; the resource fit is its Validate step.
-        const deploy = deps.tracker?.begin(name, "create", specFromCreateBody(req.body)) ?? null;
+        let source;
         try {
-          // Only check resources the client set; the defaults always fit the shipped quota.
+          source = hasSource ? sourceFromBody(req.body.source!) : undefined;
+        } catch (err) {
+          if (err instanceof InvalidBuildSourceError) {
+            return reply.status(400).send({ ok: false, error: "invalid request", details: err.details });
+          }
+          throw err;
+        }
+
+        const hostNorm = host?.toLowerCase();
+        const hostErr = validateHost(hostNorm, deps);
+        if (hostErr) return reply.status(hostErr.status).send(hostErr.body);
+
+        const buildOpts = source ? { build: true as const } : undefined;
+        const initialSpec = specFromCreateBody({
+          ...req.body,
+          image: req.body.image ?? "pending",
+        });
+        const deploy =
+          deps.tracker?.begin(
+            name,
+            "create",
+            source
+              ? {
+                  ...initialSpec,
+                  source: {
+                    repo: source.repo,
+                    branch: source.branch,
+                    folder: source.folder,
+                    dockerfile: source.dockerfile,
+                    ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
+                  },
+                }
+              : initialSpec,
+            buildOpts,
+          ) ?? null;
+
+        try {
           if (resources) {
             const merged = mergeResources(DEFAULT_RESOURCES, resources);
             const problem = resourcesProblem(merged);
@@ -125,7 +167,26 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               req.log,
             );
           }
-          const app = await createAppSerialized(
+
+          let image = req.body.image!.trim();
+          if (source) {
+            if (!deps.db || !deps.build || !deploy) {
+              deploy?.discard();
+              return reply.status(503).send({ ok: false, error: "builds unavailable" });
+            }
+            const built = await buildImageForDeploy({
+              clients: deps.k8s.clients,
+              db: deps.db,
+              deploy,
+              app: name,
+              source,
+              build: deps.build,
+              log: req.log,
+            });
+            image = built.image;
+          }
+
+          const appResult = await createAppSerialized(
             deps.k8s.clients,
             deps.namespace,
             {
@@ -138,15 +199,39 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
               resources,
               tlsIssuer: deps.tlsIssuer,
               volumes,
-              registry,
+              registry: source ? undefined : registry,
             },
             req.log,
           );
-          deploy?.applied(specFromApp(app));
-          return reply.status(201).send(withDeploymentId(app, deploy));
+          const appliedSpec = source
+            ? specWithSource(specFromApp(appResult), source, image)
+            : specFromApp(appResult);
+          deploy?.applied(appliedSpec);
+          const payload = withDeploymentId(appResult, deploy);
+          if (source) {
+            return reply.status(201).send({
+              ...payload,
+              source: {
+                repo: source.repo,
+                branch: source.branch,
+                folder: source.folder,
+                dockerfile: source.dockerfile,
+                ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
+                lastCommit: null,
+                lastImage: image,
+              },
+            });
+          }
+          return reply.status(201).send(payload);
         } catch (err) {
           req.log.error({ err }, "create app failed");
-          recordDeployError(deploy, err);
+          if (!(err instanceof BuildFailedError)) recordDeployError(deploy, err);
+          if (err instanceof BuildFailedError) {
+            return reply.status(422).send({ ok: false, error: "build failed", details: err.message });
+          }
+          if (err instanceof InvalidBuildSourceError) {
+            return reply.status(400).send({ ok: false, error: "invalid request", details: err.details });
+          }
           mapPostAppsError(err, reply);
           return;
         }

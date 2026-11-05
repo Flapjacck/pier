@@ -4,12 +4,15 @@ import type { K8sClientsResult } from "../../k8s/clients.js";
 import { isValidAppName } from "../../k8s/names.js";
 import { errorSchema } from "../apps-schemas.js";
 import type { DeployTracker } from "../../deploys/tracker.js";
+import type { DatabaseSync } from "node:sqlite";
+import { deleteAppSource } from "../../db/app-sources.js";
 
 type DeleteRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
   /** Cancels the app's running deploys (#81). */
   tracker?: DeployTracker;
+  db?: DatabaseSync;
 };
 
 /** DELETE /apps/:name — delete an app (Deployment, Service, and Ingress). */
@@ -71,6 +74,11 @@ export function deleteAppRoutesWithDeps(deps: DeleteRouteDeps): FastifyPluginAsy
             });
           }
           deps.tracker?.cancelApp(name, "The app was deleted.");
+          try {
+            if (deps.db) deleteAppSource(deps.db, name);
+          } catch {
+            /* best-effort */
+          }
           if (req.query.deleteVolumes) {
             return reply.status(200).send({
               ok: true,

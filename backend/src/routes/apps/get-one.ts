@@ -2,11 +2,14 @@ import type { FastifyPluginAsync } from "fastify";
 import { isValidAppName } from "../../k8s/names.js";
 import { getApp } from "../../k8s/app-lookup.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
+import type { DatabaseSync } from "node:sqlite";
+import { getAppSource } from "../../db/app-sources.js";
 import { appSchema, errorSchema } from "../apps-schemas.js";
 
 type GetAppRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
+  db?: DatabaseSync;
 };
 
 /** GET /apps/:name — retrieve a single Pier-managed app by name. */
@@ -61,7 +64,20 @@ export function getAppRoutesWithDeps(deps: GetAppRouteDeps): FastifyPluginAsync 
             });
           }
 
-          return appData;
+          const source = deps.db ? getAppSource(deps.db, name) : undefined;
+          if (!source) return appData;
+          return {
+            ...appData,
+            source: {
+              repo: source.repo,
+              branch: source.branch,
+              folder: source.folder,
+              dockerfile: source.dockerfile,
+              ...(source.gitCredential ? { gitCredential: source.gitCredential } : {}),
+              lastCommit: source.lastCommit,
+              lastImage: source.lastImage,
+            },
+          };
         } catch (err) {
           req.log.error({ err }, "get app failed");
           return reply.status(503).send({

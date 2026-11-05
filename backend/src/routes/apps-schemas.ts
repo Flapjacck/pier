@@ -4,9 +4,18 @@ import { SIZE_PATTERN } from "../k8s/volumes/validation.js";
 
 /** Schemas and types for the /apps routes (POST /apps, PATCH /apps/:name, responses). */
 
+export type BuildSourceBody = {
+  repo: string;
+  branch?: string;
+  folder?: string;
+  dockerfile?: string;
+  gitCredential?: string;
+};
+
 export type PostAppsBody = {
   name: string;
-  image: string;
+  /** Required unless source is set (Dockerfile build). */
+  image?: string;
   port: number;
   replicas: number;
   host?: string;
@@ -14,6 +23,8 @@ export type PostAppsBody = {
   resources?: PartialAppResources;
   volumes?: { name: string; mountPath: string; size?: string }[];
   registry?: string;
+  /** Dockerfile build from a git repo (#83). Mutually exclusive with image. */
+  source?: BuildSourceBody;
 };
 
 /** PATCH /apps/:name body: at least one field; env replaces the whole set. */
@@ -86,6 +97,19 @@ export const patchAppBodySchema = {
   },
 } as const;
 
+const buildSourceSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["repo"],
+  properties: {
+    repo: { type: "string", minLength: 1, maxLength: 512 },
+    branch: { type: "string", minLength: 1, maxLength: 255 },
+    folder: { type: "string", minLength: 1, maxLength: 255 },
+    dockerfile: { type: "string", minLength: 1, maxLength: 255 },
+    gitCredential: { type: "string", minLength: 1, maxLength: 63, pattern: APP_NAME_SCHEMA_PATTERN },
+  },
+} as const;
+
 export const postAppsBodySchema = {
   type: "object",
   additionalProperties: false,
@@ -111,8 +135,10 @@ export const postAppsBodySchema = {
     resources: resourcesBodySchema,
     volumes: volumesSchema,
     registry: { type: ["string", "null"], minLength: 1, maxLength: 63, pattern: APP_NAME_SCHEMA_PATTERN },
+    source: buildSourceSchema,
   },
-  required: ["name", "image", "port"],
+  required: ["name", "port"],
+  // image XOR source is enforced in the route (AJV oneOf on optional fields is awkward with defaults).
 } as const;
 
 const resourcePairResponse = {
@@ -153,6 +179,20 @@ export const appSchema = {
     },
     registry: { type: "string" },
     deploymentId: { type: "integer", description: "Deploy record started by this request (#81)" },
+    source: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        repo: { type: "string" },
+        branch: { type: "string" },
+        folder: { type: "string" },
+        dockerfile: { type: "string" },
+        gitCredential: { type: "string" },
+        lastCommit: { type: ["string", "null"] },
+        lastImage: { type: ["string", "null"] },
+      },
+      required: ["repo", "branch", "folder", "dockerfile"],
+    },
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
 } as const;

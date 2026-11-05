@@ -1,6 +1,6 @@
 /** Shared deploy types (#81). Kept free of Kubernetes and SQLite imports. */
 
-/** What started a deploy. rollback (#87) and build (#83) are reserved and not produced yet. */
+/** What started a deploy. rollback (#87) is reserved and not produced yet. */
 export type DeployTrigger = "create" | "patch" | "restart" | "rollback" | "build";
 export const DEPLOY_TRIGGERS: readonly DeployTrigger[] = ["create", "patch", "restart", "rollback", "build"];
 
@@ -13,14 +13,16 @@ export const STEP_STATUSES: readonly StepStatus[] = ["pending", "running", "succ
 export type LineLevel = "info" | "warning" | "error";
 
 /**
- * Steps in order. A "build" step ("Build image") goes between validate and apply once
- * #83 adds builds; it is only inserted for deploys that build, so it is not listed here.
+ * Default steps (image deploys). A "build" step is inserted between validate and
+ * apply only when the deploy builds from a Dockerfile (#83).
  */
 export const STEP_NAMES = ["validate", "apply", "schedule", "pull", "start", "health", "ready"] as const;
-export type StepName = (typeof STEP_NAMES)[number];
+export type BaseStepName = (typeof STEP_NAMES)[number];
+export type StepName = BaseStepName | "build";
 
 export const STEP_LABELS: Record<StepName, string> = {
   validate: "Validate",
+  build: "Build image",
   apply: "Apply resources",
   schedule: "Schedule pod",
   pull: "Pull image",
@@ -29,8 +31,14 @@ export const STEP_LABELS: Record<StepName, string> = {
   ready: "Ready",
 };
 
+/** Steps for a deploy. Build deploys insert "build" after validate. */
+export function stepsForDeploy(opts: { build?: boolean } = {}): StepName[] {
+  if (!opts.build) return [...STEP_NAMES];
+  return ["validate", "build", ...STEP_NAMES.slice(1)];
+}
+
 export function isStepName(value: string): value is StepName {
-  return (STEP_NAMES as readonly string[]).includes(value);
+  return value === "build" || (STEP_NAMES as readonly string[]).includes(value);
 }
 
 /** What a deploy asked for. Env key names only: values can be secrets and are never stored. */
@@ -43,4 +51,12 @@ export type DeploySpec = {
   volumes?: { name: string; mountPath: string }[];
   registry?: string | null;
   envKeys?: string[];
+  /** Dockerfile build source (#83); never includes credentials. */
+  source?: {
+    repo: string;
+    branch: string;
+    folder: string;
+    dockerfile: string;
+    gitCredential?: string;
+  };
 };
