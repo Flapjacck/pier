@@ -41,14 +41,14 @@ describe("normalizeBuildSource", () => {
 describe("kanikoGitContext", () => {
   it("builds context for repo root and subfolder", () => {
     const root = normalizeBuildSource({ repo: "https://github.com/org/app.git", branch: "main" });
-    assert.equal(kanikoGitContext(root), "git://github.com/org/app.git#refs/heads/main");
+    assert.equal(kanikoGitContext(root), "https://github.com/org/app.git#refs/heads/main");
     const sub = normalizeBuildSource({ repo: "https://github.com/org/app.git", folder: "apps/web" });
-    assert.equal(kanikoGitContext(sub), "git://github.com/org/app.git#refs/heads/main#apps/web");
+    assert.equal(kanikoGitContext(sub), "https://github.com/org/app.git#refs/heads/main#apps/web");
   });
 
-  it("rewrites SSH URLs", () => {
+  it("keeps scp-style SSH URLs", () => {
     const source = normalizeBuildSource({ repo: "git@github.com:org/app.git" });
-    assert.equal(kanikoGitContext(source), "git://github.com/org/app.git#refs/heads/main");
+    assert.equal(kanikoGitContext(source), "git@github.com:org/app.git#refs/heads/main");
   });
 });
 

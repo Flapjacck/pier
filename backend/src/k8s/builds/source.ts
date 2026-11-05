@@ -75,21 +75,21 @@ export function normalizeBuildSource(input: {
 
 /**
  * Kaniko git context. Subfolder uses the third URL fragment:
- * git://host/path.git#refs/heads/<branch>#<folder>
- * HTTPS repos are rewritten to the git:// form Kaniko accepts for public clones;
- * credentials are passed via GIT_USERNAME / GIT_PASSWORD when present.
+ * https://host/path.git#refs/heads/<branch>#<folder>
+ * Keep https:// (GitHub rejects the old git:// protocol). SSH repos become
+ * git@host:path.git — Kaniko uses GIT_USERNAME / GIT_PASSWORD when set.
  */
 export function kanikoGitContext(source: BuildSource): string {
-  let path = source.repo;
-  if (path.startsWith("https://")) {
-    path = path.replace(/^https:\/\//i, "git://");
-  } else if (path.startsWith("git@")) {
-    // git@host:owner/repo.git → git://host/owner/repo.git
-    const m = /^git@([^:]+):(.+)$/.exec(path);
-    if (!m) bad("repo SSH URL is malformed");
-    path = `git://${m[1]}/${m[2]}`;
+  let path = source.repo.trim();
+  if (path.startsWith("git@")) {
+    // leave scp-style SSH as-is for Kaniko
   } else if (path.startsWith("ssh://git@")) {
-    path = path.replace(/^ssh:\/\/git@/i, "git://");
+    // ssh://git@host/owner/repo.git → git@host:owner/repo.git
+    const m = /^ssh:\/\/git@([^/]+)\/(.+)$/i.exec(path);
+    if (!m) bad("repo SSH URL is malformed");
+    path = `git@${m[1]}:${m[2]}`;
+  } else if (!path.startsWith("https://")) {
+    bad("repo must be an https:// or git@ SSH URL");
   }
   if (!path.endsWith(".git")) path = `${path}.git`;
   const folder = source.folder === "." ? "" : `#${source.folder}`;

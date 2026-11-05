@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: pier
 rules:
   - apiGroups: ["batch"]
-    resources: ["jobs"]
+    resources: ["jobs", "jobs/status"]
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
