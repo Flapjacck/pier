@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import type { BuildMethod, VolumeHint } from "./types.js";
+import { repoVolumeHints } from "./volume-hints/index.js";
 
 /**
  * Look inside a git repo for the deploy wizard (#83): branches, the default branch, and
@@ -22,8 +24,10 @@ export type GitProbeResult = {
   folders: string[];
   /** Paths of files named Dockerfile or *.Dockerfile / Dockerfile.*. */
   dockerfiles: string[];
-  /** Every file path in the tree (capped), for volume hints. */
+  /** Every file path in the tree (capped). */
   files: string[];
+  /** Suggested volumes for hintsFor's folder; empty when not asked. */
+  volumeHints: VolumeHint[];
 };
 
 export class GitProbeError extends Error {
@@ -43,7 +47,13 @@ export type ProbeOptions = {
   /** git's GIT_ALLOW_PROTOCOL. https only in production; tests add file. */
   protocols?: string;
   timeoutMs?: number;
+  /** Probe this branch instead of the default one. */
+  branch?: string;
+  /** Work out volume hints for this build folder. */
+  hintsFor?: { folder: string; method: BuildMethod; dockerfile?: string };
 };
+
+const MAX_READ = 256 * 1024;
 
 function gitEnv(home: string, opts: ProbeOptions): NodeJS.ProcessEnv {
   return {
@@ -117,10 +127,21 @@ export async function probeGitRepo(remote: string, opts: ProbeOptions = {}): Pro
     const listed = parseLsRemote((await git(["ls-remote", "--symref", "--", remote, "HEAD", "refs/heads/*"])).stdout);
     if (listed.branches.length === 0) throw new GitProbeError("The repository has no branches yet", 404);
     const defaultBranch = listed.defaultBranch ?? (listed.branches.includes("main") ? "main" : (listed.branches[0] as string));
+    const branch = opts.branch ?? defaultBranch;
+    if (!listed.branches.includes(branch)) throw new GitProbeError(`Branch ${branch} doesn't exist`, 404);
     const dir = join(home, "repo");
-    await git(["clone", "--depth", "1", "--filter=blob:none", "--no-checkout", "--single-branch", "--branch", defaultBranch, "--", remote, dir]);
+    await git(["clone", "--depth", "1", "--filter=blob:none", "--no-checkout", "--single-branch", "--branch", branch, "--", remote, dir]);
     const tree = (await git(["ls-tree", "-r", "--name-only", "HEAD"], dir)).stdout.split("\n").filter(Boolean);
-    return { defaultBranch, branches: listed.branches, ...summarizeTree(tree) };
+    const summary = summarizeTree(tree);
+    const known = new Set(tree);
+    // Blobs are fetched lazily, one per file read; only a handful of small manifests are read.
+    const read = async (path: string) => {
+      if (!known.has(path)) return undefined;
+      const out = await git(["cat-file", "-p", `HEAD:${path}`], dir).catch(() => undefined);
+      return out && out.stdout.length <= MAX_READ ? out.stdout : undefined;
+    };
+    const volumeHints = opts.hintsFor ? await repoVolumeHints({ files: tree, ...opts.hintsFor, read }) : [];
+    return { defaultBranch, branches: listed.branches, ...summary, volumeHints };
   } catch (err) {
     throw err instanceof GitProbeError ? err : probeFailure(err);
   } finally {

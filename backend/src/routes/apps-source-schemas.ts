@@ -39,7 +39,7 @@ export const sourceBodySchema = {
   },
 } as const;
 
-const volumeHintSchema = {
+export const volumeHintSchema = {
   type: "object",
   properties: {
     path: { type: "string" },

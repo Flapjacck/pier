@@ -10,7 +10,7 @@ async function setup(probe: (remote: string, opts?: ProbeOptions) => Promise<nev
   await app.register(gitProbeRoutesWithDeps({ k8s: sourceK8s(sourceCluster({ credentials: ["gh"] })), namespace: "pier-system", probe: probe as never }));
   return app;
 }
-const ok = async () => ({ defaultBranch: "main", branches: ["main"], folders: ["."], dockerfiles: ["Dockerfile"], files: ["Dockerfile", "secret.db"] });
+const ok = async () => ({ defaultBranch: "main", branches: ["main"], folders: ["."], dockerfiles: ["Dockerfile"], files: ["Dockerfile", "secret.db"], volumeHints: [] });
 
 describe("POST /git/probe (#83)", () => {
   it("probes the normalized https URL with the picked credential and returns no file list", async () => {
@@ -21,7 +21,7 @@ describe("POST /git/probe (#83)", () => {
     });
     const res = await app.inject({ method: "POST", url: "/git/probe", payload: { repo: "https://github.com/acme/web", gitCredential: "gh" } });
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.json(), { defaultBranch: "main", branches: ["main"], folders: ["."], dockerfiles: ["Dockerfile"] });
+    assert.deepEqual(res.json(), { defaultBranch: "main", branches: ["main"], folders: ["."], dockerfiles: ["Dockerfile"], volumeHints: [] });
     assert.match(seen[0]?.remote ?? "", /^https:\/\/github\.com\/acme\/web/);
     assert.equal(seen[0]?.remote.includes("ghp_secret"), false);
     assert.equal(seen[0]?.opts?.auth?.token, "ghp_secret");

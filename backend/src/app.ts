@@ -24,6 +24,7 @@ import { gitProbeRoutesWithDeps } from "./routes/git-probe";
 import { registriesRoutesWithDeps } from "./routes/registries";
 import { imageRoutesWithDeps } from "./routes/images";
 import type { SourceDeployDeps } from "./builds/deploy.js";
+import { createBuildHints } from "./builds/volume-hints/after-build.js";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -39,6 +40,8 @@ type BuildAppOptions = {
   deployPollMs?: number;
   /** Fake image builds (tests). */
   runBuild?: SourceDeployDeps["runBuild"];
+  /** Fake post-build volume hints (tests); by default the repo and built image are read. */
+  volumeHints?: SourceDeployDeps["volumeHints"];
 };
 
 /**
@@ -110,6 +113,8 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     if (!opts.db) db.close();
   });
 
+  const volumeHints = opts.volumeHints ?? (k8sResult.ok ? createBuildHints({ core: k8sResult.clients.core, namespace: config.builds.namespace, log: app.log }) : undefined);
+
   // Register cookie parser plugin before auth hook so cookies are available.
   await app.register(fastifyCookie);
 
@@ -127,7 +132,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(healthRoutes);
     await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined, limiter }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
-    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer, tracker, db, builds: config.builds, runBuild: opts.runBuild }));
+    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer, tracker, db, builds: config.builds, runBuild: opts.runBuild, volumeHints }));
     await api.register(deploymentsRoutesWithDeps({ db, tracker }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(registriesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
