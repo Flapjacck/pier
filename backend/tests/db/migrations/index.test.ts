@@ -13,8 +13,9 @@ function tables(db: DatabaseSync): string[] {
 describe("runMigrations", () => {
   it("creates every table on a fresh database and records each version", () => {
     const db = new DatabaseSync(":memory:");
-    assert.deepEqual(runMigrations(db, MIGRATIONS, () => 1234), [1, 2]);
+    assert.deepEqual(runMigrations(db, MIGRATIONS, () => 1234), [1, 2, 3, 4]);
     assert.deepEqual(tables(db), [
+      "app_sources",
       "audit_log",
       "deployment_logs",
       "deployment_steps",
@@ -26,6 +27,8 @@ describe("runMigrations", () => {
     assert.deepEqual(rows.map((r) => ({ ...r })), [
       { version: 1, name: "init", applied_at: 1234 },
       { version: 2, name: "deployments", applied_at: 1234 },
+      { version: 3, name: "app_sources", applied_at: 1234 },
+      { version: 4, name: "app_sources_build", applied_at: 1234 },
     ]);
     db.close();
   });
@@ -70,7 +73,7 @@ describe("runMigrations", () => {
     const db = new DatabaseSync(":memory:");
     runMigrations(db, MIGRATIONS.slice(0, 1));
     db.prepare("INSERT INTO login_attempts (ip, count, reset_at) VALUES ('ip', 1, 1)").run();
-    assert.deepEqual(runMigrations(db), [2]);
+    assert.deepEqual(runMigrations(db), [2, 3, 4]);
     assert.ok(tables(db).includes("deployments"));
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM login_attempts").get()?.n, 1);
     db.close();
