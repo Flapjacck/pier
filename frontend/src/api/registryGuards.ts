@@ -1,4 +1,5 @@
 import { isRecord } from "./guards";
+import { parseVolumeHints } from "./sourceGuards";
 import type { ImageInspection, Registry } from "./types";
 
 export function parseRegistry(json: unknown): Registry {
@@ -23,5 +24,5 @@ export function parseImageInspection(json: unknown): ImageInspection {
       (json.defaultUser !== undefined && typeof json.defaultUser !== "string")) {
     throw new SyntaxError("Invalid image inspection");
   }
-  return { image: json.image, digest: String(json.digest ?? ""), exposedPorts: ports, volumes: json.volumes, workingDir: typeof json.workingDir === "string" ? json.workingDir : undefined, defaultUser: typeof json.defaultUser === "string" ? json.defaultUser : undefined };
+  return { image: json.image, digest: String(json.digest ?? ""), exposedPorts: ports, volumes: json.volumes, workingDir: typeof json.workingDir === "string" ? json.workingDir : undefined, defaultUser: typeof json.defaultUser === "string" ? json.defaultUser : undefined, volumeHints: parseVolumeHints(json.volumeHints) };
 }
