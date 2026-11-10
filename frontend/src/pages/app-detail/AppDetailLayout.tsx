@@ -12,6 +12,8 @@ import { useApi } from "../../hooks/useApi";
 import { useToast } from "../../components/ui/Toast";
 import { formatRelativeTime } from "../../lib/time";
 import { AppDetailContext } from "./useAppDetail";
+import { BuildStateBanner } from "./BuildStateBanner";
+import { RedeployButton } from "./RedeployButton";
 
 /**
  * App detail layout: fetches app once and shares it with all tabs via Outlet context.
@@ -168,6 +170,7 @@ export function AppDetailLayout() {
               </div>
             </div>
             <div className="flex gap-2 items-start">
+              {localApp.source && <RedeployButton app={localApp.name} />}
               <Button
                 onClick={refetch}
                 variant="secondary"
@@ -188,6 +191,8 @@ export function AppDetailLayout() {
               Updated {formatRelativeTime(lastUpdated.toISOString())}
             </p>
           )}
+
+          <BuildStateBanner app={localApp} />
 
           {/* Tabs */}
           <Tabs items={tabItems} aria-label="App detail tabs" />

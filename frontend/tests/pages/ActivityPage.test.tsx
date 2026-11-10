@@ -19,6 +19,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/apps/:name" element={<p>app detail page</p>} />
+        <Route path="/apps/:name/deployments/:id" element={<p>deploy page</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -44,10 +45,24 @@ describe("ActivityPage", () => {
     expect(within(rows[1]!).getByText("Scaled")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("replicas 2")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("5 minutes ago")).toBeInTheDocument();
-    expect(within(rows[1]!).getByText("192.0.2.1")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("token · 192.0.2.1")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
     fireEvent.click(within(rows[1]!).getByRole("link", { name: "web" }));
     expect(await screen.findByText("app detail page")).toBeInTheDocument();
+  });
+
+  it("links a failed build row to its deploy page and shows Pier as the actor", async () => {
+    listAudit.mockResolvedValueOnce({
+      entries: [entry({ action: "deploy.failed", actor: "pier", ip: "", target: "7", status: 422, details: { reason: "build failed" } })],
+      nextBefore: null,
+    });
+    renderAt("/activity");
+    const table = await screen.findByRole("table", { name: "Audit log" });
+    const row = within(table).getAllByRole("row")[1]!;
+    expect(within(row).getByText("Deploy failed")).toBeInTheDocument();
+    expect(within(row).getByText("Pier")).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("link", { name: "#7" }));
+    expect(await screen.findByText("deploy page")).toBeInTheDocument();
   });
 
   it("loads older entries with Load more", async () => {

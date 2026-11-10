@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeaderCell, TableRow,
 } from "../components/ui/Table";
 import { useAuditLog } from "../hooks/useAuditLog";
-import { actionLabel, formatDetails } from "../lib/audit";
+import { actionLabel, actorLabel, formatDetails, targetHref } from "../lib/audit";
 import { formatAbsoluteDate, formatRelativeTime } from "../lib/time";
 import type { AuditEntry } from "../api/types";
 
@@ -15,6 +15,7 @@ const LINK = "text-pier-accent hover:underline focus-visible:outline-2 focus-vis
 const COLUMNS = ["When", "Action", "App", "Target", "Details", "By"] as const;
 
 function EntryRow({ entry }: { entry: AuditEntry }) {
+  const href = targetHref(entry);
   return (
     <TableRow>
       <TableCell className="whitespace-nowrap text-pier-muted">
@@ -30,10 +31,12 @@ function EntryRow({ entry }: { entry: AuditEntry }) {
           <span className="text-pier-subtle">—</span>
         )}
       </TableCell>
-      <TableCell className="font-mono text-xs">{entry.target ?? <span className="text-pier-subtle">—</span>}</TableCell>
+      <TableCell className="font-mono text-xs">
+        {href ? <Link to={href} className={LINK}>#{entry.target}</Link> : entry.target ?? <span className="text-pier-subtle">—</span>}
+      </TableCell>
       <TableCell className="text-xs text-pier-muted">{formatDetails(entry.details)}</TableCell>
       <TableCell className="whitespace-nowrap text-xs text-pier-muted">
-        {entry.actor} · <span className="font-mono">{entry.ip}</span>
+        {actorLabel(entry)}
       </TableCell>
     </TableRow>
   );
