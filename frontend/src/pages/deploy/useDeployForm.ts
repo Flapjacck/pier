@@ -1,249 +1,157 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createApp } from "../../api/client";
 import { ApiError } from "../../api/errors";
 import { validateDeployForm, type DeployFormValues, type FieldErrors } from "../../lib/deployValidation";
 import { deployRedirectPath } from "../../lib/deploys";
 import { mapApiErrorToFields } from "./errorMapping";
-import type { EnvRow } from "./EnvRows";
-import type { AppResources, CreateAppBody } from "../../api/types";
+import type { AppResources, VolumeHint } from "../../api/types";
 import { DEFAULT_RESOURCES } from "../../lib/resources";
 import { useVolumeField } from "./useVolumeField";
 import { useImageInspection } from "./useImageInspection";
+import { useSourceFields } from "./useSourceFields";
+import { useEnvRows } from "./useEnvRows";
+import { useNameHost } from "./useNameHost";
+import { errorsForStep, firstStepWithError, stepsFor, type SourceKind, type StepId } from "./wizardSteps";
 
 export type SubmitState = "idle" | "pending" | "success" | "error_unreachable";
 
 interface UseDeployFormOptions {
   ingressDomain: string | null;
-  onShowToast: (opts: {
-    title: string;
-    description?: string;
-    variant: "success" | "error";
-  }) => void;
+  onShowToast: (opts: { title: string; description?: string; variant: "success" | "error" }) => void;
 }
 
+/** Typical listen ports: nginx-style images on 80, Railpack/app servers on 8080. */
+const DEFAULT_PORT: Record<SourceKind, string> = { image: "80", repo: "8080" };
+
 /**
- * Hook encapsulating deploy form state and submission logic.
+ * State and submission for the deploy wizard (#83). Steps only validate; `submit` is the
+ * one place that creates, and the wizard calls it only from Review's Deploy button.
  */
 export function useDeployForm({ ingressDomain, onShowToast }: UseDeployFormOptions) {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
+  const nameHost = useNameHost();
+  const source = useSourceFields();
+  const env = useEnvRows();
   const [image, setImage] = useState("");
   const [registry, setRegistry] = useState("");
-  const [port, setPort] = useState("80");
+  const [port, setPortState] = useState(DEFAULT_PORT.repo);
+  const portEdited = useRef(false);
   const [replicas, setReplicas] = useState("1");
-  const [publicUrl, setPublicUrl] = useState(true);
-  const [subdomain, setSubdomain] = useState("");
-  const [nameFollowsSubdomain, setNameFollowsSubdomain] = useState(true);
-  const [env, setEnv] = useState<EnvRow[]>([{ id: "1", key: "", value: "" }]);
   const [resources, setResources] = useState<AppResources>(DEFAULT_RESOURCES);
-  const { volume, mode, setMode, available, loading, setVolume, setVolumeName } = useVolumeField(name);
-  const imageInspection = useImageInspection(image, registry, name, (next) => {
-    setPort((current) => current === "" || current === "80" ? next : current);
-  }, (next) => { if (!volume) setVolume(next); }, setMode);
-  const [touched, setTouched] = useState(false);
+  const volumes = useVolumeField(nameHost.name);
+  const setInspectedPort = useCallback((next: string) => { if (!portEdited.current) setPortState(next); }, []);
+  const imageInspection = useImageInspection(image, registry, setInspectedPort);
+  const [dismissed, setDismissed] = useState<string[]>([]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [deployedApp, setDeployedApp] = useState("");
-  const nextEnvIdRef = useRef(2);
   const navigateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearError = useCallback((field: keyof FieldErrors) => {
-    setErrors((prev) => {
-      if (!prev[field]) return prev;
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  }, []);
-  const handleNameChange = useCallback(
-    (newName: string) => {
-      setName(newName);
-      if (nameFollowsSubdomain && publicUrl) {
-        setSubdomain(newName.toLowerCase());
-      }
-      clearError("name");
-    },
-    [nameFollowsSubdomain, publicUrl, clearError],
-  );
+  const setKind = useCallback((kind: SourceKind) => {
+    source.setKind(kind);
+    if (!portEdited.current) setPortState(DEFAULT_PORT[kind]);
+  }, [source]);
 
-  const handleSubdomainChange = useCallback((newSubdomain: string) => {
-    setSubdomain(newSubdomain);
-    setNameFollowsSubdomain(false);
-  }, []);
+  const values = useCallback((): DeployFormValues => ({
+    name: nameHost.name, image, port, replicas, host: nameHost.subdomain, env: env.rows,
+    publicUrl: nameHost.publicUrl, resources, volume: volumes.volume,
+    registry: source.kind === "image" ? registry || undefined : undefined,
+    source: source.body,
+  }), [nameHost, image, port, replicas, env.rows, resources, volumes.volume, registry, source.kind, source.body]);
 
-  const handlePublicUrlChange = useCallback((checked: boolean) => {
-    setPublicUrl(checked);
-    if (checked) {
-      setSubdomain(name.toLowerCase());
-      setNameFollowsSubdomain(true);
+  /** Validate just this step's fields; Next stays on the step while any are wrong. */
+  const validateStep = useCallback((step: StepId): boolean => {
+    const result = validateDeployForm(values(), { ingressDomain });
+    const stepErrors = result.ok ? {} : errorsForStep(result.errors, step);
+    if (step === "connect" && source.kind === "repo" && !stepErrors.repo && !source.probe.result) {
+      stepErrors.repo = "Load the repository first so Pier can list its branches";
     }
-  }, [name]);
-  const handleEnvRowChange = useCallback((row: EnvRow) => {
-    setEnv((prev) => prev.map((r) => (r.id === row.id ? row : r)));
-  }, []);
-  const handleEnvRowRemove = useCallback((id: string) => {
-    setEnv((prev) => prev.filter((r) => r.id !== id));
-  }, []);
-  const handleEnvRowAdd = useCallback(() => {
-    const newId = String(nextEnvIdRef.current++);
-    setEnv((prev) => [...prev, { id: newId, key: "", value: "" }]);
-  }, []);
-  const validate = useCallback((): CreateAppBody | undefined => {
-    const values: DeployFormValues = {
-      name,
-      image,
-      port,
-      replicas,
-      host: subdomain,
-      env,
-      publicUrl,
-      resources,
-      volume,
-      registry: registry || undefined,
-    };
+    setErrors(stepErrors);
+    return Object.keys(stepErrors).length === 0;
+  }, [values, ingressDomain, source.kind, source.probe.result]);
 
-    const result = validateDeployForm(values, { ingressDomain });
+  /** Create the app. Returns the step to show when something needs fixing. */
+  const submit = useCallback(async (): Promise<StepId | undefined> => {
+    const steps = stepsFor(source.kind);
+    const result = validateDeployForm(values(), { ingressDomain });
     if (!result.ok) {
       setErrors(result.errors);
-      return undefined;
+      return firstStepWithError(result.errors, steps);
     }
-
     setErrors({});
-    return result.body;
-  }, [name, image, port, replicas, subdomain, env, publicUrl, resources, volume, registry, ingressDomain]);
-
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      setTouched(true);
-
-      const body = validate();
-      if (!body) {
-        return;
+    setSubmitState("pending");
+    try {
+      const app = await createApp(result.body);
+      setDeployedApp(app.name);
+      setSubmitState("success");
+      onShowToast({ title: source.kind === "repo" ? `${app.name} is building` : `${app.name} is deploying`, variant: "success" });
+      const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1500;
+      navigateTimeoutRef.current = setTimeout(() => navigate(deployRedirectPath(app), { replace: true }), delay);
+      return undefined;
+    } catch (err) {
+      if (!(err instanceof ApiError)) {
+        onShowToast({ title: "Error", description: "An unexpected error occurred", variant: "error" });
+        setSubmitState("idle");
+        return "review";
       }
-
-      setSubmitState("pending");
-      try {
-        const app = await createApp(body);
-
-        setDeployedApp(app.name);
-        setSubmitState("success");
-
-        onShowToast({
-          title: `${app.name} is deploying`,
-          variant: "success",
-        });
-
-        const prefersReduced = window.matchMedia(
-          "(prefers-reduced-motion: reduce)"
-        ).matches;
-        const delay = prefersReduced ? 0 : 1500;
-
-        navigateTimeoutRef.current = setTimeout(() => {
-          navigate(deployRedirectPath(app), { replace: true });
-        }, delay) as ReturnType<typeof setTimeout>;
-      } catch (err) {
-        if (err instanceof ApiError) {
-          const newErrors = mapApiErrorToFields(err);
-          setErrors(newErrors);
-
-          if (err.kind === "unavailable" || err.kind === "network") {
-            setSubmitState("error_unreachable");
-          } else {
-            setSubmitState("idle");
-          }
-        } else {
-          onShowToast({
-            title: "Error",
-            description: "An unexpected error occurred",
-            variant: "error",
-          });
-          setSubmitState("idle");
-        }
-      }
-    },
-    [validate, navigate, onShowToast],
-  );
-
-  useEffect(() => {
-    if (touched && Object.keys(errors).length > 0) {
-      const firstErrorKey = Object.keys(errors)[0];
-      if (firstErrorKey && firstErrorKey !== "form" && firstErrorKey !== "env") {
-        setTimeout(() => {
-          const input = document.getElementById(`deploy-${firstErrorKey}`);
-          input?.focus();
-        }, 0);
-      }
+      const mapped = mapApiErrorToFields(err);
+      setErrors(mapped);
+      setSubmitState(err.kind === "unavailable" || err.kind === "network" ? "error_unreachable" : "idle");
+      return firstStepWithError(mapped, steps);
     }
-  }, [touched, errors]);
+  }, [source.kind, values, ingressDomain, onShowToast, navigate]);
 
-  const clearNavigateTimeout = useCallback(() => {
-    if (navigateTimeoutRef.current !== null) {
-      clearTimeout(navigateTimeoutRef.current);
-      navigateTimeoutRef.current = null;
-    }
+  useEffect(() => () => {
+    if (navigateTimeoutRef.current !== null) clearTimeout(navigateTimeoutRef.current);
   }, []);
 
+  // Suggestions from whichever source is active, minus dismissed ones and the path already mounted.
+  const rawHints = source.kind === "image" ? imageInspection.hints : source.probe.hints;
+  const hints = useMemo(
+    () => rawHints.filter((h) => !dismissed.includes(h.path) && h.path !== volumes.volume?.mountPath),
+    [rawHints, dismissed, volumes.volume?.mountPath],
+  );
+
+  /** Pre-fill the one #79 volume row; nothing is created until Deploy. */
+  const addHint = useCallback((hint: VolumeHint) => {
+    volumes.setMode("new");
+    volumes.setVolume({ name: `${nameHost.name || "app"}-data`, mountPath: hint.path, size: volumes.volume?.size ?? "1Gi" });
+    setReplicas("1");
+  }, [volumes, nameHost.name]);
+
+  const clearError = useCallback((field: keyof FieldErrors) => setErrors((prev) => {
+    if (!prev[field]) return prev;
+    const next = { ...prev };
+    delete next[field];
+    return next;
+  }), []);
+
   return {
-    name,
-    setName: handleNameChange,
-    image,
-    setImage: (img: string) => {
-      setImage(img);
-      clearError("image");
-    },
-    registry,
-    setRegistry: (value: string) => setRegistry(value),
-    imageHint: imageInspection.hint,
-    checkingImage: imageInspection.checking,
-    checkImage: imageInspection.check,
-    port,
-    setPort: (p: string) => {
-      setPort(p);
-      clearError("port");
-    },
-    replicas,
-    setReplicas: (r: string) => {
-      setReplicas(r);
-      clearError("replicas");
-    },
-    resources,
-    setResources: (r: AppResources) => {
-      setResources(r);
-      clearError("resources");
-    },
-    volume,
-    setVolume,
-    setVolumeName,
-    volumeMode: mode,
-    setVolumeMode: setMode,
-    availableVolumes: available,
-    volumesLoading: loading,
-    publicUrl,
-    setPublicUrl: handlePublicUrlChange,
-    subdomain,
-    setSubdomain: handleSubdomainChange,
-    nameFollowsSubdomain,
+    ...nameHost,
+    setName: (next: string) => { nameHost.setName(next); clearError("name"); },
+    source, kind: source.kind, setKind,
+    setRepo: (next: string) => { source.setRepo(next); clearError("repo"); },
+    image, setImage: (next: string) => { setImage(next); clearError("image"); },
+    registry, setRegistry,
+    imageHint: imageInspection.hint, checkingImage: imageInspection.checking, checkImage: imageInspection.check,
+    port, setPort: (next: string) => { portEdited.current = true; setPortState(next); clearError("port"); },
+    replicas, setReplicas: (next: string) => { setReplicas(next); clearError("replicas"); },
+    resources, setResources: (next: AppResources) => { setResources(next); clearError("resources"); },
+    volumes,
+    hints, hintsLoading: source.kind === "repo" && source.probe.hintsLoading,
+    addHint, dismissHint: (path: string) => setDismissed((prev) => [...prev, path]),
     env,
-    setEnv: handleEnvRowChange,
-    addEnvRow: handleEnvRowAdd,
-    removeEnvRow: handleEnvRowRemove,
-    clearEnvRowError: (id: string) =>
-      setErrors((prev) => {
-        if (!prev.env) return prev;
-        const newEnv = { ...prev.env };
-        delete newEnv[id];
-        return { ...prev, env: Object.keys(newEnv).length > 0 ? newEnv : undefined };
-      }),
-    clearHostError: () => clearError("host"),
-
-    touched,
-    errors,
-    submitState,
-    deployedApp,
-
-    handleSubmit,
-    clearNavigateTimeout,
+    clearEnvRowError: (id: string) => setErrors((prev) => {
+      if (!prev.env) return prev;
+      const nextEnv = { ...prev.env };
+      delete nextEnv[id];
+      return { ...prev, env: Object.keys(nextEnv).length > 0 ? nextEnv : undefined };
+    }),
+    clearError,
+    errors, submitState, deployedApp,
+    validateStep, submit,
   };
 }
+
+export type DeployFormState = ReturnType<typeof useDeployForm>;
