@@ -3,11 +3,16 @@ import type { DatabaseSync, SQLOutputValue } from "node:sqlite";
 /** Extra facts about an action. Never env values, tokens or cookies. */
 export type AuditDetails = Record<string, string | number | boolean | string[]>;
 
+export type AuditActor = "token" | "session" | "pier";
+
 export type AuditInput = {
   /** Milliseconds since the epoch. */
   ts: number;
-  /** How the caller authenticated: "token" (Bearer) or "session" (cookie). */
-  actor: "token" | "session";
+  /**
+   * How the caller authenticated: "token" (Bearer) or "session" (cookie). "pier" marks
+   * rows Pier writes itself, such as a deploy finishing in the background (#83).
+   */
+  actor: AuditActor;
   ip: string;
   /** e.g. "app.create", "app.scale", "volume.delete", "session.login". */
   action: string;
@@ -56,7 +61,7 @@ function toEntry(row: Record<string, SQLOutputValue>): AuditEntry {
   return {
     id: Number(row.id),
     ts: Number(row.ts),
-    actor: row.actor === "session" ? "session" : "token",
+    actor: row.actor === "session" || row.actor === "pier" ? row.actor : "token",
     ip: text(row.ip) ?? "",
     action: text(row.action) ?? "",
     app: text(row.app),

@@ -14,7 +14,7 @@ export function parseAuditEntry(json: unknown): AuditEntry {
     !isRecord(json) ||
     typeof json.id !== "number" ||
     typeof json.ts !== "string" ||
-    (json.actor !== "token" && json.actor !== "session") ||
+    (json.actor !== "token" && json.actor !== "session" && json.actor !== "pier") ||
     typeof json.ip !== "string" ||
     typeof json.action !== "string" ||
     !isNullableString(json.app) ||

@@ -17,6 +17,8 @@ export const reasons = {
   crashLoop: (exitCode: number | undefined) =>
     `The container keeps crashing (exit code ${exitCode ?? "unknown"}). Check the Logs tab.`,
   progressDeadline: () => "Kubernetes gave up waiting for the rollout (progress deadline exceeded).",
+  restartedDuringBuild: () => "Pier restarted while the image was building. Use Redeploy to build again.",
+  buildTimeout: (seconds: number) => `The build took longer than ${formatTimeout(seconds * 1000)} and was stopped.`,
   restartedBeforeApply: () => "Pier restarted before the change was applied. Check Settings and deploy again.",
   timeout: (timeoutMs: number, step: StepName, lastWarning?: string) => {
     const detail = step === "health" ? ": the readiness check never passed" : "";
