@@ -8,6 +8,7 @@ import { Field } from "../components/ui/Field";
 import { Input } from "../components/ui/Input";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
+import { GitCredentialsCard } from "./registries/GitCredentialsCard";
 
 export function RegistriesPage() {
   const { push: toast } = useToast();
@@ -55,7 +56,7 @@ export function RegistriesPage() {
     <div className="max-w-3xl">
       <header className="mb-6">
         <h1 className="m-0 text-[21px] font-bold text-pier-fg">Registries</h1>
-        <p className="mt-1 mb-0 text-sm text-pier-muted">Save credentials for private image registries.</p>
+        <p className="mt-1 mb-0 text-sm text-pier-muted">Save credentials for private image registries and git repositories.</p>
       </header>
       <div className="border border-pier-border rounded-pier-lg bg-pier-bg p-5 mb-6">
         <h2 className="m-0 mb-4 text-[14px] font-semibold">{editing ? `Edit ${editing}` : "Add registry"}</h2>
@@ -81,6 +82,7 @@ export function RegistriesPage() {
           ))}
         </ul>
       </div>
+      <GitCredentialsCard />
       <Link to="/apps" className="sr-only">Back to apps</Link>
     </div>
   );
