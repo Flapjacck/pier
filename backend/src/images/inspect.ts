@@ -40,8 +40,14 @@ export function parseImageRef(image: string, protocol = "https:"): Ref {
   return { host, repository: normalizedRepo, reference, base: `${protocol}//${host === "docker.io" ? "registry-1.docker.io" : host}` };
 }
 
-export async function inspectImage(image: string, credential?: RegistryCredential, fetcher: typeof fetch = fetch): Promise<ImageInspection> {
-  const protocol = credential?.host?.startsWith("http://") ? "http:" : "https:";
+export async function inspectImage(
+  image: string,
+  credential?: RegistryCredential,
+  fetcher: typeof fetch = fetch,
+  /** Pier's in-cluster build registry is plain HTTP (#83). */
+  plainHttp = false,
+): Promise<ImageInspection> {
+  const protocol = plainHttp || credential?.host?.startsWith("http://") ? "http:" : "https:";
   const parsed = parseImageRef(image, protocol);
   if (credential && parsed.host !== normalizeHost(credential.host ?? credential.registry ?? "")) throw new Error("image host does not match registry");
   const auth = credential ? `Basic ${Buffer.from(`${credential.username}:${credential.password}`).toString("base64")}` : undefined;

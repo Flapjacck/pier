@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import { GitProbeError, probeGitRepo, type GitAuth } from "../builds/git-probe.js";
+import { GitProbeError, probeGitRepo, type GitAuth, type ProbeOptions } from "../builds/git-probe.js";
 import { cloneUrl, InvalidBuildSourceError, normalizeBuildSource } from "../builds/source.js";
 import type { K8sClientsResult } from "../k8s/clients.js";
 import { getGitCredential } from "../k8s/git-credentials/secrets.js";
 import { APP_NAME_SCHEMA_PATTERN } from "../k8s/names.js";
 import { errorSchema } from "./apps-schemas.js";
+import { volumeHintSchema } from "./apps-source-schemas.js";
 
 type Deps = {
   k8s: K8sClientsResult;
@@ -14,7 +15,7 @@ type Deps = {
   probe?: typeof probeGitRepo;
 };
 
-type Body = { repo: string; gitCredential?: string };
+type Body = { repo: string; gitCredential?: string; branch?: string; folder?: string; method?: "railpack" | "dockerfile"; dockerfile?: string };
 
 const bodySchema = {
   type: "object",
@@ -23,17 +24,23 @@ const bodySchema = {
   properties: {
     repo: { type: "string", minLength: 1, maxLength: 512 },
     gitCredential: { type: "string", minLength: 1, maxLength: 63, pattern: APP_NAME_SCHEMA_PATTERN },
+    // With folder set, the answer includes volume hints for that folder (#83 items 21–23).
+    branch: { type: "string", minLength: 1, maxLength: 255 },
+    folder: { type: "string", maxLength: 255 },
+    method: { type: "string", enum: ["railpack", "dockerfile"] },
+    dockerfile: { type: "string", minLength: 1, maxLength: 255 },
   },
 } as const;
 
 const resultSchema = {
   type: "object",
-  required: ["defaultBranch", "branches", "folders", "dockerfiles"],
+  required: ["defaultBranch", "branches", "folders", "dockerfiles", "volumeHints"],
   properties: {
     defaultBranch: { type: "string" },
     branches: { type: "array", items: { type: "string" } },
     folders: { type: "array", items: { type: "string" } },
     dockerfiles: { type: "array", items: { type: "string" } },
+    volumeHints: { type: "array", items: volumeHintSchema },
   },
 } as const;
 
@@ -49,8 +56,12 @@ export function gitProbeRoutesWithDeps(deps: Deps): FastifyPluginAsync {
       { schema: { body: bodySchema, response: { 200: resultSchema, 400: errorSchema, 404: errorSchema, 502: errorSchema, 503: errorSchema } } },
       async (req, reply) => {
         let remote: string;
+        let hintsFor: ProbeOptions["hintsFor"];
         try {
-          remote = cloneUrl(normalizeBuildSource({ repo: req.body.repo }).repo);
+          const { repo, branch, folder, method, dockerfile } = req.body;
+          const source = normalizeBuildSource({ repo, branch, folder, method, dockerfile });
+          remote = cloneUrl(source.repo);
+          if (folder !== undefined) hintsFor = { folder: source.folder, method: source.method, dockerfile: source.dockerfile };
         } catch (err) {
           if (err instanceof InvalidBuildSourceError) return reply.status(400).send({ ok: false, error: "invalid request", details: err.details });
           throw err;
@@ -70,8 +81,9 @@ export function gitProbeRoutesWithDeps(deps: Deps): FastifyPluginAsync {
         }
 
         try {
-          const result = await probe(remote, { auth });
-          return { defaultBranch: result.defaultBranch, branches: result.branches, folders: result.folders, dockerfiles: result.dockerfiles };
+          const result = await probe(remote, { auth, branch: req.body.branch, hintsFor });
+          const { files: _files, ...answer } = result;
+          return answer;
         } catch (err) {
           if (err instanceof GitProbeError) return reply.status(err.status).send({ ok: false, error: err.message });
           req.log.error({ err }, "git probe failed");

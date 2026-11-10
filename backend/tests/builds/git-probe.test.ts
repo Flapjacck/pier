@@ -19,6 +19,7 @@ before(() => {
   writeFileSync(join(src, "apps/api/Dockerfile"), "FROM node\n");
   writeFileSync(join(src, "web.Dockerfile"), "FROM nginx\n");
   writeFileSync(join(src, "package.json"), "{}\n");
+  writeFileSync(join(src, "apps/api/package.json"), '{"dependencies":{"sqlite3":"^5","fastify":"^5"}}\n');
   execFileSync("git", ["init", "-q", "-b", "trunk", src]);
   git("add", "-A");
   git("commit", "-qm", "init");
@@ -35,6 +36,13 @@ describe("git probe (#83)", () => {
     assert.deepEqual(result.folders, [".", "apps", "apps/api"]);
     assert.deepEqual(result.dockerfiles, ["apps/api/Dockerfile", "web.Dockerfile"]);
     assert.ok(result.files.includes("package.json"));
+  });
+
+  it("reads volume hints for the picked folder and branch", async () => {
+    const remote = `file://${join(dir, "remote.git")}`;
+    const result = await probeGitRepo(remote, { protocols: "file", branch: "feature", hintsFor: { folder: "apps/api", method: "railpack" } });
+    assert.deepEqual(result.volumeHints.map((h) => h.path), ["/app/data"]);
+    await assert.rejects(probeGitRepo(remote, { protocols: "file", branch: "nope" }), /doesn't exist/);
   });
 
   it("refuses protocols that aren't allowed (https only in production)", async () => {

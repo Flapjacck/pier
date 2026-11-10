@@ -15,7 +15,7 @@ import { waitFor } from "../helpers/wait-for.js";
 async function setup(cluster: SourceCluster = sourceCluster()) {
   const db = openDatabase(":memory:");
   const builds = fakeBuilds();
-  const app = await buildApp(testConfig(), { logger: false, k8s: sourceK8s(cluster), db, deployPollMs: 60_000, runBuild: builds.runBuild });
+  const app = await buildApp(testConfig(), { logger: false, k8s: sourceK8s(cluster), db, deployPollMs: 60_000, runBuild: builds.runBuild, volumeHints: async () => [] });
   return { app, db, builds, cluster };
 }
 
