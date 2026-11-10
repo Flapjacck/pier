@@ -63,6 +63,6 @@ describe("volume hint detectors", () => {
     assert.deepEqual(paths(merged), ["/app/data", "/var/lib/redis"]);
     assert.equal(merged[0]?.source, "image");
     assert.match(merged[0]?.reason ?? "", /repo says so/);
-    assert.equal(mergeHints(Array.from({ length: 20 }, (_, i) => ({ path: `/d${i}`, reason: "r", source: "files" as const, confidence: "low" as const }))).length, 10);
+    assert.equal(mergeHints(Array.from({ length: 20 }, (_, i) => ({ path: `/d${i}`, reason: "r", source: "files" as const, confidence: "low" as const }))).length, 5);
   });
 });

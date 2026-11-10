@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import type { K8sClientsResult } from "../k8s/clients.js";
 import { getRegistry } from "../k8s/registries.js";
 import { inspectImage } from "../images/inspect.js";
+import { imageVolumeHints } from "../builds/volume-hints/index.js";
+import { volumeHintSchema } from "./apps-source-schemas.js";
 
 type ImageBody = { image: string; registry?: string };
 type ImageDeps = { k8s: K8sClientsResult; namespace: string };
@@ -11,7 +13,7 @@ const bodySchema = {
 } as const;
 const responseSchema = {
   type: "object", required: ["ok", "image", "digest", "exposedPorts", "volumes"],
-  properties: { ok: { type: "boolean" }, image: { type: "string" }, digest: { type: "string" }, exposedPorts: { type: "array", items: { type: "integer" } }, volumes: { type: "array", items: { type: "string" } }, workingDir: { type: "string" }, defaultUser: { type: "string" } },
+  properties: { ok: { type: "boolean" }, image: { type: "string" }, digest: { type: "string" }, exposedPorts: { type: "array", items: { type: "integer" } }, volumes: { type: "array", items: { type: "string" } }, workingDir: { type: "string" }, defaultUser: { type: "string" }, volumeHints: { type: "array", items: volumeHintSchema } },
 } as const;
 const errorSchema = { type: "object", required: ["ok", "error"], properties: { ok: { type: "boolean" }, error: { type: "string" } } } as const;
 
@@ -22,7 +24,9 @@ export function imageRoutesWithDeps(deps: ImageDeps): FastifyPluginAsync {
       try {
         const credential = req.body.registry ? await getRegistry(deps.k8s.clients.core, deps.namespace, req.body.registry) : undefined;
         if (req.body.registry && !credential) return reply.status(404).send({ ok: false, error: "registry not found" });
-        return reply.send({ ok: true, ...await inspectImage(req.body.image, credential) });
+        const inspection = await inspectImage(req.body.image, credential);
+        // Same hint shape as the git probe (#83), so the wizard shows one kind of suggestion.
+        return reply.send({ ok: true, ...inspection, volumeHints: imageVolumeHints(inspection).hints });
       } catch (error) {
         const message = error instanceof Error ? error.message : "registry request failed";
         const status = message.includes("authentication") ? 401 : message.includes("not found") ? 404 : message.includes("registry request failed") ? 502 : 400;

@@ -95,6 +95,8 @@ export async function runSourceDeploy(
       return [];
     });
     setBuildResult(deps.db, app, { commit: result.commit, image: result.image, volumeHints: hints ?? [], now: now() });
+    // Shown on the deploy page so a Redeploy surfaces new suggestions; attached volumes are untouched.
+    for (const hint of hints ?? []) deploy.line("build", "info", `Suggested volume ${hint.path} (${hint.confidence}): ${hint.reason}`);
     // Deleted (or superseded) while building: don't resurrect the app.
     if (!deploy.isRunning()) return;
     stage = "apply";

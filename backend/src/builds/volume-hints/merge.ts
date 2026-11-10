@@ -2,6 +2,8 @@ import type { VolumeHint, VolumeHintConfidence } from "../types.js";
 
 /** Shared helpers for the volume hint detectors (#83 items 21–23). */
 
+/** Enough to act on without burying the strong ones. */
+export const MAX_HINTS = 5;
 const RANK: Record<VolumeHintConfidence, number> = { low: 0, medium: 1, high: 2 };
 
 /** Normalize a container path: absolute, no trailing slash, no "..". Undefined when unusable. */
@@ -31,5 +33,5 @@ export function mergeHints(hints: VolumeHint[]): VolumeHint[] {
     const reasons = best.reason.includes(other.reason) ? best.reason : `${best.reason} ${other.reason}`;
     byPath.set(hint.path, { ...best, reason: reasons });
   }
-  return [...byPath.values()].sort((a, b) => RANK[b.confidence] - RANK[a.confidence] || a.path.localeCompare(b.path)).slice(0, 10);
+  return [...byPath.values()].sort((a, b) => RANK[b.confidence] - RANK[a.confidence] || a.path.localeCompare(b.path)).slice(0, MAX_HINTS);
 }

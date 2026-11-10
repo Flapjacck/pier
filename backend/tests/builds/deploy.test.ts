@@ -73,6 +73,10 @@ describe("runSourceDeploy (#83)", () => {
   });
 
   it("a hint failure doesn't block the deploy; an unexpected throw fails the right step", async () => {
+    const hinted = await run();
+    const lines = hinted.row?.steps.find((s) => s.name === "build")?.lines.map((l) => l.text) ?? [];
+    assert.ok(lines.some((l) => l.startsWith("Suggested volume /data (high)")));
+
     const ok = await run({ hintsThrow: true });
     assert.equal(ok.steps.apply, "succeeded");
     assert.deepEqual(getAppSource(ok.db, "web")?.volumeHints, []);
