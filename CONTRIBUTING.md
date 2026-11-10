@@ -105,7 +105,7 @@ This auto-closes the issue when the PR is merged.
 
 ## Testing and verification
 
-- The backend needs Node ≥ 22.13 (it uses the built-in `node:sqlite`); CI runs Node 22, which resolves to a newer 22.x.
+- The backend needs Node ≥ 22.13 (it uses the built-in `node:sqlite`); CI and the image run Node 26.
 - Backend tests run via `node:test` and require no external cluster or `.env`. `tests/scripts/` runs the deploy scripts against shim `kubectl`/`docker`/`ssh` binaries (the real `kubectl` is only used for offline subcommands; those tests skip if it isn't installed).
 - Frontend tests run via Vitest in jsdom with mock `fetch` and `EventSource`. See [frontend/README.md](./frontend/README.md#tests) for details.
 - All CI checks must pass before merge.
