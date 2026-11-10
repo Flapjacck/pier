@@ -11,8 +11,8 @@ export type DeployHandle = {
   id: number;
   stepStarted: (step: StepName) => void;
   stepSucceeded: (step: StepName) => void;
-  /** Add an output line to a step (build output, #83). */
-  line: (step: StepName, level: LineLevel, text: string) => void;
+  /** Add an output line to a step (build output, #83). force skips the line cap. */
+  line: (step: StepName, level: LineLevel, text: string, force?: boolean) => void;
   /** Save a changed spec without applying (e.g. the commit a build cloned). */
   updateSpec: (spec: DeploySpec) => void;
   /** False once the deploy ended (cancelled by a delete, superseded or timed out). */
@@ -140,7 +140,7 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
       id,
       stepStarted: (step) => safe("step", id, () => void setStepStatus(db, id, step, "running", now())),
       stepSucceeded: (step) => safe("step", id, () => void setStepStatus(db, id, step, "succeeded", now())),
-      line: (step, level, text) => safe("line", id, () => void appendLog(db, { deploymentId: id, step, level, text, ts: now() })),
+      line: (step, level, text, force) => safe("line", id, () => void appendLog(db, { deploymentId: id, step, level, text, ts: now(), force })),
       updateSpec: (next) => safe("spec", id, () => setDeploySpec(db, id, next)),
       isRunning: () => {
         try {

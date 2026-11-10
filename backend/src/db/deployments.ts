@@ -3,6 +3,12 @@ import { stepsForDeploy, type DeploySpec, type DeployTrigger, type LineLevel, ty
 
 /** Most output lines kept per deploy; one "more lines dropped" line follows the cap. */
 export const DEPLOY_LOG_LINE_CAP = 300;
+/**
+ * Cap for the Build image step's own lines (#83), counted apart from the rollout lines
+ * so a long build never silences the rollout. BuildKit plain output easily passes 300
+ * lines and its error is at the end (see builds/run.ts for the failure tail).
+ */
+export const BUILD_LOG_LINE_CAP = 2000;
 /** Longest stored line; longer text is cut with an ellipsis. */
 export const DEPLOY_LOG_LINE_MAX = 1000;
 const DROPPED_LINE = "… more lines dropped";
@@ -52,15 +58,21 @@ export function setStepStatus(db: DatabaseSync, id: number, step: StepName, stat
   return Number(result.changes) > 0;
 }
 
-export type NewLine = { deploymentId: number; step: string; level: LineLevel; text: string; ts: number; eventKey?: string };
+export type NewLine = { deploymentId: number; step: string; level: LineLevel; text: string; ts: number; eventKey?: string; force?: boolean };
 
-/** Add an output line. Duplicate event keys are ignored. Returns true when a row was added. */
+/**
+ * Add an output line. Duplicate event keys are ignored. Build lines and the rest have
+ * separate caps; force skips the cap (only for the short failure tail of a build).
+ * Returns true when a row was added.
+ */
 export function appendLog(db: DatabaseSync, line: NewLine): boolean {
+  const build = line.step === "build";
   const count = Number(
-    db.prepare("SELECT COUNT(*) AS n FROM deployment_logs WHERE deployment_id = ?").get(line.deploymentId)?.n ?? 0,
+    db.prepare(`SELECT COUNT(*) AS n FROM deployment_logs WHERE deployment_id = ? AND ${build ? "step = 'build'" : "step != 'build'"}`).get(line.deploymentId)?.n ?? 0,
   );
-  if (count > DEPLOY_LOG_LINE_CAP) return false;
-  const capped = count === DEPLOY_LOG_LINE_CAP;
+  const cap = build ? BUILD_LOG_LINE_CAP : DEPLOY_LOG_LINE_CAP;
+  if (!line.force && count > cap) return false;
+  const capped = !line.force && count === cap;
   const text = capped ? DROPPED_LINE : line.text.length > DEPLOY_LOG_LINE_MAX ? `${line.text.slice(0, DEPLOY_LOG_LINE_MAX - 1)}…` : line.text;
   const result = db
     .prepare("INSERT OR IGNORE INTO deployment_logs (deployment_id, step, ts, level, text, event_key) VALUES (?, ?, ?, ?, ?, ?)")

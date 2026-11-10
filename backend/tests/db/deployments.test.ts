@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BUILD_LOG_LINE_CAP,
   DEPLOY_LOG_LINE_CAP,
   DEPLOY_LOG_LINE_MAX,
   appendLog,
@@ -78,6 +79,23 @@ describe("appendLog", () => {
     assert.equal(lines[0]?.text.length, DEPLOY_LOG_LINE_MAX);
     assert.ok(lines[0]?.text.endsWith("…"));
     assert.equal(lines.at(-1)?.text, "… more lines dropped");
+  });
+});
+
+describe("appendLog build cap (#83)", () => {
+  it("counts build lines separately from rollout lines and lets forced tail lines through", () => {
+    const db = openDatabase(":memory:");
+    const id = insertDeployment(db, { app: "web", trigger: "create", spec: { image: "", envKeys: [] }, now: 1000, build: true });
+    for (let i = 0; i < BUILD_LOG_LINE_CAP + 5; i++) appendLog(db, { deploymentId: id, step: "build", level: "info", text: `b${i}`, ts: i });
+    assert.equal(appendLog(db, { deploymentId: id, step: "build", level: "info", text: "ERROR tail", ts: 9999, force: true }), true);
+    // A full build log must not swallow the rollout's own lines.
+    assert.equal(appendLog(db, { deploymentId: id, step: "pull", level: "warning", text: "Back-off", ts: 10000 }), true);
+    const steps = getDeployment(db, id)?.steps ?? [];
+    const build = steps.find((s) => s.name === "build")?.lines ?? [];
+    assert.equal(build.length, BUILD_LOG_LINE_CAP + 2);
+    assert.equal(build.at(-2)?.text, "… more lines dropped");
+    assert.equal(build.at(-1)?.text, "ERROR tail");
+    assert.deepEqual(steps.find((s) => s.name === "pull")?.lines.map((l) => l.text), ["Back-off"]);
   });
 });
 
