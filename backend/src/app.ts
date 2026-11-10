@@ -19,6 +19,7 @@ import { SqliteLoginLimiter } from "./db/login-limiter";
 import { startPruning } from "./db/maintenance";
 import { createDeployTracker } from "./deploys/tracker";
 import { deploymentsRoutesWithDeps } from "./routes/deployments";
+import { gitCredentialsRoutesWithDeps } from "./routes/git-credentials";
 import { registriesRoutesWithDeps } from "./routes/registries";
 import { imageRoutesWithDeps } from "./routes/images";
 
@@ -126,6 +127,7 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(deploymentsRoutesWithDeps({ db, tracker }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(registriesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
+    await api.register(gitCredentialsRoutesWithDeps({ k8s: k8sResult, namespace: config.builds.namespace, db }));
     await api.register(imageRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(auditRoutesWithDeps({ db }));
   }, { prefix: "/api" });
