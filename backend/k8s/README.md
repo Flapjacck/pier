@@ -83,6 +83,7 @@ The pieces:
 - **Build Jobs** run unprivileged with `backoffLimit: 0`, `activeDeadlineSeconds` of `PIER_BUILD_TIMEOUT_SECONDS` (default 900, range 60 to 3600) and a TTL so finished Jobs are cleaned up. Each step container is capped (at most 1 CPU / 1Gi).
 - **The registry** is `registry:2` on a 10Gi `pier-local` PVC. BuildKit pushes to the in-cluster Service (`registry.pier-system.svc.cluster.local:5000`). The node pulls through NodePort 30500 as `localhost:30500`.
 - **The cache** is a 20Gi PVC. BuildKit garbage-collects it at about 80%.
+- **Network assumptions.** `pier-backend` in `default` has no NetworkPolicy, so the git probe reaches git hosts on 443 directly. Build pods (`pier-build-egress` in `pier-system`) may reach DNS, `buildkitd` on 1234, and public addresses on 80/443/22. Private ranges (10/8, 172.16/12, 192.168/16, 100.64/10, link-local) are blocked, so a git server on your LAN is unreachable from builds unless you add a rule. Pushes to the registry go through `buildkitd`, not the build pod.
 
 ### Node setup
 
