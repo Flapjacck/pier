@@ -1,0 +1,250 @@
+# BuildKit daemon for Pier builds (#83). One long-running buildkitd keeps a warm layer
+# cache on a PVC so rebuilds are fast; build Jobs in pier-system talk to it with
+# buildctl over TCP and never get a Docker socket or privileges themselves.
+#
+# Why rootful + privileged: rootless BuildKit needs unprivileged user namespaces plus
+# Unconfined seccomp/AppArmor, which Ubuntu 24.04+ restricts by default and which PSA
+# baseline forbids anyway. Instead the daemon is isolated: its own namespace, no
+# service account token, and a NetworkPolicy that only admits Pier build pods.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pier-buildkit
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildkitd-config
+  namespace: pier-buildkit
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+data:
+  # The push registry is the in-cluster Service (plain HTTP inside the cluster).
+  # gc keeps the cache PVC from filling up: BuildKit prunes once it passes ~80%.
+  buildkitd.toml: |
+    [worker.oci]
+      gc = true
+      maxUsedSpace = "16GB"
+    [registry."registry.pier-system.svc.cluster.local:5000"]
+      http = true
+      insecure = true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: buildkit-cache
+  namespace: pier-buildkit
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: pier-local
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkitd
+  namespace: pier-buildkit
+  labels:
+    app: buildkitd
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  replicas: 1
+  # The cache PVC is ReadWriteOnce: never run two daemons on it at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: buildkitd
+  template:
+    metadata:
+      labels:
+        app: buildkitd
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: buildkitd
+          image: moby/buildkit:v0.34.2
+          args:
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --config
+            - /etc/buildkit/buildkitd.toml
+          ports:
+            - name: buildkit
+              containerPort: 1234
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          readinessProbe:
+            exec:
+              command: ["buildctl", "--addr", "tcp://127.0.0.1:1234", "debug", "workers"]
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          livenessProbe:
+            exec:
+              command: ["buildctl", "--addr", "tcp://127.0.0.1:1234", "debug", "workers"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          volumeMounts:
+            - name: config
+              mountPath: /etc/buildkit
+              readOnly: true
+            - name: cache
+              mountPath: /var/lib/buildkit
+      volumes:
+        - name: config
+          configMap:
+            name: buildkitd-config
+        - name: cache
+          persistentVolumeClaim:
+            claimName: buildkit-cache
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkitd
+  namespace: pier-buildkit
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  selector:
+    app: buildkitd
+  ports:
+    - name: buildkit
+      port: 1234
+      targetPort: buildkit
+---
+# Only Pier build pods may reach the daemon (anyone who can talk to buildkitd can run
+# privileged build steps). Egress stays open: builds pull base images and packages.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: buildkitd-ingress
+  namespace: pier-buildkit
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector:
+    matchLabels:
+      app: buildkitd
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pier-system
+          podSelector:
+            matchLabels:
+              app: pier-build
+      ports:
+        - protocol: TCP
+          port: 1234
+---
+# Build steps (RUN lines) execute in the daemon's network namespace, so lock their
+# egress like pier-apps: DNS, the in-cluster registry, and the public internet only.
+# No private ranges, so a malicious Dockerfile cannot probe the LAN or the API server.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: buildkitd-egress
+  namespace: pier-buildkit
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector:
+    matchLabels:
+      app: buildkitd
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: TCP, port: 53 }
+        - { protocol: UDP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pier-system
+          podSelector:
+            matchLabels:
+              app: pier-registry
+      ports:
+        - { protocol: TCP, port: 5000 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: UDP, port: 443 }
+---
+# Build Job pods: clone and fetch Railpack from the internet, talk to buildkitd.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pier-build-egress
+  namespace: pier-system
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+spec:
+  podSelector:
+    matchLabels:
+      app: pier-build
+  policyTypes: ["Ingress", "Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: TCP, port: 53 }
+        - { protocol: UDP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: pier-buildkit
+          podSelector:
+            matchLabels:
+              app: buildkitd
+      ports:
+        - { protocol: TCP, port: 1234 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 22 }

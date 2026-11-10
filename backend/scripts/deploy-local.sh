@@ -180,9 +180,25 @@ fi
 # Apply every manifest in order (see k8s/README.md#apply-order), piping each
 # straight from the renderer so the Secret never touches disk.
 echo "==> Applying manifests in order"
+# A server dry run never persists the Namespace it would create, so a manifest whose
+# objects live in a namespace that isn't on the cluster yet (first deploy of the build
+# plumbing) fails with NotFound. Those fall back to a client dry run.
+needs_client_dry_run() {
+  local ns
+  [[ "$MODE" == dry-run ]] || return 1
+  for ns in $(manifest_needs_namespaces "$1"); do
+    kubectl get namespace "$ns" >/dev/null 2>&1 || return 0
+  done
+  return 1
+}
 while IFS= read -r name; do
   echo "--> $name"
-  render_manifest "$name" | kubectl apply "${APPLY_OPTS[@]}" -f -
+  opts=("${APPLY_OPTS[@]}")
+  if needs_client_dry_run "$name"; then
+    echo "    (namespace not on the cluster yet; client dry run for this manifest)"
+    opts=(--dry-run=client)
+  fi
+  render_manifest "$name" | kubectl apply "${opts[@]}" -f -
 done < <(manifest_names)
 if [[ -z "$DASHBOARD_HOST" ]]; then
   echo "==> Skipped dashboard ingress (PIER_DASHBOARD_HOST and PIER_INGRESS_DOMAIN not set)"

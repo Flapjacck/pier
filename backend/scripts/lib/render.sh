@@ -17,11 +17,13 @@
 # Optional files are listed only if they exist; tls only with an issuer; the
 # ingress only with a host. data-pvc is required: the Deployment mounts it.
 # traefik-config (cluster-wide, kube-system) comes last and only on request.
+# Build plumbing (#83): namespace-system before rbac-builds; registry and buildkit
+# after storage because their PVCs use the pier-local StorageClass.
 manifest_names() {
   local name
-  for name in namespace rbac rbac-apps storage quota networkpolicies policy-services tls service data-pvc; do
+  for name in namespace namespace-system rbac rbac-apps rbac-builds storage quota registry buildkit networkpolicies policy-services tls service data-pvc; do
     case "$name" in
-      storage | quota | networkpolicies | policy-services)
+      storage | quota | networkpolicies | policy-services | namespace-system | rbac-builds | registry | buildkit)
         [[ -f "$K8S_DIR/$name.yaml" ]] || continue
         ;;
       tls)
@@ -38,6 +40,15 @@ manifest_names() {
   if [[ -n "${RENDER_TRAEFIK_CONFIG:-}" && -f "$K8S_DIR/traefik-config.yaml" ]]; then
     echo traefik-config
   fi
+}
+
+# manifest_needs_namespaces <name>: namespaces (besides default and pier-apps) that
+# must already exist for a server-side dry run of this manifest to succeed.
+manifest_needs_namespaces() {
+  case "$1" in
+    rbac-builds | registry) echo pier-system ;;
+    buildkit) echo pier-system pier-buildkit ;;
+  esac
 }
 
 # render_secret: Secret default/pier-backend-secrets. The token is fed on
