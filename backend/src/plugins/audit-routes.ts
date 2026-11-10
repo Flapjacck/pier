@@ -86,6 +86,9 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
   "DELETE /api/registries/:name": { action: "registry.delete", app: () => null, target: paramName, details: (req) => ({ name: paramName(req) ?? "" }) },
   "PATCH /api/registries/:name": { action: "registry.update", app: () => null, target: paramName, details: (req) => ({ name: paramName(req) ?? "", ...pick(record(req.body), ["host"]) }) },
   "POST /api/registries/:name/test": { action: "registry.test", app: () => null, target: paramName },
+  "POST /api/git-credentials": { action: "git-credential.create", app: () => null, target: (req) => str(record(req.body).name), details: (req) => pick(record(req.body), ["username"]) },
+  "PATCH /api/git-credentials/:name": { action: "git-credential.update", app: () => null, target: paramName, details: (req) => withLists({}, { fields: Object.keys(record(req.body)).sort() }) },
+  "DELETE /api/git-credentials/:name": { action: "git-credential.delete", app: () => null, target: paramName },
 };
 
 /** Mutating routes that are intentionally not audited. */
