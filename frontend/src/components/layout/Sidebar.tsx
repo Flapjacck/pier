@@ -16,7 +16,7 @@ export function Sidebar({ clusterState, shellMainId }: Props) {
     <aside
       id="pier-sidebar"
       className={cn(
-        "hidden md:flex shrink-0 flex-col min-h-svh sticky top-0 z-10",
+        "hidden md:flex shrink-0 flex-col h-svh overflow-y-auto z-10",
         "bg-pier-surface border-r border-pier-border motion-safe:transition-[width] duration-200",
         collapsed ? "w-14" : "w-60",
       )}

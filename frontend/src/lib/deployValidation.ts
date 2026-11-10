@@ -31,6 +31,7 @@ export type FieldErrors = {
 
 import type { AppResources, CreateAppBody } from "../api/client";
 import { validateEnvRows } from "./envValidation";
+import { resolveHost } from "./host";
 import {
   DEFAULT_RESOURCES,
   sameResources,
@@ -111,31 +112,16 @@ export function validateDeployForm(
     }
   }
 
-  // Validate host (optional, but if provided must match ingress rules).
+  // Host: the field holds a subdomain; a full host under our domain is accepted too.
   let host: string | undefined;
   if (values.publicUrl) {
-    const hostInput = values.host.trim().toLowerCase();
-    if (!hostInput) {
-      errors.host = "Host is required when Public URL is enabled";
-    } else if (hostInput.length > 253) {
-      errors.host = "Host must be ≤253 characters";
-    } else if (hostInput.includes("*")) {
-      errors.host = "Host cannot contain wildcards";
-    } else if (opts.ingressDomain) {
-      // Host must end with .<ingressDomain> and not equal the domain itself.
-      if (!hostInput.endsWith(`.${opts.ingressDomain}`)) {
-        errors.host = `Host must end with .${opts.ingressDomain}`;
-      } else if (hostInput === opts.ingressDomain) {
-        errors.host = `Host cannot be the domain itself`;
-      } else {
-        host = hostInput;
-      }
-    } else {
+    if (!opts.ingressDomain) {
       errors.host = "Ingress isn't configured on this Pier";
+    } else {
+      const resolved = resolveHost(values.host, opts.ingressDomain);
+      if (resolved.ok) host = resolved.host;
+      else errors.host = resolved.error;
     }
-  } else if (!opts.ingressDomain) {
-    // Public URL is off and ingress is not configured — that's OK, no host will be sent.
-    host = undefined;
   }
 
   const { env: envMap, errors: envErrors } = validateEnvRows(values.env);

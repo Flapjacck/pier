@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { HostField } from "../../../src/pages/deploy/HostField";
 
 const noop = () => {};
@@ -31,5 +31,16 @@ describe("HostField URL preview", () => {
   it("shows an example host before a subdomain is typed", () => {
     renderField(true, "");
     expect(screen.getByText("e.g. demo.192.0.2.10.nip.io")).toBeInTheDocument();
+  });
+});
+
+describe("HostField paste (#83)", () => {
+  it("strips the ingress suffix and scheme so the domain is never doubled", () => {
+    const seen: string[] = [];
+    render(
+      <HostField id="host" subdomain="" ingressDomain="192.0.2.10.nip.io" onSubdomainChange={(v) => seen.push(v)} onClearError={noop} />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("demo"), { target: { value: "http://My-App.192.0.2.10.nip.io/" } });
+    expect(seen).toEqual(["my-app"]);
   });
 });
