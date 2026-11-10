@@ -8,7 +8,7 @@ import { SourceRows } from "../../../src/pages/app-detail/SourceRows";
 const base: App = { name: "web", image: "nginx:1.27", replicas: 1, ready: 1, status: "running", createdAt: "2026-11-01T00:00:00.000Z" };
 const source: AppSource = {
   method: "railpack", repo: "https://github.com/owner/repo.git", branch: "main", folder: "apps/api", dockerfile: "Dockerfile",
-  lastCommit: "0123456789abcdef", lastImage: "registry.pier-system.svc:5000/web:0123456", volumeHints: [],
+  lastCommit: "0123456789abcdef", lastImage: "localhost:30500/web:d4", volumeHints: [],
 };
 
 function dl(app: App) {
