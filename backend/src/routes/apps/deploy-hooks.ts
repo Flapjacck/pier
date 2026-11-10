@@ -103,6 +103,14 @@ function applyReason(err: unknown): string {
   return "Could not reach the cluster to apply the change.";
 }
 
+/** Reason for a failed Apply after a build (#83): validation messages as-is, else the cluster's. */
+export function applyFailureReason(err: unknown): string {
+  if (VALIDATION_ERRORS.some((type) => err instanceof type) || err instanceof AppExistsError || err instanceof AppNotFoundError) {
+    return err instanceof Error ? err.message : "The change is not valid.";
+  }
+  return applyReason(err);
+}
+
 /**
  * Record why a create/PATCH/restart failed: "not this app" errors (409 exists, 404)
  * drop the record; validation errors fail Validate; everything else fails Apply resources.
