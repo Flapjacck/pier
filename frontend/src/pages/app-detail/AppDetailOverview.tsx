@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { listVolumes } from "../../api/client";
 import type { Volume } from "../../api/types";
 import { LastDeployRow } from "./LastDeployRow";
+import { SourceRows } from "./SourceRows";
 import { useAppDetail } from "./useAppDetail";
 import { formatRelativeTime, formatAbsoluteDate } from "../../lib/time";
 
 /**
  * Overview tab: app metadata as a definition list.
- * Columns: Image, Port, Replicas, Host, URL, Created, Last deploy (#81), Volumes.
+ * Columns: Repository + built image (git apps, #83) or Image, Port, Replicas, Host, URL, Created, Last deploy (#81), Volumes.
  */
 export function AppDetailOverview() {
   const { app } = useAppDetail();
@@ -18,20 +19,7 @@ export function AppDetailOverview() {
 
   return (
     <dl className="space-y-4">
-      {/* Image */}
-      <div className="flex gap-4">
-        <dt className="text-[13px] font-semibold text-pier-muted w-24 shrink-0">
-          Image
-        </dt>
-        <dd className="m-0">
-          <code
-            className="font-mono text-[12.5px] text-pier-fg break-all"
-            title={app.image}
-          >
-            {app.image}
-          </code>
-        </dd>
-      </div>
+      <SourceRows app={app} />
 
       {/* Port */}
       {app.port && (
