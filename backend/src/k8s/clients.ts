@@ -15,6 +15,8 @@ export type K8sClients = {
   storage?: k8s.StorageV1Api;
   networking: k8s.NetworkingV1Api;
   log: k8s.Log;
+  /** Build Jobs (#83). Optional so test fakes that never build can leave it out. */
+  batch?: k8s.BatchV1Api;
 };
 
 /** Result of building clients once: either they loaded or an error occurred. */
@@ -42,10 +44,11 @@ export function createK8sClients(
     const storage = kc.makeApiClient(k8s.StorageV1Api);
     const networking = kc.makeApiClient(k8s.NetworkingV1Api);
     const log = new k8s.Log(kc);
+    const batch = kc.makeApiClient(k8s.BatchV1Api);
 
     return {
       ok: true,
-      clients: { mode, core, version, apps, storage, networking, log },
+      clients: { mode, core, version, apps, storage, networking, log, batch },
     };
   } catch (err) {
     // Return the error without throwing so the app can start and reply 503.
