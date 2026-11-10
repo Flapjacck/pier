@@ -16,7 +16,7 @@ const entrySchema = {
   properties: {
     id: { type: "integer" },
     ts: { type: "string", description: "ISO 8601 time of the request" },
-    actor: { type: "string", enum: ["token", "session"] },
+    actor: { type: "string", enum: ["token", "session", "pier"] },
     ip: { type: "string" },
     action: { type: "string" },
     app: { type: ["string", "null"] },

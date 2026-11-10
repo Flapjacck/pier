@@ -1,15 +1,22 @@
 import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
-import { appendLog, deleteDeployment, finishDeployment, insertDeployment, setDeploySpec, setStepStatus } from "../db/deployments.js";
+import { appendLog, deleteDeployment, insertDeployment, setDeploySpec, setStepStatus } from "../db/deployments.js";
 import { getDeployment, listRunning, runningIdsForApp } from "../db/deployments-read.js";
 import type { K8sClientsResult } from "../k8s/clients.js";
 import { reasons } from "./reasons.js";
-import { failDeploy, tick, timeoutIfDue, type TickContext, type TrackerLog } from "./tracker-loop.js";
-import type { DeploySpec, DeployTrigger, StepName } from "./types.js";
+import { endDeploy, failDeploy, tick, timeoutIfDue, type TickContext, type TrackerLog } from "./tracker-loop.js";
+import type { DeploySpec, DeployTrigger, LineLevel, StepName } from "./types.js";
 
 export type DeployHandle = {
   id: number;
+  stepStarted: (step: StepName) => void;
   stepSucceeded: (step: StepName) => void;
+  /** Add an output line to a step (build output, #83). */
+  line: (step: StepName, level: LineLevel, text: string) => void;
+  /** Save a changed spec without applying (e.g. the commit a build cloned). */
+  updateSpec: (spec: DeploySpec) => void;
+  /** False once the deploy ended (cancelled by a delete, superseded or timed out). */
+  isRunning: () => boolean;
   fail: (step: StepName, reason: string) => void;
   /** Delete the record (the request never touched this app, e.g. 409 exists or 404). */
   discard: () => void;
@@ -22,8 +29,11 @@ export type DeployHandle = {
 };
 
 export type DeployTracker = {
-  /** Record a deploy (Validate running). Returns null when the database fails. */
-  begin: (app: string, trigger: DeployTrigger, spec: DeploySpec) => DeployHandle | null;
+  /**
+   * Record a deploy (Validate running). build adds the Build image step (#83).
+   * Returns null when the database fails.
+   */
+  begin: (app: string, trigger: DeployTrigger, spec: DeploySpec, opts?: { build?: boolean }) => DeployHandle | null;
   subscribe: (id: number, listener: () => void) => () => void;
   cancelApp: (app: string, reason: string) => void;
   resume: () => void;
@@ -114,21 +124,31 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
     for (const old of runningIdsForApp(db, app)) {
       if (old === newId) continue;
       stopLoop(old);
-      if (finishDeployment(db, old, { status: "cancelled", reason: reasons.superseded(newId), now: now() })) emit(old);
+      if (endDeploy(db, old, { status: "cancelled", reason: reasons.superseded(newId), now: now() })) emit(old);
     }
   }
 
-  function begin(app: string, trigger: DeployTrigger, spec: DeploySpec): DeployHandle | null {
+  function begin(app: string, trigger: DeployTrigger, spec: DeploySpec, opts: { build?: boolean } = {}): DeployHandle | null {
     let id: number;
     try {
-      id = insertDeployment(db, { app, trigger, spec, now: now() });
+      id = insertDeployment(db, { app, trigger, spec, now: now(), build: opts.build === true });
     } catch (err) {
       log.error({ err, app }, "could not record the deploy");
       return null;
     }
     return {
       id,
+      stepStarted: (step) => safe("step", id, () => void setStepStatus(db, id, step, "running", now())),
       stepSucceeded: (step) => safe("step", id, () => void setStepStatus(db, id, step, "succeeded", now())),
+      line: (step, level, text) => safe("line", id, () => void appendLog(db, { deploymentId: id, step, level, text, ts: now() })),
+      updateSpec: (next) => safe("spec", id, () => setDeploySpec(db, id, next)),
+      isRunning: () => {
+        try {
+          return getDeployment(db, id)?.status === "running";
+        } catch {
+          return false;
+        }
+      },
       fail: (step, reason) => safe("fail", id, () => void failDeploy(db, id, step, reason, now())),
       discard: () => safe("discard", id, () => deleteDeployment(db, id)),
       applied: (applied) =>
@@ -154,7 +174,7 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
     try {
       for (const id of runningIdsForApp(db, app)) {
         stopLoop(id);
-        if (finishDeployment(db, id, { status: "cancelled", reason, now: now() })) emit(id);
+        if (endDeploy(db, id, { status: "cancelled", reason, now: now() })) emit(id);
       }
     } catch (err) {
       log.error({ err, app }, "could not cancel deploys");
@@ -164,8 +184,13 @@ export function createDeployTracker(opts: DeployTrackerOptions): DeployTracker {
   function resume(): void {
     try {
       for (const row of listRunning(db)) {
-        const apply = getDeployment(db, row.id)?.steps.find((s) => s.name === "apply");
-        if (apply?.status !== "succeeded") {
+        const steps = getDeployment(db, row.id)?.steps ?? [];
+        const apply = steps.find((s) => s.name === "apply");
+        const build = steps.find((s) => s.name === "build");
+        if (build && build.status !== "succeeded") {
+          // The build Job outlives a restart, but nobody is left to apply its image.
+          failDeploy(db, row.id, "build", reasons.restartedDuringBuild(), now());
+        } else if (apply?.status !== "succeeded") {
           failDeploy(db, row.id, "apply", reasons.restartedBeforeApply(), now());
         } else if (!timeoutIfDue(ctx, row)) {
           appendLog(db, { deploymentId: row.id, step: row.currentStep ?? "schedule", level: "info", text: "Pier restarted; resumed tracking.", ts: now() });

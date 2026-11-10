@@ -52,7 +52,10 @@ describe("audit log hook", () => {
       });
       assert.equal(res.statusCode, call.status, `${call.method} ${call.url}: ${res.body}`);
     }
-    const rows = actionsOf(db);
+    // Deploys ending in the background (superseded or cancelled here) add actor "pier" rows (#83).
+    const all = actionsOf(db);
+    assert.ok(all.some((r) => r.actor === "pier" && r.action === "deploy.cancelled" && r.app === "web"));
+    const rows = all.filter((r) => r.actor !== "pier");
     assert.deepEqual(rows.map((r) => [r.action, r.app, r.target, r.actor]), [
       ["session.login", null, null, "session"],
       ["app.create", "web", null, "token"],

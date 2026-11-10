@@ -182,7 +182,7 @@ export type AuditEntry = {
   id: number;
   /** ISO 8601 time of the request. */
   ts: string;
-  actor: "token" | "session";
+  actor: "token" | "session" | "pier";
   ip: string;
   /** e.g. "app.create", "app.scale", "volume.delete", "session.login". */
   action: string;
