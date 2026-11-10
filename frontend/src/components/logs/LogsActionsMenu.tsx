@@ -1,6 +1,7 @@
 import { Menu } from "../ui/Menu";
 import type { LogLine } from "../../hooks/useLogStream";
 import { useToast } from "../ui/Toast";
+import { copyText } from "../../lib/clipboard";
 
 interface LogsActionsMenuProps {
   open: boolean;
@@ -26,7 +27,7 @@ export function LogsActionsMenu({
   const handleCopy = async () => {
     try {
       const text = lines.map((line) => line.text).join("\n");
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       toast({ variant: "success", title: "Copied to clipboard" });
     } catch {
       toast({ variant: "error", title: "Failed to copy" });
