@@ -27,6 +27,12 @@ export function mapApiErrorToFields(err: ApiError): FieldErrors {
       // Try to map to a field if the details mention it
       if (err.details.includes("host")) {
         errors.host = err.details;
+      } else if (err.details.includes("repo")) {
+        errors.repo = err.details;
+      } else if (err.details.includes("folder")) {
+        errors.folder = err.details;
+      } else if (err.details.includes("dockerfile")) {
+        errors.dockerfile = err.details;
       } else if (err.details.includes("name")) {
         errors.name = err.details;
       } else if (err.details.includes("image")) {

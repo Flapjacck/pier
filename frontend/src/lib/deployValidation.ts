@@ -15,11 +15,16 @@ export type DeployFormValues = {
   resources?: AppResources;
   volume?: { name: string; mountPath: string; size?: string };
   registry?: string;
+  /** Build from git instead of `image` (#83). */
+  source?: SourceBody;
 };
 
 export type FieldErrors = {
   name?: string;
   image?: string;
+  repo?: string;
+  folder?: string;
+  dockerfile?: string;
   port?: string;
   replicas?: string;
   host?: string;
@@ -30,6 +35,8 @@ export type FieldErrors = {
 };
 
 import type { AppResources, CreateAppBody } from "../api/client";
+import type { SourceBody } from "../api/types";
+import { repoError, repoPathError } from "./sourceValidation";
 import { validateEnvRows } from "./envValidation";
 import { resolveHost } from "./host";
 import {
@@ -84,10 +91,20 @@ export function validateDeployForm(
     errors.name = "Name must start with a lowercase letter, contain only lowercase letters, numbers, and hyphens, and be ≤63 characters";
   }
 
-  // Validate image: 1–255 chars, no whitespace.
+  // Exactly one of image and source; each is validated on its own fields.
   const image = values.image.trim();
-  const imageMsg = imageError(image);
-  if (imageMsg) errors.image = imageMsg;
+  const source = values.source;
+  if (source) {
+    const repoMsg = repoError(source.repo);
+    if (repoMsg) errors.repo = repoMsg;
+    const folderMsg = repoPathError(source.folder ?? ".", "Folder");
+    if (folderMsg) errors.folder = folderMsg;
+    const dockerfileMsg = source.method === "dockerfile" ? repoPathError(source.dockerfile ?? "Dockerfile", "Dockerfile") : undefined;
+    if (dockerfileMsg) errors.dockerfile = dockerfileMsg;
+  } else {
+    const imageMsg = imageError(image);
+    if (imageMsg) errors.image = imageMsg;
+  }
 
   // Validate port: 1–65535, must be an integer.
   const port = values.port.trim();
@@ -145,10 +162,12 @@ export function validateDeployForm(
   // Build the body.
   const body: CreateAppBody = {
     name,
-    image,
+    ...(source ? { source: { ...source, repo: source.repo.trim() } } : { image }),
     port: Number(port),
     replicas: Number(replicas),
   };
+  // Railpack images start the app's own server, which reads $PORT; the wizard says so (#83).
+  if (source && (source.method ?? "railpack") === "railpack" && !("PORT" in envMap)) envMap.PORT = port;
 
   if (host) {
     body.host = host;
