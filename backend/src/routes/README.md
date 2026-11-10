@@ -10,7 +10,10 @@ Fastify plugins registered from [`../app.ts`](../app.ts). Kubernetes calls live 
 | `audit.ts` | `GET /api/audit` |
 | `apps.ts` | `GET /api/apps`, `GET /api/apps/:name`, `POST /api/apps`, `PATCH /api/apps/:name` (`apps/patch.ts`), scale, restart, delete, pods, pod actions, logs, events |
 | `registries.ts` | `GET/POST/PATCH/DELETE /api/registries`, registry test endpoint; passwords are write-only |
-| `images.ts` | `POST /api/images/inspect` reads registry manifests and config metadata without pulling an image |
+| `images.ts` | `POST /api/images/inspect` reads registry manifests and config metadata without pulling an image, and returns `volumeHints` |
+| `apps/post-source.ts`, `apps/redeploy.ts` | `POST /api/apps` with a git `source`, `POST /api/apps/:name/redeploy` ([Builds from git](#builds-from-git-83)) |
+| `git-probe.ts` | `POST /api/git/probe` lists a repo's branches, folders, Dockerfiles and volume hints |
+| `git-credentials.ts` | `GET/POST/PATCH/DELETE /api/git-credentials`; tokens are write-only |
 
 ## Common behaviour
 
@@ -358,7 +361,8 @@ Create a Deployment, Service, and optionally an Ingress in `PIER_NAMESPACE`. Orc
 | Field | Type | Required | Constraints | Notes |
 |-------|------|----------|-------------|-------|
 | `name` | string | Yes | DNS-1035 (`isValidAppName` / `APP_NAME_SCHEMA_PATTERN` in `names.ts`) | Lowercase, leading letter, hyphens OK, 1–63 chars. |
-| `image` | string | Yes | 1–255 chars, no whitespace | Container image URL, e.g. `nginx:1.27`, `gcr.io/my-project/app:v1.0.0`. |
+| `image` | string | One of `image` or `source` | 1–255 chars, no whitespace | Container image URL, e.g. `nginx:1.27`, `gcr.io/my-project/app:v1.0.0`. |
+| `source` | object | One of `image` or `source` | See [Builds from git](#builds-from-git-83) | Build the image from a git repo instead. The create returns before the build finishes. |
 | `port` | integer | Yes | 1–65535 | Container port number. |
 | `replicas` | integer | No | 0–10, default 1 | Desired replicas. Use 0 to pause an app. |
 | `host` | string | No | 1–253 chars, DNS-1123 format, must end with `.PIER_INGRESS_DOMAIN` | Ingress hostname. Requires `PIER_INGRESS_DOMAIN` to be configured. Automatically lowercased. |
@@ -915,7 +919,7 @@ Unknown params return 400.
 }
 ```
 
-`actor` is `token` (Bearer header) or `session` (cookie). `nextBefore` is `null` on the last page. Actions: `app.create`, `app.update`, `app.scale`, `app.restart`, `app.delete`, `pod.delete`, `volume.create`, `volume.delete`, `session.login`.
+`actor` is `token` (Bearer header), `session` (cookie) or `pier` (a background event with no request, such as a deploy finishing; `ip` is empty). `nextBefore` is `null` on the last page. Actions: `app.create`, `app.update`, `app.scale`, `app.restart`, `app.redeploy`, `app.delete`, `pod.delete`, `volume.create`, `volume.delete`, `git-credential.create`, `git-credential.update`, `git-credential.delete`, `session.login`, and `deploy.succeeded`, `deploy.failed`, `deploy.cancelled` (`target` is the deploy id, so the row links to `/apps/<app>/deployments/<id>`; details carry `trigger`, `reason`, `repo`, `branch`, `commit` or `image`). Git tokens never appear in details.
 
 | Status | Error | Reason |
 |--------|-------|--------|
@@ -928,6 +932,73 @@ API=http://pier.192.0.2.10.nip.io/api
 curl -H "Authorization: Bearer $PIER_API_TOKEN" "$API/audit?limit=20"
 curl -H "Authorization: Bearer $PIER_API_TOKEN" "$API/audit?app=web&before=42"
 ```
+
+## Builds from git (#83)
+
+Pier builds an image from a repo with BuildKit, using Railpack (default) or a Dockerfile, then deploys it. Cluster pieces and node setup are in [k8s/README.md#builds](../../k8s/README.md#builds).
+
+### `source` on `POST /api/apps`
+
+```json
+{
+  "name": "api",
+  "source": { "method": "railpack", "repo": "https://github.com/owner/repo", "branch": "main", "folder": "apps/api" },
+  "port": 8080,
+  "env": { "PORT": "8080" }
+}
+```
+
+| Field | Default | Rules |
+|-------|---------|-------|
+| `method` | `railpack` | `railpack` or `dockerfile`. |
+| `repo` | (required) | `https://host/owner/repo` with no username or token in it, or `git@host:owner/repo` / `ssh://git@host/owner/repo` (cloned over HTTPS). |
+| `branch` | the repo's default branch | Branch to build. |
+| `folder` | `.` | Build context, relative to the repo root, no `.`/`..` segments. |
+| `dockerfile` | `Dockerfile` | Dockerfile path relative to `folder` (only used with `dockerfile`). |
+| `gitCredential` | none | Name of a [git credential](#git-credentials) for private repos. |
+
+The `201` comes back straight away with the app (`status: "building"`, a `source` summary) and `deploymentId`. Follow the build at `GET /api/apps/:name/deployments/:id`. Its first step, **Build image**, streams the build output and ends with any volume suggestions as `Suggested volume <path> (<confidence>): <reason>` lines. Until the first build succeeds the app exists only in Pier's database: `GET /api/apps/:name` returns it as `building`, or as `failed` with the `deploymentId` of the failed build, so its logs are always reachable. Env values wait in the database until the first create succeeds and are then removed; they are never returned.
+
+Errors on top of the image path's: **404** `git credential not found`, **409** `app already exists` (also for a git app still on its first build), **503** `builds unavailable` (backend started without build support).
+
+Apps built from git carry `source` on `GET /api/apps` and `/:name`: `method`, `repo`, `branch`, `folder`, `dockerfile`, `gitCredential?`, `lastCommit`, `lastImage` and `volumeHints`.
+
+### `POST /api/apps/:name/redeploy`
+
+Rebuild a git app from its branch head and roll it out. Returns **202** `{ "ok": true, "deploymentId": 12 }`. **404** if the app doesn't exist, **409** `app has no git source` or `a build is already running`.
+
+### `POST /api/git/probe`
+
+Read a repo without building it, for the deploy wizard. Body: `repo`, plus optional `gitCredential`, `branch`, `folder`, `method` and `dockerfile`.
+
+```json
+{ "defaultBranch": "main", "branches": ["main", "dev"], "folders": [".", "apps", "apps/api"], "dockerfiles": ["Dockerfile", "apps/api/Dockerfile"], "volumeHints": [] }
+```
+
+`folders` go up to 3 levels deep (300 max); `dockerfiles` are repo-relative. `volumeHints` are only worked out when `folder` is sent. **400** invalid repo or path, **404** `git credential not found`, **502** `Could not read the repository` (wrong URL, private repo without a credential, or unreachable host), **503** cluster unreachable.
+
+### Volume hints
+
+Probe, `POST /api/images/inspect` and app `source` all use one shape:
+
+```json
+{ "path": "/data", "reason": "The Dockerfile declares VOLUME /data.", "source": "image", "confidence": "high" }
+```
+
+`source` is `image` (image `VOLUME`), `compose` (compose volumes), `fly` (`fly.toml` mounts), `dependency` (SQLite-style libraries) or `files` (committed database files or data folders). Hints are deduplicated by path, capped at 5, and never create or attach anything. Static sites get none.
+
+### Git credentials
+
+Write-only HTTPS username and token for private repos, stored as Secret `pier-git-<name>` in `pier-system`. The token is never returned.
+
+| Method | Path | Success | Errors |
+|---|---|---|---|
+| GET | `/git-credentials` | 200 `{ ok, credentials: [{ name, username, createdAt }] }` | 502, 503 |
+| POST | `/git-credentials` | 201 `{ ok, credential }`; body `{ name, username, token }` | 400, 409 already exists, 502, 503 |
+| PATCH | `/git-credentials/:name` | 200 `{ ok, credential }`; body `{ username?, token? }` | 404, 502, 503 |
+| DELETE | `/git-credentials/:name` | 204 | 404, 409 `git credential in use` (with `apps`), 502, 503 |
+
+502 means Pier can't manage Secrets in the build namespace: apply `backend/k8s/namespace-system.yaml` and `rbac-builds.yaml`.
 
 ## Volumes
 
