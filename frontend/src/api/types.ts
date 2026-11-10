@@ -11,10 +11,11 @@
  * - backend/src/routes/apps/restart.ts (RestartResult)
  * - backend/src/routes/session.ts (SessionInfo) — includes ingressDomain and tls
  * - backend/src/deploys/serialize.ts and types.ts (DeploySummary, DeployDetail)
+ * - ./sourceTypes.ts (build from git, #83)
  */
-
+import type { AppSource, SourceBody, VolumeHint } from "./sourceTypes";
+export type { AppSource, BuildMethod, GitCredential, GitProbeBody, GitProbeResult, SourceBody, VolumeHint } from "./sourceTypes";
 export type KubeConfigMode = "in-cluster" | "kubeconfig";
-
 export type AppStatus = "running" | "stopped" | "building" | "failed";
 
 export type App = {
@@ -35,6 +36,8 @@ export type App = {
   registry?: string | null;
   /** Deploy record started by a create/PATCH (#81); absent on reads. */
   deploymentId?: number;
+  /** Set when the app is built from git (#83); the repo is its primary identity. */
+  source?: AppSource;
 };
 export type Volume = { name: string; size: string; status: "pending" | "bound" | "lost"; app?: string; mountPath?: string; createdAt: string };
 export type VolumeMount = { name: string; mountPath: string; size?: string };
@@ -115,7 +118,9 @@ export type SessionInfo = {
 /** POST /api/apps body — mirrors apps-schemas PostAppsBody */
 export type CreateAppBody = {
   name: string;
-  image: string;
+  /** Exactly one of image (pre-built) and source (build from git, #83). */
+  image?: string;
+  source?: SourceBody;
   port: number;
   replicas?: number;
   host?: string;
@@ -150,6 +155,7 @@ export type ImageInspection = {
   volumes: string[];
   workingDir?: string;
   defaultUser?: string;
+  volumeHints: VolumeHint[];
 };
 
 export type ScaleBody = {

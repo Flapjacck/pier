@@ -1,3 +1,4 @@
+import { parseAppSource } from "./sourceGuards";
 import type {
   App,
   AppEvent,
@@ -83,6 +84,7 @@ export function parseApp(json: unknown): App {
   }
   if (typeof json.deploymentId === "number") app.deploymentId = json.deploymentId;
   if (typeof json.registry === "string") app.registry = json.registry;
+  if (json.source !== undefined) app.source = parseAppSource(json.source);
   return app;
 }
 

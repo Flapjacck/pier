@@ -16,7 +16,7 @@ describe("registry guards", () => {
   it("parses image ports and volume hints", () => {
     expect(parseImageInspection({
       image: "example/app:latest", digest: "sha256:abc", exposedPorts: [8080], volumes: ["/data"],
-    })).toEqual({ image: "example/app:latest", digest: "sha256:abc", exposedPorts: [8080], volumes: ["/data"], workingDir: undefined, defaultUser: undefined });
+    })).toEqual({ image: "example/app:latest", digest: "sha256:abc", exposedPorts: [8080], volumes: ["/data"], workingDir: undefined, defaultUser: undefined, volumeHints: [] });
     expect(() => parseImageInspection({ image: "example/app", exposedPorts: ["8080"], volumes: [] })).toThrow();
   });
 });
