@@ -20,8 +20,10 @@ import { startPruning } from "./db/maintenance";
 import { createDeployTracker } from "./deploys/tracker";
 import { deploymentsRoutesWithDeps } from "./routes/deployments";
 import { gitCredentialsRoutesWithDeps } from "./routes/git-credentials";
+import { gitProbeRoutesWithDeps } from "./routes/git-probe";
 import { registriesRoutesWithDeps } from "./routes/registries";
 import { imageRoutesWithDeps } from "./routes/images";
+import type { SourceDeployDeps } from "./builds/deploy.js";
 
 type BuildAppOptions = {
   logger?: FastifyServerOptions["logger"];
@@ -35,6 +37,8 @@ type BuildAppOptions = {
   db?: DatabaseSync;
   /** Deploy tracker poll interval in ms (tests shorten it). Default 2000. */
   deployPollMs?: number;
+  /** Fake image builds (tests). */
+  runBuild?: SourceDeployDeps["runBuild"];
 };
 
 /**
@@ -123,11 +127,12 @@ export async function buildApp(config: Config, opts: BuildAppOptions = {}) {
     await api.register(healthRoutes);
     await api.register(sessionRoutesWithDeps({ apiToken: config.apiToken, ingressDomain: config.ingressDomain, tls: config.tlsIssuer !== undefined, limiter }));
     await api.register(clusterRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
-    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer, tracker }));
+    await api.register(appsRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace, ingressDomain: config.ingressDomain, dashboardHost: config.dashboardHost, tlsIssuer: config.tlsIssuer, tracker, db, builds: config.builds, runBuild: opts.runBuild }));
     await api.register(deploymentsRoutesWithDeps({ db, tracker }));
     await api.register(volumesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(registriesRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(gitCredentialsRoutesWithDeps({ k8s: k8sResult, namespace: config.builds.namespace, db }));
+    await api.register(gitProbeRoutesWithDeps({ k8s: k8sResult, namespace: config.builds.namespace }));
     await api.register(imageRoutesWithDeps({ k8s: k8sResult, namespace: config.namespace }));
     await api.register(auditRoutesWithDeps({ db }));
   }, { prefix: "/api" });

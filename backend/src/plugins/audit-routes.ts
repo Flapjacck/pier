@@ -51,7 +51,11 @@ const paramName = (req: AuditRequest) => str(record(req.params).name);
 
 function createDetails(req: AuditRequest): AuditDetails {
   const body = record(req.body);
-  return withLists(pick(body, ["image", "port", "replicas", "host"]), { envKeys: envKeys(body), volumes: volumeNames(body) });
+  const details = withLists(pick(body, ["image", "port", "replicas", "host"]), { envKeys: envKeys(body), volumes: volumeNames(body) });
+  // Build-from-repo creates (#83): where it builds from. The credential is a name, never a token.
+  const source = record(body.source);
+  for (const [key, value] of Object.entries(pick(source, ["method", "repo", "branch", "folder", "gitCredential"]))) details[key] = value;
+  return details;
 }
 
 function patchDetails(req: AuditRequest): AuditDetails {
@@ -68,6 +72,7 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
   "PATCH /api/apps/:name": { action: "app.update", app: paramName, details: patchDetails },
   "PATCH /api/apps/:name/scale": { action: "app.scale", app: paramName, details: (req) => pick(record(req.body), ["replicas"]) },
   "POST /api/apps/:name/restart": { action: "app.restart", app: paramName },
+  "POST /api/apps/:name/redeploy": { action: "app.redeploy", app: paramName },
   "DELETE /api/apps/:name": {
     action: "app.delete",
     app: paramName,
@@ -92,4 +97,4 @@ export const AUDITED_ROUTES: Record<string, AuditRule> = {
 };
 
 /** Mutating routes that are intentionally not audited. */
-export const UNAUDITED_ROUTES = new Set(["POST /api/logout", "POST /api/images/inspect"]);
+export const UNAUDITED_ROUTES = new Set(["POST /api/logout", "POST /api/images/inspect", "POST /api/git/probe"]);

@@ -1,4 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { DatabaseSync } from "node:sqlite";
+import { getAppSource } from "../../db/app-sources.js";
+import { sourceOnlyApp, withSource } from "./source-app.js";
 import { isValidAppName } from "../../k8s/names.js";
 import { getApp } from "../../k8s/app-lookup.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
@@ -7,6 +10,8 @@ import { appSchema, errorSchema } from "../apps-schemas.js";
 type GetAppRouteDeps = {
   k8s: K8sClientsResult;
   namespace: string;
+  /** Git sources (#83): a failed first build still has a page. */
+  db?: DatabaseSync;
 };
 
 /** GET /apps/:name — retrieve a single Pier-managed app by name. */
@@ -54,14 +59,10 @@ export function getAppRoutesWithDeps(deps: GetAppRouteDeps): FastifyPluginAsync 
             name,
           );
 
-          if (!appData) {
-            return reply.status(404).send({
-              ok: false,
-              error: "app not found",
-            });
-          }
-
-          return appData;
+          if (appData) return withSource(deps.db, appData);
+          const row = deps.db ? getAppSource(deps.db, name) : undefined;
+          if (row && deps.db) return sourceOnlyApp(deps.db, row);
+          return reply.status(404).send({ ok: false, error: "app not found" });
         } catch (err) {
           req.log.error({ err }, "get app failed");
           return reply.status(503).send({

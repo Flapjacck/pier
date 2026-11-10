@@ -1,6 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { K8sClientsResult } from "../k8s/clients.js";
+import type { DatabaseSync } from "node:sqlite";
 import type { DeployTracker } from "../deploys/tracker.js";
+import type { BuildConfig } from "../config-builds.js";
+import type { SourceDeployDeps } from "../builds/deploy.js";
+import { redeployAppRoutesWithDeps } from "./apps/redeploy.js";
 import { getAppsRoutesWithDeps } from "./apps/get.js";
 import { getAppRoutesWithDeps } from "./apps/get-one.js";
 import { postAppsRoutesWithDeps } from "./apps/post.js";
@@ -22,6 +26,12 @@ export type AppsRouteDeps = {
   tlsIssuer?: string;
   /** Records create/PATCH/restart as deploys (#81). */
   tracker?: DeployTracker;
+  /** Git sources and build deploys (#83). Without them, source creates answer 503. */
+  db?: DatabaseSync;
+  builds?: BuildConfig;
+  volumeHints?: SourceDeployDeps["volumeHints"];
+  /** Swapped in tests so no build Job is created. */
+  runBuild?: SourceDeployDeps["runBuild"];
 };
 
 /** Factory keeps apps routes testable without a live cluster. */
@@ -40,6 +50,7 @@ export function appsRoutesWithDeps(deps: AppsRouteDeps): FastifyPluginAsync {
     // Register app action routes (scale, restart, delete)
     await app.register(scaleAppRoutesWithDeps(deps));
     await app.register(restartAppRoutesWithDeps(deps));
+    await app.register(redeployAppRoutesWithDeps(deps));
     await app.register(deleteAppRoutesWithDeps(deps));
   };
 }

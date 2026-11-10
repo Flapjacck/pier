@@ -122,3 +122,14 @@ export function listRunning(db: DatabaseSync): DeployRow[] {
 export function runningIdsForApp(db: DatabaseSync, app: string): number[] {
   return db.prepare("SELECT id FROM deployments WHERE app = ? AND status = 'running' ORDER BY id").all(app).map((row) => Number(row.id));
 }
+
+/** Running deploys that haven't applied yet, i.e. still building (#83). A rollout being watched doesn't count. */
+export function unappliedIdsForApp(db: DatabaseSync, app: string): number[] {
+  return db
+    .prepare(
+      `SELECT d.id FROM deployments d JOIN deployment_steps s ON s.deployment_id = d.id AND s.name = 'apply'
+       WHERE d.app = ? AND d.status = 'running' AND s.status IN ('pending', 'running') ORDER BY d.id`,
+    )
+    .all(app)
+    .map((row) => Number(row.id));
+}

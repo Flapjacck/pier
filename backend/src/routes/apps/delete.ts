@@ -1,4 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { DatabaseSync } from "node:sqlite";
+import { deleteAppSource } from "../../db/app-sources.js";
 import { deleteApp } from "../../k8s/app-actions.js";
 import type { K8sClientsResult } from "../../k8s/clients.js";
 import { isValidAppName } from "../../k8s/names.js";
@@ -10,6 +12,8 @@ type DeleteRouteDeps = {
   namespace: string;
   /** Cancels the app's running deploys (#81). */
   tracker?: DeployTracker;
+  /** Git sources (#83): deleting the app forgets its source and stops its build. */
+  db?: DatabaseSync;
 };
 
 /** DELETE /apps/:name — delete an app (Deployment, Service, and Ingress). */
@@ -64,7 +68,9 @@ export function deleteAppRoutesWithDeps(deps: DeleteRouteDeps): FastifyPluginAsy
 
         try {
           const result = await deleteApp(deps.k8s.clients, deps.namespace, name, req.query.deleteVolumes === true, req.log);
-          if (result.deleted.length === 0) {
+          // Cancelling the deploy also stops a running build (its Job is deleted).
+          const hadSource = deps.db ? deleteAppSource(deps.db, name) : false;
+          if (result.deleted.length === 0 && !hadSource) {
             return reply.status(404).send({
               ok: false,
               error: "app not found",

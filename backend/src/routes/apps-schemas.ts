@@ -1,12 +1,14 @@
 import { APP_NAME_SCHEMA_PATTERN } from "../k8s/names.js";
 import type { PartialAppResources } from "../k8s/resources.js";
 import { SIZE_PATTERN } from "../k8s/volumes/validation.js";
+import { appSourceSchema, sourceBodySchema, type AppSourceSummary, type SourceBody } from "./apps-source-schemas.js";
 
 /** Schemas and types for the /apps routes (POST /apps, PATCH /apps/:name, responses). */
 
 export type PostAppsBody = {
   name: string;
-  image: string;
+  /** Exactly one of image (pre-built) and source (build from git, #83). */
+  image?: string;
   port: number;
   replicas: number;
   host?: string;
@@ -14,6 +16,7 @@ export type PostAppsBody = {
   resources?: PartialAppResources;
   volumes?: { name: string; mountPath: string; size?: string }[];
   registry?: string;
+  source?: SourceBody;
 };
 
 /** PATCH /apps/:name body: at least one field; env replaces the whole set. */
@@ -111,8 +114,10 @@ export const postAppsBodySchema = {
     resources: resourcesBodySchema,
     volumes: volumesSchema,
     registry: { type: ["string", "null"], minLength: 1, maxLength: 63, pattern: APP_NAME_SCHEMA_PATTERN },
+    source: sourceBodySchema,
   },
-  required: ["name", "image", "port"],
+  required: ["name", "port"],
+  // image XOR source is checked in the route: a oneOf here gives unreadable 400 details.
 } as const;
 
 const resourcePairResponse = {
@@ -153,6 +158,7 @@ export const appSchema = {
     },
     registry: { type: "string" },
     deploymentId: { type: "integer", description: "Deploy record started by this request (#81)" },
+    source: appSourceSchema,
   },
   required: ["name", "image", "replicas", "ready", "status", "createdAt"],
 } as const;
@@ -166,3 +172,5 @@ export const errorSchema = {
   },
   required: ["ok", "error"],
 } as const;
+
+export type { AppSourceSummary };

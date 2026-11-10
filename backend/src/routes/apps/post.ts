@@ -8,9 +8,10 @@ import {
   type PostAppsBody,
 } from "../apps-schemas.js";
 import { mapPostAppsError } from "./post-errors.js";
-import { checkResourceFit } from "../../k8s/resource-fit.js";
-import { DEFAULT_RESOURCES, mergeResources, resourcesProblem } from "../../k8s/resources.js";
-import { InvalidResourcesError } from "../../k8s/update-app.js";
+import { checkCreateFit } from "./create-fit.js";
+import { hostProblem } from "./host-check.js";
+import { createFromSource, type SourceCreateDeps } from "./post-source.js";
+import { getAppSource } from "../../db/app-sources.js";
 import type { DeployTracker } from "../../deploys/tracker.js";
 import { recordDeployError, specFromApp, specFromCreateBody, withDeploymentId } from "./deploy-hooks.js";
 import { getRegistry } from "../../k8s/registries.js";
@@ -24,9 +25,9 @@ type PostAppsRouteDeps = {
   tlsIssuer?: string;
   /** Records the create as a deploy (#81); unset in tests that do not need it. */
   tracker?: DeployTracker;
-};
+} & Omit<SourceCreateDeps, "clients" | "namespace" | "tlsIssuer" | "tracker">;
 
-/** POST /apps — create a new Deployment, Service, and optionally Ingress. */
+/** POST /apps — create a new Deployment, Service, and optionally Ingress; or build one from git (#83). */
 export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAsync {
   return async (app) => {
     app.post<{ Body: PostAppsBody }>(
@@ -54,83 +55,34 @@ export function postAppsRoutesWithDeps(deps: PostAppsRouteDeps): FastifyPluginAs
           });
         }
 
-        const { name, image, port, replicas, host, env, resources, volumes, registry } = req.body;
+        const { name, image, port, replicas, env, resources, volumes, registry, source } = req.body;
+        if (Boolean(image) === Boolean(source)) {
+          return reply.status(400).send({ ok: false, error: "invalid request", details: "set exactly one of image or source" });
+        }
+
+        // Ingress rules match hosts case-insensitively; store them lowercase.
+        const hostNorm = req.body.host?.toLowerCase();
+        const problem = hostProblem(hostNorm, deps);
+        if (problem) return reply.status(problem.status).send({ ok: false, error: problem.error, ...(problem.details ? { details: problem.details } : {}) });
+
+        if (source) return createFromSource({ ...deps, clients: deps.k8s.clients }, req, reply, hostNorm);
+        // A build-from-repo app owns this name even before its Deployment exists (#83).
+        if (deps.db && getAppSource(deps.db, name)) return reply.status(409).send({ ok: false, error: "app already exists" });
+
         if (registry && !(await getRegistry(deps.k8s.clients.core, deps.namespace, registry))) {
           return reply.status(404).send({ ok: false, error: "registry not found" });
-        }
-
-        // Normalize host to lowercase (case-insensitive matching in Ingress rules).
-        const hostNorm = host?.toLowerCase();
-
-        // Check if host conflicts with dashboard host (reserved).
-        if (hostNorm && deps.dashboardHost && hostNorm === deps.dashboardHost) {
-          return reply.status(409).send({
-            ok: false,
-            error: "host already in use",
-          });
-        }
-
-        // Validate host if provided (DNS-1123, wildcard, ingress config, suffix).
-        if (hostNorm) {
-          // Reject wildcards.
-          if (hostNorm.includes("*")) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: "host cannot contain wildcards",
-            });
-          }
-
-          // Validate DNS-1123 format.
-          const dnsPattern = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-          if (!dnsPattern.test(hostNorm)) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: "host must be a valid DNS-1123 hostname (e.g., hello.192.0.2.10.nip.io)",
-            });
-          }
-
-          if (!deps.ingressDomain) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: "ingress not configured",
-            });
-          }
-
-          // Host must end with .<domain>, not equal to it.
-          const suffix = `.${deps.ingressDomain}`;
-          if (!hostNorm.endsWith(suffix) || hostNorm === deps.ingressDomain) {
-            return reply.status(400).send({
-              ok: false,
-              error: "invalid request",
-              details: `host must end with ${suffix}`,
-            });
-          }
         }
 
         // Record the deploy once the request is well-formed; the resource fit is its Validate step.
         const deploy = deps.tracker?.begin(name, "create", specFromCreateBody(req.body)) ?? null;
         try {
-          // Only check resources the client set; the defaults always fit the shipped quota.
-          if (resources) {
-            const merged = mergeResources(DEFAULT_RESOURCES, resources);
-            const problem = resourcesProblem(merged);
-            if (problem) throw new InvalidResourcesError(problem);
-            await checkResourceFit(
-              deps.k8s.clients.core,
-              deps.namespace,
-              { next: { resources: merged, replicas: volumes?.length ? Math.min(replicas, 1) : replicas }, surge: false },
-              req.log,
-            );
-          }
+          await checkCreateFit(deps.k8s.clients, deps.namespace, { resources, replicas, hasVolumes: Boolean(volumes?.length) }, req.log);
           const app = await createAppSerialized(
             deps.k8s.clients,
             deps.namespace,
             {
               name,
-              image,
+              image: image ?? "",
               port,
               replicas,
               host: hostNorm,
