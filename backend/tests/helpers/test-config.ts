@@ -1,4 +1,5 @@
 import type { Config } from "../../src/config.js";
+import { loadBuildConfig } from "../../src/config-builds.js";
 
 export const TEST_TOKEN = "test-token-secret";
 
@@ -18,6 +19,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     dbPath: ":memory:",
     auditRetentionDays: 90,
     deployTimeoutSeconds: 300,
+    builds: loadBuildConfig({}),
     ...overrides,
   };
 }

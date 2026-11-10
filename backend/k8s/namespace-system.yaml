@@ -1,0 +1,15 @@
+# pier-system: Pier's own build plumbing (#83): the in-cluster image registry and the
+# short-lived build Jobs. Apps stay in pier-apps. Baseline PSA: build Jobs run as a
+# non-root user and never need privileges (the privileged BuildKit daemon lives in
+# its own pier-buildkit namespace, see buildkit.yaml).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pier-system
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest

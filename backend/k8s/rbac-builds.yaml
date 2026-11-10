@@ -1,0 +1,45 @@
+# Build Jobs and git credential Secrets live in pier-system (#83).
+# Least privilege: only the verbs src/k8s/builds and src/k8s/git-credentials call.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pier-backend-builds
+  namespace: pier-system
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    # create: builds/run | get: job status polling | delete: cancel and cleanup
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    # list: find the Job's pod by job-name label | get: container states
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    # get: stream clone, prepare and build output into the deploy record
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    # Git credentials (pier-git-*). The token is write-only through the API: it is
+    # read here only to mount into build Jobs and to authenticate git probes.
+    verbs: ["get", "list", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pier-backend-builds
+  namespace: pier-system
+  labels:
+    app.kubernetes.io/managed-by: pier
+    app.kubernetes.io/part-of: pier
+subjects:
+  - kind: ServiceAccount
+    name: pier-backend
+    namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pier-backend-builds

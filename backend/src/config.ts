@@ -1,4 +1,5 @@
 /** Runtime settings from environment (no secrets in repo). */
+import { loadBuildConfig, type BuildConfig } from "./config-builds.js";
 import { parseTrustProxy, type TrustProxy } from "./trust-proxy.js";
 
 export type Config = {
@@ -19,6 +20,8 @@ export type Config = {
   auditRetentionDays: number;
   /** A deploy still rolling out after this many seconds fails (PIER_DEPLOY_TIMEOUT_SECONDS). */
   deployTimeoutSeconds: number;
+  /** Building images from git (#83); see config-builds.ts. */
+  builds: BuildConfig;
 };
 
 function parsePort(raw: string | undefined): number {
@@ -182,5 +185,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dbPath: optionalNonEmpty(env.PIER_DB_PATH) ?? "./data/pier.db",
     auditRetentionDays: parseRetentionDays(env.PIER_AUDIT_RETENTION_DAYS),
     deployTimeoutSeconds: parseDeployTimeout(env.PIER_DEPLOY_TIMEOUT_SECONDS),
+    builds: loadBuildConfig(env),
   };
 }

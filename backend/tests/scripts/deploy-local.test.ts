@@ -82,11 +82,16 @@ test("deploy-local.sh --render: offline, no token, nothing left unrendered", { s
     assert.strictEqual(run.status, 0, run.stderr);
 
     const files = fs.readdirSync(out).sort();
-    assert.deepStrictEqual(files.slice(0, 3), [
+    assert.deepStrictEqual(files.slice(0, 5), [
       "000-namespace.yaml",
-      "010-rbac.yaml",
-      "020-rbac-apps.yaml",
+      "010-namespace-system.yaml",
+      "020-rbac.yaml",
+      "030-rbac-apps.yaml",
+      "040-rbac-builds.yaml",
     ]);
+    // Build plumbing (#83): registry and BuildKit come after the StorageClass they use.
+    const order = (n: string) => files.findIndex((f) => f.endsWith(`-${n}.yaml`));
+    assert.ok(order("storage") < order("registry") && order("registry") < order("buildkit"));
     for (const f of ["secret", "deployment", "ingress"]) {
       assert.ok(files.some((n) => n.endsWith(`-${f}.yaml`)), `missing ${f}`);
     }

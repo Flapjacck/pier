@@ -76,6 +76,15 @@ spec:
               value: "__TLS_ISSUER__"
             - name: PIER_DB_PATH
               value: "/data/pier.db"
+            # Builds (#83): Deployments pull from the node's NodePort; Jobs push to the Service.
+            - name: PIER_BUILD_REGISTRY
+              value: "localhost:30500"
+            - name: PIER_BUILD_PUSH_REGISTRY
+              value: "registry.pier-system.svc.cluster.local:5000"
+            - name: PIER_BUILD_NAMESPACE
+              value: "pier-system"
+            - name: PIER_BUILDKIT_ADDR
+              value: "tcp://buildkitd.pier-buildkit.svc.cluster.local:1234"
             - name: PIER_API_TOKEN
               valueFrom:
                 secretKeyRef:

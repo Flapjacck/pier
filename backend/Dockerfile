@@ -28,6 +28,10 @@ FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PIER_PUBLIC_DIR=/app/public
+# git powers POST /api/git/probe (ls-remote and a shallow clone for the wizard's
+# branch, folder and volume-hint lists). `git --version` fails the build if it's missing.
+RUN apk add --no-cache git \
+  && git --version
 # Copy package metadata and pruned production dependencies.
 COPY --chown=node:node --from=build /app/backend/package.json ./
 COPY --chown=node:node --from=build /app/backend/node_modules ./node_modules
