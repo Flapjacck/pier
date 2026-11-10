@@ -1,5 +1,6 @@
 import { Input } from "../../components/ui/Input";
 import { Field } from "../../components/ui/Field";
+import { subdomainInput } from "../../lib/host";
 
 interface Props {
   id: string;
@@ -53,7 +54,8 @@ export function HostField({
         <Input
           value={subdomain}
           onChange={(e) => {
-            onSubdomainChange(e.target.value);
+            // Pasting "app.<domain>" or a full URL keeps only the subdomain (#83).
+            onSubdomainChange(subdomainInput(e.target.value, ingressDomain));
             if (error) {
               onClearError();
             }

@@ -1,3 +1,4 @@
+import { randomId } from "../../lib/id";
 import {
   createContext,
   useCallback,
@@ -88,7 +89,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const push = useCallback((msg: Omit<ToastMessage, "id">) => {
-    const id = crypto.randomUUID();
+    const id = randomId();
     setToasts((prev) => [...prev, { ...msg, id }]);
   }, []);
 

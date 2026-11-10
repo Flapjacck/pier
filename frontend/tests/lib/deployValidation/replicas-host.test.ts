@@ -113,3 +113,10 @@ describe("validateDeployForm", () => {
     });
   });
 });
+
+describe("host from the subdomain field (#83)", () => {
+  it("appends the ingress domain to a bare subdomain", () => {
+    const result = validateDeployForm({ ...validForm, publicUrl: true, host: "myapp" }, { ingressDomain: "example.com" });
+    expect(result.ok && result.body.host).toBe("myapp.example.com");
+  });
+});
