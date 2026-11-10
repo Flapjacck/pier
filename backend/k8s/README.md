@@ -1,6 +1,6 @@
 # Kubernetes manifests
 
-Manifests for the `pier-backend` pod (namespace `default`) and the guard rails on `pier-apps`, the namespace where Pier-deployed apps run. The cluster is a single k3s node: 4 CPU, about 9.2Gi allocatable memory, Traefik ingress and ServiceLB.
+Manifests for the `pier-backend` pod (namespace `default`), the guard rails on `pier-apps` (the namespace where Pier-deployed apps run), and the build stack in `pier-system` and `pier-buildkit` (see [Builds](#builds)). The cluster is a single k3s node: 4 CPU, about 9.2Gi allocatable memory, Traefik ingress and ServiceLB.
 
 ## Files
 
@@ -8,9 +8,13 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 |------|---------|
 | [namespace.yaml](namespace.yaml) | Namespace `pier-apps`, with Pod Security labels: enforce `baseline`, warn and audit `restricted`, all at version `latest`. |
 | [rbac.yaml](rbac.yaml) | ServiceAccount `default/pier-backend`; ClusterRole and ClusterRoleBinding `pier-backend-cluster-health`. |
+| [namespace-system.yaml](namespace-system.yaml) | Namespace `pier-system` for the build registry, build Jobs and git credential Secrets. |
 | [rbac-apps.yaml](rbac-apps.yaml) | Role and RoleBinding `pier-app-manager` in `pier-apps`, bound to `default/pier-backend`. |
+| [rbac-builds.yaml](rbac-builds.yaml) | Role and RoleBinding `pier-builder` in `pier-system`, bound to `default/pier-backend`: Jobs, Pods and their logs, and Secrets (git credentials). |
 | [storage.yaml](storage.yaml) | StorageClass `pier-local` for retained local-path PVCs. |
 | [quota.yaml](quota.yaml) | ResourceQuota `pier-apps-quota` and LimitRange `pier-apps-limits` in `pier-apps` (optional, applied if present). |
+| [registry.yaml](registry.yaml) | `registry:2` Deployment, 10Gi PVC and Service `registry` in `pier-system` (port 5000, NodePort 30500) for images Pier builds. |
+| [buildkit.yaml](buildkit.yaml) | Namespace `pier-buildkit`, one rootful `buildkitd` with a 20Gi cache PVC, its Service (port 1234) and two NetworkPolicies. |
 | [networkpolicies.yaml](networkpolicies.yaml) | Four NetworkPolicies in `pier-apps`: default-deny, allow-ingress-from-traefik, allow-dns-egress, allow-internet-egress (optional, applied if present). |
 | [policy-services.yaml](policy-services.yaml) | ValidatingAdmissionPolicy and binding `pier-apps-clusterip-only`. Only Services of type ClusterIP are admitted in `pier-apps` (optional, applied if present). |
 | [tls.yaml](tls.yaml) | cert-manager ClusterIssuers `pier-selfsigned` and `pier-ca`, the root Certificate `cert-manager/pier-root-ca`, and the Traefik Middleware `pier-https-redirect` in `pier-apps` and `default`. Applied only when `PIER_TLS_ISSUER` is set; needs cert-manager (see [TLS](#tls)). |
@@ -25,25 +29,29 @@ Manifests for the `pier-backend` pod (namespace `default`) and the guard rails o
 `../scripts/deploy-local.sh` applies manifests and templates in this order (see [backend README deploy section](../README.md#deploy-to-k3s)):
 
 1. `namespace.yaml` — creates `pier-apps` namespace with Pod Security labels
-2. `rbac.yaml` — ServiceAccount and ClusterRole for cluster health check
-3. `rbac-apps.yaml` — Role for app management in `pier-apps`
-4. `storage.yaml` — `pier-local` StorageClass
-5. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
-6. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
-7. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
-8. **Optional:** `tls.yaml` (only when `PIER_TLS_ISSUER` is set) — CA issuers and HTTPS redirect Middlewares. The script stops early if cert-manager's CRDs are missing.
-9. `service.yaml` — Service for pier-backend
-10. `data-pvc.yaml` — PVC `pier-backend-data` for the database. It must exist before the Deployment that mounts it.
-11. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
-12. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
+2. `namespace-system.yaml` — creates `pier-system` for builds
+3. `rbac.yaml` — ServiceAccount and ClusterRole for cluster health check
+4. `rbac-apps.yaml` — Role for app management in `pier-apps`
+5. `rbac-builds.yaml` — Role for build Jobs and git credentials in `pier-system`
+6. `storage.yaml` — `pier-local` StorageClass
+7. **Optional:** `quota.yaml` (if present) — ResourceQuota and LimitRange in `pier-apps`
+8. `registry.yaml` — build registry in `pier-system`
+9. `buildkit.yaml` — `pier-buildkit` namespace, BuildKit daemon and its NetworkPolicies
+10. **Optional:** `networkpolicies.yaml` (if present) — Network isolation policies
+11. **Optional:** `policy-services.yaml` (if present) — Service type admission policy
+12. **Optional:** `tls.yaml` (only when `PIER_TLS_ISSUER` is set) — CA issuers and HTTPS redirect Middlewares. The script stops early if cert-manager's CRDs are missing.
+13. `service.yaml` — Service for pier-backend
+14. `data-pvc.yaml` — PVC `pier-backend-data` for the database. It must exist before the Deployment that mounts it.
+15. **Generated:** Secret `default/pier-backend-secrets` from `PIER_API_TOKEN` (piped on stdin, never in argv or on disk)
+16. **Rendered:** `deployment.yaml.tmpl` — Deployment with substitutions:
    - `__IMAGE__` → `pier-backend:$TAG` (the built image)
    - `__TOKEN_SHA256__` → SHA256 hash of `PIER_API_TOKEN` (for restart detection)
    - `__INGRESS_DOMAIN__` → `PIER_INGRESS_DOMAIN` env var
    - `__DASHBOARD_HOST__` → `PIER_DASHBOARD_HOST` or derived value
    - `__TLS_ISSUER__` → `PIER_TLS_ISSUER` (empty when TLS is off)
-13. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`. With TLS on it also gets the cert-manager issuer annotation, the redirect Middleware and a `tls` block (Secret `pier-backend-tls`).
+17. **Conditionally rendered:** `ingress.yaml.tmpl` — Dashboard ingress (only if a dashboard host is set: `PIER_DASHBOARD_HOST`, or `pier.<PIER_INGRESS_DOMAIN>`), rendered with `__DASHBOARD_HOST__`. With TLS on it also gets the cert-manager issuer annotation, the redirect Middleware and a `tls` block (Secret `pier-backend-tls`).
 
-14. **Optional (k3s):** `traefik-config.yaml` — HelmChartConfig for the packaged Traefik (client source IP). Applied only when the `helmchartconfigs.helm.cattle.io` CRD exists, `PIER_TRAEFIK_CONFIG` isn't `false`, and there is no `kube-system/traefik` HelmChartConfig that Pier doesn't manage (label `app.kubernetes.io/managed-by=pier`); otherwise the script prints why it skipped it. `--render` always includes it.
+18. **Optional (k3s):** `traefik-config.yaml` — HelmChartConfig for the packaged Traefik (client source IP). Applied only when the `helmchartconfigs.helm.cattle.io` CRD exists, `PIER_TRAEFIK_CONFIG` isn't `false`, and there is no `kube-system/traefik` HelmChartConfig that Pier doesn't manage (label `app.kubernetes.io/managed-by=pier`); otherwise the script prints why it skipped it. `--render` always includes it.
 
 Namespace and RBAC must exist before namespaced objects.
 
@@ -51,6 +59,60 @@ To check changes here without touching the cluster:
 
 - `../scripts/deploy-local.sh --render [--out DIR]` renders every manifest in this order to `DIR` as `NNN-<name>.yaml` (Secret value `REDACTED`) and lints them offline. Needs only `kubectl` on PATH, no cluster, SSH or token.
 - `../scripts/deploy-local.sh --dry-run` sends the same manifests to the API server with `kubectl apply --dry-run=server` (admission and RBAC checks, nothing changed).
+
+## Builds
+
+Pier can build an app from a git repo instead of a pre-built image (#83). Three ways to deploy:
+
+| Path | When to use it | What happens |
+|------|----------------|--------------|
+| **Railpack** (default) | Paste a repo and go: Node, Python, Go, Rust, PHP, static sites and more, no Dockerfile needed. | Railpack detects the stack and BuildKit builds the image with Railpack's frontend. Railpack apps listen on `$PORT`, so the dashboard sets `PORT` to the app port unless you set it yourself. |
+| **Dockerfile** | You need full control, or Railpack guesses wrong. | BuildKit builds the Dockerfile you pick (relative to the folder, which is the build context). |
+| **Pre-built image** | The image already exists in a registry. | Unchanged: Pier deploys the image as before. |
+
+How a build runs:
+
+1. `POST /api/apps` with a `source` returns `201` straight away with a `deploymentId`. The app has a page from that moment, even before (or without) a Deployment.
+2. A Job in `pier-system` clones the repo (git credentials come from a `pier-git-<name>` Secret), runs `railpack prepare` for Railpack, and calls `buildctl` against `buildkitd` to build and push `<app>:d<deployId>` (pushed to the in-cluster Service, pulled as `localhost:30500/<app>:d<deployId>`).
+3. The deploy's **Build image** step streams the Job's output. If the build fails, the deploy page, its logs and an Activity row (`deploy.failed`) stay, so there is always somewhere to read why.
+4. On success Pier creates (or updates) the app with the built image and the normal deploy steps follow. **Redeploy** rebuilds the branch head.
+
+The pieces:
+
+- **`buildkitd` in `pier-buildkit`** is rootful and privileged. Rootless BuildKit needs unprivileged user namespaces and unconfined seccomp/AppArmor, which Ubuntu 24.04+ restricts and PSA baseline forbids. The daemon is isolated instead. It has its own namespace and no service account token. Only pods labelled `app: pier-build` in `pier-system` may reach it, and its egress is DNS, the registry and the public internet only, so a `RUN` step can't reach the LAN or the API server.
+- **Build Jobs** run unprivileged with `backoffLimit: 0`, `activeDeadlineSeconds` of `PIER_BUILD_TIMEOUT_SECONDS` (default 900, range 60 to 3600) and a TTL so finished Jobs are cleaned up. Each step container is capped (at most 1 CPU / 1Gi).
+- **The registry** is `registry:2` on a 10Gi `pier-local` PVC. BuildKit pushes to the in-cluster Service (`registry.pier-system.svc.cluster.local:5000`). The node pulls through NodePort 30500 as `localhost:30500`.
+- **The cache** is a 20Gi PVC. BuildKit garbage-collects it at about 80%.
+
+### Node setup
+
+containerd on the node has to be told that `localhost:30500` is a plain-HTTP registry. Run this once per node (it writes `/etc/rancher/k3s/registries.yaml` over SSH and restarts k3s):
+
+```bash
+./scripts/configure-k3s-registry.sh   # uses K3S_HOST and K3S_SSH_USER from backend/.env
+```
+
+Without it, builds succeed but the app's pods sit in `ImagePullBackOff`.
+
+### Settings
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `PIER_BUILD_REGISTRY` | `localhost:30500` | Registry host the node pulls built images from. |
+| `PIER_BUILD_PUSH_REGISTRY` | `registry.pier-system.svc.cluster.local:5000` | Registry host build Jobs push to. |
+| `PIER_BUILD_NAMESPACE` | `pier-system` | Namespace for build Jobs and git credential Secrets. |
+| `PIER_BUILDKIT_ADDR` | `tcp://buildkitd.pier-buildkit.svc.cluster.local:1234` | BuildKit daemon address. |
+| `PIER_BUILD_TIMEOUT_SECONDS` | `900` | Kill a build after this long (60 to 3600). |
+
+The BuildKit, git, curl and Railpack versions (and Railpack's release checksums) are pinned in [`src/config-builds.ts`](../src/config-builds.ts). Bump them together with the `moby/buildkit` image in `buildkit.yaml`.
+
+### Limits
+
+- One build per app at a time. Redeploy returns `409` while one is running.
+- The git probe lists folders up to 3 levels deep (300 max) and reads at most 5000 paths, so huge monorepos may not show every folder.
+- Builds clone over HTTPS. `git@host:owner/repo` and `ssh://git@` addresses are rewritten to HTTPS, so private repos need a git credential (a read-only access token), not an SSH key.
+- Volume suggestions are hints only: they never create or attach anything.
+- Builds share the node's CPU and memory with your apps. A big build can slow running apps down.
 
 ## Client IP
 

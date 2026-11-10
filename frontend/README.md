@@ -88,7 +88,10 @@ With fake timers, don't use Testing Library's `waitFor` (it polls with the faked
 | `src/main.tsx` | Entry: fonts, global CSS, `ThemeProvider`, `ToastProvider`, router |
 | `src/App.tsx` | `RouterProvider` |
 | `src/router.tsx` | Routes, `AuthProvider`, `RequireAuth`, `AppShell`, login |
-| `src/api/` | Typed API client (`types.ts`, `client.ts`, `request.ts`, `errors.ts`) |
+| `src/api/` | Typed API client (`types.ts`, `client.ts`, `request.ts`, `errors.ts`); git sources, probe, Redeploy and git credentials in `sources.ts`, `sourceTypes.ts`, `sourceGuards.ts` (#83) |
+| `src/pages/deploy/` | Deploy wizard (#83): `DeployWizard.tsx`, one component per step in `steps/`, step order and per-step validation in `wizardSteps.ts`, state in `useDeployForm.ts` (composed from `useSourceFields`, `useRepoProbe`, `useImageInspection`, `useEnvRows`, `useNameHost`), and `SuggestedVolumes.tsx` |
+| `src/lib/id.ts`, `src/lib/clipboard.ts` | HTTP-safe ids and copy: the dashboard is often served over plain `http://`, where `crypto.randomUUID` and `navigator.clipboard` don't exist (#83) |
+| `src/lib/host.ts` | Subdomain-only host input: strips a pasted scheme, path or `.<domain>` and rejects hosts outside the ingress domain (#83) |
 | `src/context/` | `AuthContext`, `ThemeContext`, `ShellContext`, `PageActionsContext` |
 | `src/hooks/useApi.ts` | Small fetch hook (loading, error, data, refetch, abort on unmount) |
 | `src/hooks/useLogStream.ts` | Live log streaming (EventSource with exponential backoff or static fetch) (#47, #65) |
@@ -158,21 +161,24 @@ See [backend/README.md](../backend/README.md#environment) for the `PIER_PUBLIC_D
 - `/login` → public sign-in (no shell)
 - `/` → redirect to `/apps` (requires session)
 - `/apps` → inside `AppShell` (sidebar + header + `main`); apps list with search, refresh, auto-update every 10s
-- `/apps/new` → Deploy form (create new app with validation and error mapping; optional persistent volume)
-- `/registries` → Saved registry credentials (host and username metadata only), with add, edit, test, and delete actions
+- `/apps/new` → Deploy wizard: App → Source → Connect → Build method → Runtime → Review (#83). Git repository with Railpack is the default; a pre-built image skips Build method. Each step validates before Next, and only Review's **Deploy** button creates the app (Next and Enter never submit)
+- `/registries` → Saved registry credentials (host and username metadata only), with add, edit, test, and delete actions, plus write-only git credentials for private repos (#83)
 - `/apps/:name` → nested routes with `AppDetailLayout`:
-  - `/:name` (index) → Overview tab (image, port, replicas, host, URL, created, last deploy, attached volumes)
+  - `/:name` (index) → Overview tab (repository, branch and commit first with the built image second for git apps, otherwise the image; port, replicas, host, URL, created, last deploy, attached volumes). Git apps get a **Redeploy** button in the header, and a first build that is running or failed links to its build logs
   - `/:name/pods` → Pods tab (pod status, image, restart/previous logs actions, and recent Kubernetes events; refreshes every 5s while visible)
   - `/:name/deployments` → Deployments tab: deploy history from `GET /api/apps/:name/deployments` (newest first, Load more, refreshes every 5s while a deploy is running) (#81)
   - `/:name/deployments/:id` → one deploy: numbered, collapsible steps with durations and output; live over SSE while running, polling every 3s if the stream drops (e.g. while Pier itself restarts); failed step in red with the reason (#81)
   - `/:name/logs` → Logs tab (latest deploy card with live steps, then live EventSource or static with pod/tail picker, follow toggle, auto-scroll, ⋯ menu)
   - `/:name/settings` → Settings tab: Configuration card (image, port, env, CPU/RAM; saves only changed fields via `PATCH /api/apps/:name` after a confirm), then scale, restart, delete. Saves and restarts toast `Deploy #N started`
 - After `/apps/new` succeeds, the form opens the new deploy (`/apps/:name/deployments/:id`) so you can watch it
-- `/activity` → Activity page: audit log from `GET /api/audit` (newest first, Load more, links to apps); `?app=<name>` shows one app
+- `/activity` → Activity page: audit log from `GET /api/audit` (newest first, Load more, links to apps; deploy outcome rows link to their deploy page, background rows show **Pier**); `?app=<name>` shows one app
 
-The deploy form's **Check image** action reads registry metadata without pulling
-the image, prefills an untouched port, and links declared volume paths into the
-existing volume section.
+The wizard's **Check image** (image path) and **Load repository** (git path) read
+metadata without pulling or building anything. Volume hints from either show on
+the Runtime step with a reason and confidence. **Add volume** pre-fills a volume
+row and **Dismiss** hides the hint; nothing is created until Deploy, and hints
+never block a deploy. For Railpack the wizard sets `PORT` to the app port unless
+you set it yourself, because Railpack images listen on `$PORT`.
 - `*` → `NotFoundPage` (still in shell)
 - Route/render errors → `ErrorPage` (`errorElement`)
 - Dev only: `/__boom` throws to test the error boundary

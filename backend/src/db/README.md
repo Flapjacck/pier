@@ -29,10 +29,11 @@ To change the schema, add `migrations/00N_<name>.ts` with the next version and a
 
 | Table | Columns |
 |-------|---------|
-| `audit_log` | `id` (autoincrement), `ts` (epoch ms), `actor` (`token` or `session`), `ip`, `action` (e.g. `app.scale`), `app`, `target`, `status`, `details` (JSON object) |
-| `deployments` | `id` (autoincrement), `app`, `trigger` (`create`, `patch`, `restart`; `rollback`/`build` reserved), `status` (`running`, `succeeded`, `failed`, `cancelled`), `spec` (JSON: image, port, replicas, host, resources, volumes, env **key names**), `reason`, `generation` (the Deployment generation the change produced), `source_deployment_id` (for #87 rollbacks), `started_at`, `finished_at` (epoch ms) |
+| `audit_log` | `id` (autoincrement), `ts` (epoch ms), `actor` (`token`, `session`, or `pier` for background rows such as a finished deploy), `ip`, `action` (e.g. `app.scale`), `app`, `target`, `status`, `details` (JSON object) |
+| `deployments` | `id` (autoincrement), `app`, `trigger` (`create`, `patch`, `restart`, `build` for a Redeploy from git; `rollback` reserved), `status` (`running`, `succeeded`, `failed`, `cancelled`), `spec` (JSON: image, port, replicas, host, resources, volumes, env **key names**, and the git `source` for builds), `reason`, `generation` (the Deployment generation the change produced), `source_deployment_id` (for #87 rollbacks), `started_at`, `finished_at` (epoch ms) |
 | `deployment_steps` | `deployment_id` + `position` (primary key, cascade delete), `name`, `status` (`pending`, `running`, `succeeded`, `failed`, `skipped`), `started_at`, `finished_at` |
 | `deployment_logs` | `id`, `deployment_id` (cascade delete), `step`, `ts`, `level` (`info`, `warning`, `error`), `text`, `event_key` (unique per deploy, so a Kubernetes event is written once) |
+| `app_sources` | `app` (primary key), `repo`, `branch`, `folder`, `dockerfile`, `build_method` (`railpack` or `dockerfile`), `git_credential` (a name, never a token), `last_commit`, `last_image`, `volume_hints` (JSON), `pending_create` (JSON: the first create's settings, env values included, until that create succeeds; then cleared), `updated_at` (epoch ms). One row per app built from git (#83); deleted with the app. |
 | `login_attempts` | `ip` (primary key), `count`, `reset_at` (epoch ms) |
 | `schema_migrations` | `version`, `name`, `applied_at` |
 

@@ -31,9 +31,11 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 
 ## What it does
 
-- **Deploy apps:** Push a Docker image, get a URL instantly via ingress (optional HTTPS through cert-manager)
+- **Deploy apps:** Paste a git repo (built with Railpack, or your Dockerfile, by an in-cluster BuildKit) or push a Docker image, and get a URL via ingress (optional HTTPS through cert-manager). A step-by-step wizard walks through source, build method and runtime
+- **Builds from git:** Builds run in the background with live logs on the deploy page; failed builds keep their page and logs. Redeploy rebuilds the branch head, and private repos use write-only git credentials
+- **Volume suggestions:** Pier spots apps that probably need storage (image `VOLUME`, compose and `fly.toml` mounts, SQLite-style dependencies, committed database files) and suggests a volume; nothing is created until you deploy
 - **Private registries:** Save Docker Hub, GHCR, or another registry credential and attach it to private image pulls without exposing the password
-- **Image inspection:** Check an image before deployment to prefill its exposed port and warn when it declares persistent storage
+- **Image inspection:** Check an image before deployment to prefill its exposed port and suggest volumes for the storage it declares
 - **Persistent volumes:** Attach retained local-path storage to apps; volume apps use one replica and Recreate updates.
 - **Logs & monitoring:** Stream live logs, check pod status, see resource usage
 - **Scaling:** Scale replicas up/down, pause with zero replicas
@@ -43,7 +45,7 @@ I wanted to actually learn Kubernetes, clusters, and how cloud platforms work un
 - **Networking:** Apps reach public internet; isolated from each other and from the host LAN by default (configurable)
 - **Cluster health:** Check API server status and node readiness
 - **Deploy steps and history:** Every deploy, settings change and restart shows live, Vercel-style steps (validate, apply, schedule, pull, start, health, ready) with a plain-language reason when one fails, plus a per-app Deployments history (`GET /api/apps/:name/deployments`, `/:id` and an SSE `/:id/stream`)
-- **Activity log:** Every deploy, change, scale, restart, delete and sign-in is recorded (without secrets) in a small SQLite database and shown on the Activity page
+- **Activity log:** Every deploy (including failed builds), change, scale, restart, delete and sign-in is recorded (without secrets) in a small SQLite database and shown on the Activity page
 
 ## Architecture
 
@@ -116,6 +118,11 @@ Before you start, ensure your k3s node has:
    ```
    Wait for the rollout (up to 2 min).
 
+   To build apps from git, also tell the node about Pier's build registry (once per node; it restarts k3s):
+   ```bash
+   ./scripts/configure-k3s-registry.sh
+   ```
+
 4. **Open the dashboard:**
    ```
    http://pier.192.0.2.10.nip.io
@@ -127,7 +134,9 @@ Before you start, ensure your k3s node has:
    - Set host: `myapp.192.0.2.10.nip.io`
    - Open `http://myapp.192.0.2.10.nip.io` — Nginx is running
 
-   For private images, open **Registries**, add the registry host and credentials, then select it in the deploy form. Use **Check image** to inspect a public image before deploying; declared volume paths link to the existing volume section.
+   Or build from git: choose **Git repository**, paste a repo URL, press **Load repository**, pick the branch and folder, keep **Railpack** (or pick a Dockerfile), then Deploy. The deploy page streams the build. See [backend/k8s/README.md#builds](backend/k8s/README.md#builds) for how builds work and their limits.
+
+   For private images, open **Registries**, add the registry host and credentials, then select it in the deploy form. Use **Check image** to inspect a public image before deploying; declared volume paths show up as suggested volumes on the Runtime step. Private repos need a git credential, also on **Registries**.
 
 6. **Optional: turn on HTTPS.** Run `./scripts/install-cert-manager.sh`, add `PIER_TLS_ISSUER=pier-ca` to `backend/.env`, redeploy, and trust Pier's root CA on your machines. New apps then get `https://` URLs and HTTP redirects to HTTPS. Full steps are in [backend/k8s/README.md#tls](backend/k8s/README.md#tls).
 
