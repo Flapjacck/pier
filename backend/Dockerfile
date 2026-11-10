@@ -1,7 +1,7 @@
 # Build stage for frontend: compile React + Vite output.
 FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS web
 WORKDIR /app
-RUN corepack enable pnpm
+RUN npm install -g pnpm@12.4.1
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN cd frontend && pnpm install --frozen-lockfile
 COPY frontend/tsconfig.json frontend/tsconfig.app.json frontend/tsconfig.node.json frontend/tsconfig.test.json frontend/vite.config.ts frontend/index.html ./frontend/
@@ -11,11 +11,11 @@ RUN cd frontend && pnpm build
 
 # Build stage: compile TypeScript backend and prune to production dependencies.
 # Pinned to digest for reproducibility; update by running:
-#   docker pull node:22-alpine && docker inspect --format '{{index .RepoDigests 0}}' node:22-alpine
+#   docker pull node:26-alpine && docker inspect --format '{{index .RepoDigests 0}}' node:26-alpine
 # Must stay on Node 22.13 or later: the backend uses the built-in node:sqlite (#80).
 FROM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS build
 WORKDIR /app
-RUN corepack enable pnpm
+RUN npm install -g pnpm@12.4.1
 COPY backend/package.json backend/pnpm-lock.yaml ./backend/
 COPY backend/pnpm-workspace.yaml ./backend/
 RUN cd backend && pnpm install --frozen-lockfile

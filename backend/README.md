@@ -339,7 +339,7 @@ For RBAC, Pod Security, ResourceQuota, NetworkPolicies, and the Service-type adm
 | `scripts/deploy-local.sh` | Build, import and roll out to k3s, or `--dry-run` / `--render` (above). |
 | `scripts/lib/load-env.sh` | `load_env_file`: safe `.env` parser (no eval; existing env wins; safe under `set -e`). |
 | `scripts/lib/render.sh` | `manifest_names`, `render_manifest`, `render_to_dir`, `lint_rendered`: one renderer shared by every deploy mode. |
-| `Dockerfile` | Two-stage `node:22-alpine` build, pinned by digest. Stage 1 runs `pnpm install --frozen-lockfile`, `build` and `prune --prod`. Stage 2 runs `node dist/index.js` as `node` (uid 1000) on port 3000. |
+| `Dockerfile` | Two-stage `node:26-alpine` build, pinned by digest. Stage 1 runs `pnpm install --frozen-lockfile`, `build` and `prune --prod`. Stage 2 runs `node dist/index.js` as `node` (uid 1000) on port 3000. |
 | `.dockerignore` | Keeps `node_modules`, `dist`, `.env*` (except `.env.example`), `tests`, `k8s`, `scripts`, `*.md` and `.git` out of the build context. |
 | `.env.example` | Template for `.env`. |
 | `pnpm-workspace.yaml` | pnpm settings (`allowBuilds`). |
