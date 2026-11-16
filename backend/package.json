@@ -39,7 +39,7 @@
     "@kubernetes/client-node": "^2.0.2",
     "@types/node": "^26.6.6",
     "eslint": "^10.14.0",
-    "globals": "^15.14.0",
+    "globals": "^17.14.0",
     "tsup": "^9.0.0",
     "tsx": "^4.19.0",
     "typescript": "^6.0.3",
