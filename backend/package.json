@@ -31,18 +31,18 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
-    "@fastify/static": "^10.1.8",
-    "fastify": "^5.6.0"
+    "@fastify/static": "^10.1.11",
+    "fastify": "^5.12.8"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@kubernetes/client-node": "^2.0.2",
     "@types/node": "^26.6.6",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "globals": "^15.14.0",
     "tsup": "^9.0.0",
     "tsx": "^4.19.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.16.0"
+    "typescript-eslint": "^8.72.2"
   }
 }
